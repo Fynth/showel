@@ -15,6 +15,7 @@ enum DbCommand {
     LoadTableData(String, String, i64, i64),
     GetTableRowCount(String, String),
     CheckConnection,
+    UpdateCell(String, String, String, String, Vec<String>, Vec<String>), // schema, table, column, value, row_data, columns
 }
 
 enum DbResponse {
@@ -28,6 +29,7 @@ enum DbResponse {
     TableData(QueryResult, i64),
     Error(String),
     ConnectionStatus(bool, ConnectionConfig),
+    CellUpdated,
 }
 
 pub struct ShowelApp {
@@ -42,6 +44,7 @@ pub struct ShowelApp {
     database_tree: DatabaseTree,
     query_editor: QueryEditor,
     results_table: ResultsTable,
+    edit_dialog: crate::ui::EditDialog,
 
     // Channels
     command_tx: Sender<DbCommand>,
@@ -135,6 +138,12 @@ impl ShowelApp {
                                     let config = db.get_config().await;
                                     DbResponse::ConnectionStatus(is_connected, config)
                                 }
+                                DbCommand::UpdateCell(schema, table, column, value, row_data, columns) => {
+                                    match db.update_cell(&schema, &table, &column, &value, &row_data, &columns).await {
+                                        Ok(_) => DbResponse::CellUpdated,
+                                        Err(e) => DbResponse::Error(e.to_string()),
+                                    }
+                                }
                             }
                         });
 
@@ -157,6 +166,7 @@ impl ShowelApp {
             database_tree: DatabaseTree::default(),
             query_editor: QueryEditor::default(),
             results_table: ResultsTable::default(),
+            edit_dialog: crate::ui::EditDialog::default(),
 
             command_tx,
             response_rx,
@@ -224,6 +234,10 @@ impl ShowelApp {
         let _ = self.command_tx.send(DbCommand::CheckConnection);
     }
 
+    fn update_cell(&mut self, schema: String, table: String, column: String, value: String, row_data: Vec<String>, columns: Vec<String>) {
+        let _ = self.command_tx.send(DbCommand::UpdateCell(schema, table, column, value, row_data, columns));
+    }
+
     fn process_responses(&mut self) {
         while let Ok(response) = self.response_rx.try_recv() {
             match response {
@@ -289,6 +303,13 @@ impl ShowelApp {
                         } else {
                             self.connection_status = "Not connected".to_string();
                         }
+                    }
+                }
+                DbResponse::CellUpdated => {
+                    self.status_message = "Cell updated successfully".to_string();
+                    // Reload table data
+                    if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                        self.load_table_data(schema.clone(), table.clone());
                     }
                 }
             }
@@ -453,8 +474,31 @@ impl eframe::App for ShowelApp {
                 ui.separator();
 
                 // Results table - scrollable area with remaining space
-                self.results_table.show(ui);
+                if let Some((value, column_name, row_idx, col_idx)) = self.results_table.show(ui) {
+                    self.edit_dialog.open(value, column_name, row_idx, col_idx);
+                }
             });
         });
+
+        // Edit dialog
+        if let Some((new_value, row_idx, col_idx)) = self.edit_dialog.show(ctx) {
+            if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                let column = self.results_table.columns[col_idx].clone();
+                let row_data = self.results_table.rows[row_idx].clone();
+                let columns = self.results_table.columns.clone();
+
+                self.update_cell(
+                    schema.clone(),
+                    table.clone(),
+                    column,
+                    new_value.clone(),
+                    row_data,
+                    columns,
+                );
+
+                // Update UI immediately for responsiveness
+                self.results_table.update_cell(row_idx, col_idx, new_value);
+            }
+        }
     }
 }

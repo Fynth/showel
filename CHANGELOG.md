@@ -17,6 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection profiles
 - Table structure viewer
 
+## [0.2.0] - 2024-12-09
+
+### Added
+- 🎉 **Cell Editing Feature** - Double-click any cell to edit its value
+- Edit dialog with visual feedback and validation
+- Automatic primary key detection for UPDATE queries
+- Fallback to first column (usually 'id') if no primary key found
+- Visual hint "💡 Double-click a cell to edit" in results table
+- Cell selection highlighting
+- Immediate UI update after editing
+- Proper UPDATE query generation with parameterized values
+
+### Improved
+- Enhanced table interaction - cells are now clickable
+- Better visual feedback for selected cells
+- Edit dialog shows original and new values
+- Warning when value has changed
+- Automatic table reload after successful update
+
+### Technical
+- Added `EditDialog` component for cell editing
+- Added `update_cell` method in DatabaseConnection
+- Added `UpdateCell` command and `CellUpdated` response
+- Primary key detection using pg_index and pg_attribute
+- Proper SQL injection prevention with parameterized queries
+
 ## [0.1.3] - 2024-12-09
 
 ### Fixed

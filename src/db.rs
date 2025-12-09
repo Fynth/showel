@@ -218,6 +218,48 @@ impl DatabaseConnection {
         let row = client.query_one(&query, &[]).await?;
         Ok(row.get(0))
     }
+
+    pub async fn update_cell(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+        new_value: &str,
+        row_data: &[String],
+        columns: &[String],
+    ) -> Result<()> {
+        let client = self.client.lock().await;
+        let client = client.as_ref().context("Not connected to database")?;
+
+        // Try to find primary key
+        let pk_query = format!(
+            "SELECT a.attname FROM pg_index i
+             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+             WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary",
+            schema, table
+        );
+
+        let pk_column = match client.query(&pk_query, &[]).await {
+            Ok(rows) if !rows.is_empty() => rows[0].get::<_, String>(0),
+            _ => {
+                // Fallback to first column (usually 'id')
+                columns.get(0).context("No columns available")?.clone()
+            }
+        };
+
+        // Find the index of primary key column
+        let pk_index = columns.iter().position(|c| c == &pk_column)
+            .unwrap_or(0);
+        let pk_value = row_data.get(pk_index).context("No primary key value")?;
+
+        let query = format!(
+            "UPDATE {}.{} SET {} = $1 WHERE {} = $2",
+            schema, table, column, pk_column
+        );
+
+        client.execute(&query, &[&new_value, &pk_value]).await?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]

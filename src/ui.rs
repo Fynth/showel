@@ -92,6 +92,107 @@ impl ConnectionDialog {
     }
 }
 
+pub struct EditDialog {
+    pub open: bool,
+    pub value: String,
+    pub original_value: String,
+    pub column_name: String,
+    pub row_index: usize,
+    pub col_index: usize,
+}
+
+impl Default for EditDialog {
+    fn default() -> Self {
+        Self {
+            open: false,
+            value: String::new(),
+            original_value: String::new(),
+            column_name: String::new(),
+            row_index: 0,
+            col_index: 0,
+        }
+    }
+}
+
+impl EditDialog {
+    pub fn open(&mut self, value: String, column_name: String, row_index: usize, col_index: usize) {
+        self.value = value.clone();
+        self.original_value = value;
+        self.column_name = column_name;
+        self.row_index = row_index;
+        self.col_index = col_index;
+        self.open = true;
+    }
+
+    pub fn show(&mut self, ctx: &Context) -> Option<(String, usize, usize)> {
+        let mut result = None;
+        let mut save = false;
+        let mut cancel = false;
+
+        if !self.open {
+            return None;
+        }
+
+        egui::Window::new(format!("Edit: {}", self.column_name))
+            .open(&mut self.open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(format!("Column: {}", self.column_name));
+
+                    ui.add_space(5.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Original:");
+                        ui.monospace(&self.original_value);
+                    });
+
+                    ui.separator();
+
+                    ui.label("New value:");
+                    let text_edit = ui.add(
+                        TextEdit::singleline(&mut self.value)
+                            .desired_width(300.0)
+                            .hint_text("Enter new value...")
+                    );
+
+                    if text_edit.changed() {
+                        // Visual feedback that value changed
+                    }
+
+                    ui.add_space(5.0);
+
+                    if self.value != self.original_value {
+                        ui.colored_label(egui::Color32::YELLOW, "⚠ Value will be updated");
+                    }
+
+                    ui.add_space(10.0);
+
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            save = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+            });
+
+        if save {
+            result = Some((self.value.clone(), self.row_index, self.col_index));
+            self.open = false;
+        }
+
+        if cancel {
+            self.open = false;
+        }
+
+        result
+    }
+}
+
 pub struct QueryEditor {
     pub sql: String,
     pub expanded: bool,
@@ -155,6 +256,7 @@ impl QueryEditor {
 pub struct ResultsTable {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
+    pub selected_cell: Option<(usize, usize)>, // (row, col)
 }
 
 impl Default for ResultsTable {
@@ -162,18 +264,24 @@ impl Default for ResultsTable {
         Self {
             columns: Vec::new(),
             rows: Vec::new(),
+            selected_cell: None,
         }
     }
 }
 
 impl ResultsTable {
-    pub fn show(&mut self, ui: &mut Ui) {
+    pub fn show(&mut self, ui: &mut Ui) -> Option<(String, String, usize, usize)> {
+        let mut clicked_cell = None;
         if self.columns.is_empty() {
             ui.label("No results to display. Execute a query to see results.");
-            return;
+            return None;
         }
 
-        ui.label(format!("Results: {} rows", self.rows.len()));
+        ui.horizontal(|ui| {
+            ui.label(format!("Results: {} rows", self.rows.len()));
+            ui.separator();
+            ui.label("💡 Double-click a cell to edit");
+        });
         ui.separator();
 
         use egui_extras::{Column, TableBuilder};
@@ -200,17 +308,43 @@ impl ResultsTable {
                         }
                     })
                     .body(|mut body| {
-                        for row in &self.rows {
+                        for (row_idx, row) in self.rows.iter().enumerate() {
                             body.row(18.0, |mut row_ui| {
-                                for cell in row {
+                                for (col_idx, cell) in row.iter().enumerate() {
                                     row_ui.col(|ui| {
-                                        ui.label(cell);
+                                        let is_selected = self.selected_cell == Some((row_idx, col_idx));
+
+                                        let response = if is_selected {
+                                            ui.add(egui::SelectableLabel::new(true, cell))
+                                        } else {
+                                            ui.add(egui::Label::new(cell).sense(egui::Sense::click()))
+                                        };
+
+                                        if response.double_clicked() {
+                                            self.selected_cell = Some((row_idx, col_idx));
+                                            clicked_cell = Some((
+                                                cell.clone(),
+                                                self.columns[col_idx].clone(),
+                                                row_idx,
+                                                col_idx,
+                                            ));
+                                        } else if response.clicked() {
+                                            self.selected_cell = Some((row_idx, col_idx));
+                                        }
                                     });
                                 }
                             });
                         }
                     });
             });
+
+        clicked_cell
+    }
+
+    pub fn update_cell(&mut self, row_idx: usize, col_idx: usize, new_value: String) {
+        if row_idx < self.rows.len() && col_idx < self.rows[row_idx].len() {
+            self.rows[row_idx][col_idx] = new_value;
+        }
     }
 }
 
