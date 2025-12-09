@@ -1,326 +1,245 @@
-# Showel - Database Client
-
-A modern, cross-platform database client built with Rust and [egui](https://github.com/emilk/egui), designed as an alternative to DBeaver with a focus on performance, simplicity, and ease of use.
-
-![Showel Database Client](https://img.shields.io/badge/Status-Working%20Prototype-green)
-![Rust](https://img.shields.io/badge/Rust-1.70+-orange)
-![egui](https://img.shields.io/badge/egui-0.33-blue)
-
-## ✨ Features
-
-### Core Functionality
-- 📝 **SQL Query Editor** - Syntax highlighting, autocomplete, and query execution
-- 🗄️ **Database Connections** - Support for SQLite (with plans for PostgreSQL, MySQL, SQL Server)
-- 📊 **Query Results** - Tabular display with sorting and filtering
-- 🏗️ **Schema Browser** - Browse tables, views, and database structure
-- 📚 **Query History** - Track and replay previously executed queries
-- ⚙️ **Settings** - Customizable themes and preferences
-
-### User Interface
-- 🌙 **Dark/Light Themes** - Switch between appearance modes
-- 📱 **Responsive Design** - Works on desktop and web platforms
-- ⌨️ **Keyboard Shortcuts** - Efficient workflow with hotkeys
-- 🎨 **Modern UI** - Clean, intuitive interface built with egui
-
-### Performance
-- ⚡ **Fast Execution** - Optimized query processing
-- 💾 **Memory Efficient** - Low resource usage
-- 🚀 **Quick Startup** - Fast application launch time
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Rust 1.70 or later
-- Cargo package manager
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/showel.git
-   cd showel
-   ```
-
-2. **Build the application:**
-   ```bash
-   cargo build --release
-   ```
-
-3. **Run the application:**
-   ```bash
-   cargo run
-   ```
-
-### Alternative Installation
-
-For a quick try without building:
-```bash
-cargo run --bin showel
+```
+   _____ __                     __
+  / ___// /_  ____ _      _____/ /
+  \__ \/ __ \/ __ \ | /| / / __  / 
+ ___/ / / / / /_/ / |/ |/ / /_/ /  
+/____/_/ /_/\____/|__/|__/\__,_/   
+                                    
+PostgreSQL Database Manager
 ```
 
-## 📖 Usage Guide
+# Showel - PostgreSQL Database Manager
 
-### Getting Started
+A lightweight, desktop GUI application for managing PostgreSQL databases, built with Rust and egui. Think of it as a simplified, native alternative to DBeaver focused on PostgreSQL.
 
-1. **Launch Showel** - The application will open with a clean interface
-2. **Add Database Connection**:
-   - Go to `Database` → `Add SQLite Connection`
-   - Or use the "➕ Add SQLite Connection" button in the left panel
-3. **Write SQL Queries** - Use the query editor to write and execute SQL
-4. **View Results** - Query results are displayed in the results panel
+## Features
 
-### Basic Workflow
+- 🔌 **Database Connections**: Connect to PostgreSQL databases with a simple connection dialog
+- 🗂️ **Database Explorer**: Browse databases, schemas, and tables in a tree view
+- 📊 **Table Viewer**: View table data with pagination support
+- 🔍 **SQL Query Editor**: Execute custom SQL queries with a built-in editor
+- 📈 **Results Display**: View query results in a clean, tabular format
+- ⚡ **Fast & Lightweight**: Built with Rust for performance and low resource usage
+- 🖥️ **Native UI**: Cross-platform desktop application using egui
 
-1. **Connect to Database**:
-   ```
-   Database → Add SQLite Connection → Select database file
-   ```
+## Prerequisites
 
-2. **Write Query**:
-   ```sql
-   SELECT * FROM users LIMIT 10;
-   ```
+- Rust 1.70 or higher
+- PostgreSQL server (local or remote)
 
-3. **Execute**:
-   - Press `Ctrl+Enter` or click "▶️ Execute Query"
-   - View results in the results panel
+## Installation
 
-4. **Browse Schema**:
-   - Switch to "🏗️ Schema" tab
-   - Explore database structure
-   - Right-click tables for quick actions
+### From Source
 
-### Sample Queries
+```bash
+git clone <your-repo-url>
+cd showel
+cargo build --release
+```
 
-The application includes sample query buttons for quick testing:
+The binary will be available at `target/release/showel`
 
-- **SELECT Queries**: Fetch data from tables
-- **CREATE TABLE**: Create new database structures
-- **INSERT/UPDATE**: Modify data
+## Usage
 
-### Keyboard Shortcuts
+### Starting the Application
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Enter` | Execute current query |
-| `Ctrl+N` | New query |
-| `Ctrl+S` | Save query |
-| `F5` | Refresh current view |
-| `Ctrl+F` | Find in query |
+```bash
+cargo run --release
+```
 
-## 🏗️ Architecture
+Or run the compiled binary directly:
+
+```bash
+./target/release/showel
+```
+
+### Connecting to a Database
+
+1. Launch Showel
+2. Click `Connection > Connect...` in the menu bar
+3. Fill in your PostgreSQL connection details:
+   - **Host**: Database server address (e.g., `localhost`)
+   - **Port**: PostgreSQL port (default: `5432`)
+   - **Database**: Database name (e.g., `postgres`)
+   - **User**: PostgreSQL username
+   - **Password**: User password
+4. Click `Connect`
+
+### Exploring Databases
+
+Once connected:
+
+- The **Database Explorer** (left panel) shows available databases
+- Click the `▶` icon to expand and view schemas
+- Expand schemas to see their tables
+- Click on any table to view its data
+
+### Viewing Table Data
+
+- Click on a table in the Database Explorer
+- Data is displayed with pagination (100 rows per page by default)
+- Use `◀ Previous` and `Next ▶` buttons to navigate pages
+- Total row count is displayed in the status bar
+
+### Executing SQL Queries
+
+1. Use the **SQL Query** editor in the main panel
+2. Type or paste your SQL query
+3. Click `▶ Execute` to run the query
+4. Results appear in the **Results** table below
+5. Use `Clear` to empty the editor
+
+Example queries:
+```sql
+-- List all tables
+SELECT * FROM information_schema.tables LIMIT 10;
+
+-- Custom query
+SELECT * FROM your_table WHERE condition = 'value';
+
+-- Insert data
+INSERT INTO your_table (column1, column2) VALUES ('value1', 'value2');
+
+-- Update records
+UPDATE your_table SET column1 = 'new_value' WHERE id = 1;
+```
+
+### Disconnecting
+
+Click `Connection > Disconnect` to close the current database connection.
+
+## Architecture
 
 ### Technology Stack
 
-- **Frontend**: [egui](https://github.com/emilk/egui) - Immediate mode GUI library
-- **Backend**: Rust - Systems programming language
-- **Database**: SQLite (primary), with extensibility for other databases
-- **Cross-platform**: Desktop (Windows, macOS, Linux) and WebAssembly support
+- **egui**: Immediate mode GUI framework
+- **eframe**: Application framework for egui
+- **tokio**: Async runtime for database operations
+- **tokio-postgres**: PostgreSQL client library
+- **serde**: Serialization/deserialization
 
 ### Project Structure
 
 ```
 showel/
 ├── src/
-│   ├── app/
-│   │   ├── mod.rs          # Main application logic
-│   │   ├── state.rs        # Application state management
-│   │   ├── components/     # UI components
-│   │   ├── dialogs/        # Dialog windows
-│   │   └── utils/          # Utility functions
-│   ├── main.rs             # Application entry point
-│   └── lib.rs              # Library interface
-├── Cargo.toml              # Dependencies and metadata
-└── README.md              # This file
+│   ├── main.rs          # Application entry point
+│   ├── app.rs           # Main application logic
+│   ├── db.rs            # Database connection and operations
+│   └── ui.rs            # UI components (dialogs, tables, tree view)
+├── Cargo.toml           # Dependencies and project configuration
+└── README.md            # This file
 ```
 
 ### Key Components
 
-- **State Management**: Centralized application state with `App` struct
-- **Query Engine**: Mock query execution with extensibility for real database integration
-- **UI Components**: Modular interface components (QueryEditor, ResultsPanel, etc.)
-- **Theme System**: Dynamic theme switching with light/dark modes
+- **DatabaseConnection**: Manages PostgreSQL connections and executes queries
+- **ShowelApp**: Main application state and update logic
+- **ConnectionDialog**: UI for database connection parameters
+- **DatabaseTree**: Tree view for browsing database structure
+- **QueryEditor**: SQL query input interface
+- **ResultsTable**: Display query results in table format
 
-## 🗄️ Database Support
-
-### Currently Supported
-- ✅ **SQLite** - Full read/write support
-- ✅ **File-based databases** - Direct file selection and management
-
-### Planned Support
-- 🔄 **PostgreSQL** - In development
-- 🔄 **MySQL** - Planned
-- 🔄 **SQL Server** - Planned
-- 🔄 **Oracle** - Under consideration
-
-## 🎨 Screenshots
-
-### Main Interface
-```
-┌─────────────────────────────────────────────────────────────┐
-│ File  Database  Query                    Theme: [Light ▼]   │
-├─────────────────────────────────────────────────────────────┤
-│ 🗄️ Database Connections           │ 📝 Query Editor         │
-│                                 │                         │
-│ ➕ Add SQLite Connection        │ SELECT * FROM users     │
-│                                 │ WHERE id > 0;          │
-│ ▶️ SQLite Demo Database 🟢      │                         │
-│   Database: demo.db            │ ▶️ Execute Query        │
-│   Created: 2024-01-15 10:30    │ [Sample Queries]       │
-│                                 │                         │
-│                                 ├─────────────────────────┤
-│                                 │ 📊 Query Results        │
-│                                 │                         │
-│                                 │ ✅ Query executed...    │
-│                                 │ ┌─────────────────────┐ │
-│                                 │ │ id │ name │ email   │ │
-│                                 │ │ 1  │ Alice│ alice@..│ │
-│                                 │ │ 2  │ Bob  │ bob@... │ │
-│                                 │ └─────────────────────┘ │
-│                                 │                         │
-│                                 │ Total rows: 2           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Schema Browser
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 🏗️ Database Schema                                         │
-│                                                             │
-│ ✅ Connected to database                                   │
-│                                                             │
-│ ▼ 📋 Tables                                                │
-│   👤 users (User accounts)                                │
-│   📦 products (Product catalog)                           │
-│   🛒 orders (Order records)                               │
-│                                                             │
-│ ▼ 👁️ Views                                                 │
-│   📈 user_stats (User statistics)                         │
-│   💰 sales_summary (Sales summary)                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 🛠️ Development
-
-### Running in Development Mode
+## Building for Production
 
 ```bash
-# Run with hot reloading (if using cargo-watch)
-cargo watch -x run
-
-# Run with debug information
-cargo run --debug
+cargo build --release --locked
 ```
 
-### Building for Different Platforms
+### Platform-Specific Notes
+
+#### Linux
+```bash
+# Install required dependencies (Ubuntu/Debian)
+sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+                     libxkbcommon-dev libssl-dev libfontconfig1-dev
+```
+
+#### macOS
+No additional dependencies required. Builds work out of the box.
+
+#### Windows
+No additional dependencies required. Builds work out of the box.
+
+## Development
+
+### Running in Debug Mode
 
 ```bash
-# Linux
-cargo build --release --target x86_64-unknown-linux-gnu
-
-# macOS
-cargo build --release --target x86_64-apple-darwin
-
-# Windows
-cargo build --release --target x86_64-pc-windows-msvc
-
-# WebAssembly (for browser deployment)
-wasm-pack build --target web
+cargo run
 ```
 
-### Adding New Features
+### Enabling Logging
 
-1. **Database Support**: Extend `ConnectionConfig` and `DatabaseConnection` structs
-2. **UI Components**: Add new components in the `components/` directory
-3. **Query Features**: Enhance the query execution engine in `state.rs`
-4. **Themes**: Modify the theme system in `apply_theme()`
-
-## 🧪 Testing
+The application uses `tracing` for logging. Set the log level:
 
 ```bash
-# Run all tests
-cargo test
-
-# Run specific test category
-cargo test state::tests
-
-# Run with output
-cargo test -- --nocapture
+RUST_LOG=showel=debug cargo run
 ```
 
-## 📊 Performance
+Log levels: `trace`, `debug`, `info`, `warn`, `error`
 
-- **Startup Time**: < 2 seconds on modern hardware
-- **Memory Usage**: < 50MB for typical usage
-- **Query Response**: Real-time results for SQLite
-- **UI Responsiveness**: 60 FPS interface updates
+### Code Structure
 
-## 🤝 Contributing
+- **Async Operations**: Database operations run asynchronously using Tokio
+- **Blocking UI**: UI updates use `runtime.block_on()` for simplicity
+- **Connection Pooling**: Single connection per session (can be extended)
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+## Features Roadmap
 
-### How to Contribute
+- [ ] Multiple concurrent database connections
+- [ ] Syntax highlighting in SQL editor
+- [ ] Export query results (CSV, JSON)
+- [ ] Table structure viewer (columns, indexes, constraints)
+- [ ] Query history
+- [ ] Save connection profiles
+- [ ] Dark/Light theme toggle
+- [ ] Auto-completion in SQL editor
+- [ ] Visual query builder
+- [ ] Database schema visualization
+- [ ] Backup/Restore functionality
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+## Known Limitations
 
-### Development Setup
+- Single connection per session
+- No query cancellation support
+- Limited error recovery
+- Basic SQL editor (no syntax highlighting yet)
+- Table pagination is sequential only
 
-```bash
-# Install development dependencies
-cargo install cargo-watch
+## Troubleshooting
 
-# Run with auto-reload
-cargo watch -x run
+### Connection Refused
+- Ensure PostgreSQL server is running
+- Check if the server allows connections from your IP
+- Verify `pg_hba.conf` settings
 
-# Check code formatting
-cargo fmt --check
+### Authentication Failed
+- Verify username and password
+- Check user permissions in PostgreSQL
 
-# Lint code
-cargo clippy
-```
+### SSL Errors
+Currently, Showel uses `NoTls` connection mode. For SSL support, this will need to be extended.
 
-## 📄 License
+## Contributing
+
+Contributions are welcome! Areas for improvement:
+- UI/UX enhancements
+- Performance optimizations
+- Additional PostgreSQL features
+- Better error handling
+- Tests
+
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Credits
 
-- [egui](https://github.com/emilk/egui) - Amazing immediate mode GUI framework
-- [Rust](https://www.rust-lang.org/) - Systems programming language
-- [rusqlite](https://github.com/rusqlite/rusqlite) - SQLite bindings for Rust
-- The Rust community for excellent tools and libraries
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/your-username/showel/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-username/showel/discussions)
-- **Email**: support@showel.dev
-
-## 🗺️ Roadmap
-
-### Version 0.2.0
-- [ ] Real SQLite integration
-- [ ] Query result export (CSV, JSON)
-- [ ] Basic autocompletion
-- [ ] Tab management for multiple queries
-
-### Version 0.3.0
-- [ ] PostgreSQL support
-- [ ] Connection management dialog
-- [ ] Query templates
-- [ ] Performance monitoring
-
-### Version 1.0.0
-- [ ] MySQL support
-- [ ] SQL Server support
-- [ ] Advanced data editing
-- [ ] Full schema designer
+Built with:
+- [egui](https://github.com/emilk/egui) - Immediate mode GUI library
+- [tokio-postgres](https://github.com/sfackler/rust-postgres) - PostgreSQL client
 
 ---
 
-**Showel** - Making database management simple and efficient! 🚀
+**Note**: This is a learning project and should not be used in production environments without proper security review and testing.
