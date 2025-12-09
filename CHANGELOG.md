@@ -17,6 +17,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection profiles
 - Table structure viewer
 
+## [0.2.1] - 2024-12-09
+
+### Added
+- Type-aware editing - system now detects column data types
+- Boolean editor with true/false toggle buttons (✓ true / ✗ false)
+- Numeric type validation - warns if invalid number entered
+- NULL value support - "Set NULL" button for nullable fields
+- Type display in edit dialog shows column data type
+
+### Improved
+- Edit dialog now shows column type (e.g., "Type: boolean")
+- Boolean fields show as clickable buttons instead of text input
+- Numeric fields show validation hints
+- Better NULL handling in UPDATE queries
+- Visual indicators for boolean values (✓/✗)
+
+### Technical
+- Added `get_column_types()` method to retrieve column data types
+- Added `GetColumnTypes` command and `ColumnTypes` response
+- Type-aware UI rendering in EditDialog
+- Proper NULL handling in parameterized queries
+- Validation for numeric input
+
 ## [0.2.0] - 2024-12-09
 
 ### Added

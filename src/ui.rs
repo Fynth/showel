@@ -97,6 +97,7 @@ pub struct EditDialog {
     pub value: String,
     pub original_value: String,
     pub column_name: String,
+    pub column_type: String,
     pub row_index: usize,
     pub col_index: usize,
 }
@@ -108,6 +109,7 @@ impl Default for EditDialog {
             value: String::new(),
             original_value: String::new(),
             column_name: String::new(),
+            column_type: String::new(),
             row_index: 0,
             col_index: 0,
         }
@@ -115,10 +117,11 @@ impl Default for EditDialog {
 }
 
 impl EditDialog {
-    pub fn open(&mut self, value: String, column_name: String, row_index: usize, col_index: usize) {
+    pub fn open(&mut self, value: String, column_name: String, row_index: usize, col_index: usize, column_type: String) {
         self.value = value.clone();
         self.original_value = value;
         self.column_name = column_name;
+        self.column_type = column_type;
         self.row_index = row_index;
         self.col_index = col_index;
         self.open = true;
@@ -141,6 +144,7 @@ impl EditDialog {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.label(format!("Column: {}", self.column_name));
+                    ui.label(format!("Type: {}", self.column_type));
 
                     ui.add_space(5.0);
                     ui.horizontal(|ui| {
@@ -150,15 +154,59 @@ impl EditDialog {
 
                     ui.separator();
 
-                    ui.label("New value:");
-                    let text_edit = ui.add(
-                        TextEdit::singleline(&mut self.value)
-                            .desired_width(300.0)
-                            .hint_text("Enter new value...")
+                    // Different UI based on data type
+                    let type_lower = self.column_type.to_lowercase();
+                    let is_bool = type_lower == "boolean" || type_lower == "bool";
+                    let is_numeric = matches!(
+                        type_lower.as_str(),
+                        "int2" | "int4" | "int8" | "integer" | "smallint" | "bigint"
+                        | "numeric" | "decimal" | "real" | "double precision"
+                        | "float4" | "float8"
                     );
 
-                    if text_edit.changed() {
-                        // Visual feedback that value changed
+                    if is_bool {
+                        ui.label("New value:");
+                        ui.horizontal(|ui| {
+                            if ui.selectable_label(self.value == "true", "✓ true").clicked() {
+                                self.value = "true".to_string();
+                            }
+                            if ui.selectable_label(self.value == "false", "✗ false").clicked() {
+                                self.value = "false".to_string();
+                            }
+                            if ui.selectable_label(self.value.to_lowercase() == "null", "NULL").clicked() {
+                                self.value = "NULL".to_string();
+                            }
+                        });
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.label("New value:");
+                            if ui.small_button("Set NULL").clicked() {
+                                self.value = "NULL".to_string();
+                            }
+                        });
+
+                        let hint = if is_numeric {
+                            "Enter number..."
+                        } else {
+                            "Enter new value..."
+                        };
+
+                        let text_edit = ui.add(
+                            TextEdit::singleline(&mut self.value)
+                                .desired_width(300.0)
+                                .hint_text(hint)
+                        );
+
+                        if text_edit.changed() {
+                            // Visual feedback that value changed
+                        }
+
+                        // Validation hint for numeric types
+                        if is_numeric && !self.value.is_empty() && self.value.to_uppercase() != "NULL" {
+                            if self.value.parse::<f64>().is_err() {
+                                ui.colored_label(egui::Color32::RED, "⚠ Invalid number");
+                            }
+                        }
                     }
 
                     ui.add_space(5.0);

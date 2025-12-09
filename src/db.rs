@@ -149,6 +149,26 @@ impl DatabaseConnection {
             .collect())
     }
 
+    pub async fn get_column_types(&self, schema: &str, table: &str) -> Result<Vec<(String, String)>> {
+        let client = self.client.lock().await;
+        let client = client.as_ref().context("Not connected to database")?;
+
+        let rows = client
+            .query(
+                "SELECT column_name, data_type
+                 FROM information_schema.columns
+                 WHERE table_schema = $1 AND table_name = $2
+                 ORDER BY ordinal_position",
+                &[&schema, &table],
+            )
+            .await?;
+
+        Ok(rows
+            .iter()
+            .map(|row| (row.get::<_, String>(0), row.get::<_, String>(1)))
+            .collect())
+    }
+
     pub async fn execute_query(&self, query: &str) -> Result<QueryResult> {
         let client = self.client.lock().await;
         let client = client.as_ref().context("Not connected to database")?;
@@ -252,12 +272,24 @@ impl DatabaseConnection {
             .unwrap_or(0);
         let pk_value = row_data.get(pk_index).context("No primary key value")?;
 
-        let query = format!(
-            "UPDATE {}.{} SET {} = $1 WHERE {} = $2",
-            schema, table, column, pk_column
-        );
+        // Handle NULL values
+        let query = if new_value.to_uppercase() == "NULL" {
+            format!(
+                "UPDATE {}.{} SET {} = NULL WHERE {} = $2",
+                schema, table, column, pk_column
+            )
+        } else {
+            format!(
+                "UPDATE {}.{} SET {} = $1 WHERE {} = $2",
+                schema, table, column, pk_column
+            )
+        };
 
-        client.execute(&query, &[&new_value, &pk_value]).await?;
+        if new_value.to_uppercase() == "NULL" {
+            client.execute(&query, &[&pk_value]).await?;
+        } else {
+            client.execute(&query, &[&new_value, &pk_value]).await?;
+        }
         Ok(())
     }
 }
@@ -287,12 +319,30 @@ impl Default for QueryResult {
     }
 }
 
+impl QueryResult {
+    pub fn is_boolean_type(data_type: &str) -> bool {
+        matches!(data_type.to_lowercase().as_str(), "bool" | "boolean")
+    }
+
+    pub fn is_numeric_type(data_type: &str) -> bool {
+        matches!(
+            data_type.to_lowercase().as_str(),
+            "int2" | "int4" | "int8" | "integer" | "smallint" | "bigint"
+            | "numeric" | "decimal" | "real" | "double precision"
+            | "float4" | "float8"
+        )
+    }
+}
+
 fn format_value(row: &Row, index: usize) -> String {
     let column = &row.columns()[index];
     let type_name = column.type_().name();
 
     match type_name {
         "int2" | "int4" | "int8" => {
+            if let Ok(val) = row.try_get::<_, i16>(index) {
+                return val.to_string();
+            }
             if let Ok(val) = row.try_get::<_, i32>(index) {
                 return val.to_string();
             }
@@ -305,7 +355,7 @@ fn format_value(row: &Row, index: usize) -> String {
                 return val.to_string();
             }
         }
-        "bool" => {
+        "bool" | "boolean" => {
             if let Ok(val) = row.try_get::<_, bool>(index) {
                 return val.to_string();
             }

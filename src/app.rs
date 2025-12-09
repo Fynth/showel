@@ -11,6 +11,7 @@ enum DbCommand {
     GetDatabases,
     GetSchemas,
     GetTables(String),
+    GetColumnTypes(String, String), // schema, table
     ExecuteQuery(String),
     LoadTableData(String, String, i64, i64),
     GetTableRowCount(String, String),
@@ -25,6 +26,7 @@ enum DbResponse {
     Databases(Vec<String>),
     Schemas(Vec<String>),
     Tables(Vec<String>),
+    ColumnTypes(Vec<(String, String)>), // (column_name, data_type)
     QueryResult(QueryResult),
     TableData(QueryResult, i64),
     Error(String),
@@ -45,6 +47,7 @@ pub struct ShowelApp {
     query_editor: QueryEditor,
     results_table: ResultsTable,
     edit_dialog: crate::ui::EditDialog,
+    column_types: Vec<(String, String)>, // (column_name, data_type)
 
     // Channels
     command_tx: Sender<DbCommand>,
@@ -99,6 +102,12 @@ impl ShowelApp {
                                 DbCommand::GetTables(schema) => {
                                     match db.get_tables(&schema).await {
                                         Ok(tables) => DbResponse::Tables(tables),
+                                        Err(e) => DbResponse::Error(e.to_string()),
+                                    }
+                                }
+                                DbCommand::GetColumnTypes(schema, table) => {
+                                    match db.get_column_types(&schema, &table).await {
+                                        Ok(types) => DbResponse::ColumnTypes(types),
                                         Err(e) => DbResponse::Error(e.to_string()),
                                     }
                                 }
@@ -167,6 +176,7 @@ impl ShowelApp {
             query_editor: QueryEditor::default(),
             results_table: ResultsTable::default(),
             edit_dialog: crate::ui::EditDialog::default(),
+            column_types: Vec::new(),
 
             command_tx,
             response_rx,
@@ -225,6 +235,11 @@ impl ShowelApp {
         self.current_schema = Some(schema.clone());
         self.current_table = Some(table.clone());
 
+        // Load column types first
+        let _ = self
+            .command_tx
+            .send(DbCommand::GetColumnTypes(schema.clone(), table.clone()));
+
         let _ = self
             .command_tx
             .send(DbCommand::LoadTableData(schema, table, page_size, offset));
@@ -263,6 +278,9 @@ impl ShowelApp {
                 }
                 DbResponse::Tables(tables) => {
                     self.database_tree.tables = tables;
+                }
+                DbResponse::ColumnTypes(types) => {
+                    self.column_types = types;
                 }
                 DbResponse::QueryResult(result) => {
                     if result.affected_rows > 0 {
@@ -475,7 +493,13 @@ impl eframe::App for ShowelApp {
 
                 // Results table - scrollable area with remaining space
                 if let Some((value, column_name, row_idx, col_idx)) = self.results_table.show(ui) {
-                    self.edit_dialog.open(value, column_name, row_idx, col_idx);
+                    // Get column type
+                    let column_type = self.column_types.iter()
+                        .find(|(col, _)| col == &column_name)
+                        .map(|(_, typ)| typ.clone())
+                        .unwrap_or_else(|| "text".to_string());
+
+                    self.edit_dialog.open(value, column_name, row_idx, col_idx, column_type);
                 }
             });
         });
