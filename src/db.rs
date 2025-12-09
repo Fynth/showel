@@ -29,6 +29,7 @@ impl Default for ConnectionConfig {
 pub struct DatabaseConnection {
     client: Arc<Mutex<Option<Client>>>,
     config: Arc<Mutex<ConnectionConfig>>,
+    pub cancelled: Arc<Mutex<bool>>,
 }
 
 impl DatabaseConnection {
@@ -36,6 +37,7 @@ impl DatabaseConnection {
         Self {
             client: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(ConnectionConfig::default())),
+            cancelled: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -76,6 +78,10 @@ impl DatabaseConnection {
 
     pub async fn get_config(&self) -> ConnectionConfig {
         self.config.lock().await.clone()
+    }
+
+    pub async fn cancel(&self) {
+        *self.cancelled.lock().await = true;
     }
 
     pub async fn get_databases(&self) -> Result<Vec<String>> {
@@ -225,7 +231,7 @@ impl DatabaseConnection {
         sort_column: Option<&str>,
         sort_ascending: bool,
     ) -> Result<QueryResult> {
-        let mut query = format!("SELECT * FROM {}.{}", schema, table);
+        let mut query = format!("SELECT * FROM {}.{}", escape_identifier(schema), escape_identifier(table));
 
         if let Some(col) = sort_column {
             let direction = if sort_ascending { "ASC" } else { "DESC" };
@@ -241,7 +247,7 @@ impl DatabaseConnection {
         let client = self.client.lock().await;
         let client = client.as_ref().context("Not connected to database")?;
 
-        let query = format!("SELECT COUNT(*) FROM {}.{}", schema, table);
+        let query = format!("SELECT COUNT(*) FROM {}.{}", escape_identifier(schema), escape_identifier(table));
         let row = client.query_one(&query, &[]).await?;
         Ok(row.get(0))
     }
@@ -283,12 +289,18 @@ impl DatabaseConnection {
         let query = if new_value.to_uppercase() == "NULL" {
             format!(
                 "UPDATE {}.{} SET {} = NULL WHERE {} = $2",
-                schema, table, column, pk_column
+                escape_identifier(schema),
+                escape_identifier(table),
+                escape_identifier(column),
+                escape_identifier(&pk_column)
             )
         } else {
             format!(
                 "UPDATE {}.{} SET {} = $1 WHERE {} = $2",
-                schema, table, column, pk_column
+                escape_identifier(schema),
+                escape_identifier(table),
+                escape_identifier(column),
+                escape_identifier(&pk_column)
             )
         };
 
@@ -382,4 +394,8 @@ fn format_value(row: &Row, index: usize) -> String {
 
     // If all else fails
     "NULL".to_string()
+}
+
+fn escape_identifier(identifier: &str) -> String {
+    format!("\"{}\"", identifier.replace("\"", "\"\""))
 }

@@ -256,8 +256,9 @@ impl Default for QueryEditor {
 }
 
 impl QueryEditor {
-    pub fn show(&mut self, ui: &mut Ui) -> bool {
+    pub fn show(&mut self, ui: &mut Ui, is_query_running: bool) -> (bool, bool) {
         let mut execute = false;
+        let mut cancel = false;
 
         ui.horizontal(|ui| {
             let icon = if self.expanded { "▼" } else { "▶" };
@@ -266,8 +267,14 @@ impl QueryEditor {
             }
             ui.heading("SQL Query");
 
-            if ui.button("▶ Execute").clicked() {
-                execute = true;
+            if is_query_running {
+                if ui.button("⏹ Cancel").clicked() {
+                    cancel = true;
+                }
+            } else {
+                if ui.button("▶ Execute").clicked() {
+                    execute = true;
+                }
             }
             if ui.button("Clear").clicked() {
                 self.sql.clear();
@@ -278,26 +285,35 @@ impl QueryEditor {
         if self.expanded {
             ui.separator();
 
-            let editor_height = if self.sql.lines().count() > 5 {
-                150.0
-            } else {
-                100.0
-            };
+            let lines: Vec<&str> = self.sql.lines().collect();
+            let num_lines = lines.len().max(1);
+            let editor_height = if num_lines > 5 { 150.0 } else { 100.0 };
 
             ScrollArea::vertical()
                 .max_height(editor_height)
                 .id_source("sql_editor_scroll")
                 .show(ui, |ui| {
-                    ui.add(
-                        TextEdit::multiline(&mut self.sql)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(5),
-                    );
+                    ui.horizontal(|ui| {
+                        // Line numbers column
+                        ui.vertical(|ui| {
+                            for i in 1..=num_lines {
+                                ui.monospace(format!("{:3} ", i));
+                            }
+                        });
+                        ui.separator();
+
+                        // Text editor
+                        ui.add(
+                            TextEdit::multiline(&mut self.sql)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(5),
+                        );
+                    });
                 });
         }
 
-        execute
+        (execute, cancel)
     }
 }
 
@@ -307,6 +323,7 @@ pub struct ResultsTable {
     pub selected_cell: Option<(usize, usize)>, // (row, col)
     pub sort_column: Option<usize>,
     pub sort_ascending: bool,
+    pub max_display_rows: usize,
 }
 
 impl Default for ResultsTable {
@@ -317,6 +334,7 @@ impl Default for ResultsTable {
             selected_cell: None,
             sort_column: None,
             sort_ascending: true,
+            max_display_rows: 1000,
         }
     }
 }
@@ -330,8 +348,15 @@ impl ResultsTable {
             return None;
         }
 
+        let display_rows = self.rows.len().min(self.max_display_rows);
+        let truncated = self.rows.len() > self.max_display_rows;
+
         ui.horizontal(|ui| {
-            ui.label(format!("Results: {} rows", self.rows.len()));
+            if truncated {
+                ui.label(format!("Results: {} rows (showing first {})", self.rows.len(), display_rows));
+            } else {
+                ui.label(format!("Results: {} rows", self.rows.len()));
+            }
             ui.separator();
             ui.label("Double-click a cell to edit");
             ui.separator();
@@ -378,7 +403,7 @@ impl ResultsTable {
                         }
                     })
                     .body(|mut body| {
-                        for (row_idx, row) in self.rows.iter().enumerate() {
+                        for (row_idx, row) in self.rows.iter().enumerate().take(display_rows) {
                             body.row(18.0, |mut row_ui| {
                                 for (col_idx, cell) in row.iter().enumerate() {
                                     row_ui.col(|ui| {

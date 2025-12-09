@@ -13,6 +13,7 @@ enum DbCommand {
     GetTables(String),
     GetColumnTypes(String, String), // schema, table
     ExecuteQuery(String),
+    CancelQuery,
     LoadTableData(String, String, i64, i64, Option<String>, bool), // schema, table, limit, offset, sort_column, sort_ascending
     GetTableRowCount(String, String),
     CheckConnection,
@@ -47,7 +48,7 @@ pub struct ShowelApp {
     query_editor: QueryEditor,
     results_table: ResultsTable,
     edit_dialog: crate::ui::EditDialog,
-    column_types: Vec<(String, String)>, // (column_name, data_type)
+    column_types: Vec<(String, String)>,
 
     // Channels
     command_tx: Sender<DbCommand>,
@@ -66,10 +67,43 @@ pub struct ShowelApp {
 
     // Timer for periodic checks
     last_connection_check: std::time::Instant,
+
+    // UI update flags
+    need_repaint: bool,
+
+    // Query execution
+    is_query_running: bool,
 }
 
 impl ShowelApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // Load custom fonts to support Cyrillic characters
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "DejaVuSans".to_owned(),
+            egui::FontData::from_static(include_bytes!("../assets/fonts/DejaVuSans.ttf")),
+        );
+        fonts.font_data.insert(
+            "DejaVuSansMono".to_owned(),
+            egui::FontData::from_static(include_bytes!("../assets/fonts/DejaVuSansMono.ttf")),
+        );
+
+        // Put my font first (highest priority) for proportional text:
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "DejaVuSans".to_owned());
+
+        // Put my font first (highest priority) for monospace text:
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "DejaVuSansMono".to_owned());
+
+        cc.egui_ctx.set_fonts(fonts);
+
         let (command_tx, command_rx) = channel::<DbCommand>();
         let (response_tx, response_rx) = channel::<DbResponse>();
 
@@ -112,10 +146,21 @@ impl ShowelApp {
                                     }
                                 }
                                 DbCommand::ExecuteQuery(query) => {
+                                    *db.cancelled.lock().await = false;
                                     match db.execute_query(&query).await {
-                                        Ok(result) => DbResponse::QueryResult(result),
+                                        Ok(result) => {
+                                            if *db.cancelled.lock().await {
+                                                DbResponse::Error("Query cancelled".to_string())
+                                            } else {
+                                                DbResponse::QueryResult(result)
+                                            }
+                                        }
                                         Err(e) => DbResponse::Error(e.to_string()),
                                     }
+                                }
+                                DbCommand::CancelQuery => {
+                                    db.cancel().await;
+                                    DbResponse::Error("Query cancelled".to_string())
                                 }
                                 DbCommand::LoadTableData(schema, table, limit, offset, sort_column, sort_ascending) => {
                                     let sort_col_ref = sort_column.as_deref();
@@ -191,12 +236,15 @@ impl ShowelApp {
             table_page_size: 100,
             table_total_rows: 0,
             last_connection_check: std::time::Instant::now(),
+            need_repaint: false,
+            is_query_running: false,
         }
     }
 
     fn connect(&mut self, config: ConnectionConfig) {
         self.status_message = "Connecting...".to_string();
         self.error_message = None;
+        self.need_repaint = true;
         let _ = self.command_tx.send(DbCommand::Connect(config));
     }
 
@@ -209,6 +257,7 @@ impl ShowelApp {
         self.current_schema = None;
         self.current_table = None;
         self.current_config = None;
+        self.need_repaint = true;
     }
 
     fn load_databases(&mut self) {
@@ -226,6 +275,7 @@ impl ShowelApp {
     fn execute_query(&mut self, query: String) {
         self.status_message = "Executing query...".to_string();
         self.error_message = None;
+        self.is_query_running = true;
         let _ = self.command_tx.send(DbCommand::ExecuteQuery(query));
     }
 
@@ -259,6 +309,13 @@ impl ShowelApp {
         let _ = self.command_tx.send(DbCommand::UpdateCell(schema, table, column, value, row_data, columns));
     }
 
+    fn cancel_query(&mut self) {
+        if self.is_query_running {
+            self.status_message = "Cancelling query...".to_string();
+            let _ = self.command_tx.send(DbCommand::CancelQuery);
+        }
+    }
+
     fn process_responses(&mut self) {
         while let Ok(response) = self.response_rx.try_recv() {
             match response {
@@ -289,6 +346,7 @@ impl ShowelApp {
                     self.column_types = types;
                 }
                 DbResponse::QueryResult(result) => {
+                    self.is_query_running = false;
                     if result.affected_rows > 0 {
                         self.status_message =
                             format!("Query executed. {} rows affected", result.affected_rows);
@@ -312,6 +370,7 @@ impl ShowelApp {
                     }
                 }
                 DbResponse::Error(err) => {
+                    self.is_query_running = false;
                     self.error_message = Some(err);
                     self.status_message = "Operation failed".to_string();
                 }
@@ -327,6 +386,7 @@ impl ShowelApp {
                         } else {
                             self.connection_status = "Not connected".to_string();
                         }
+                        self.need_repaint = true;
                     }
                 }
                 DbResponse::CellUpdated => {
@@ -345,6 +405,12 @@ impl eframe::App for ShowelApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Process any pending database responses
         self.process_responses();
+
+        // Force repaint if needed for immediate UI updates
+        if self.need_repaint {
+            ctx.request_repaint();
+            self.need_repaint = false;
+        }
 
         // Periodically check connection status
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -401,7 +467,10 @@ impl eframe::App for ShowelApp {
                 ui.label(&self.status_message);
                 if let Some(ref error) = self.error_message {
                     ui.separator();
-                    ui.colored_label(egui::Color32::RED, format!("❌ {}", error));
+                    // Use ScrollArea for long error messages to prevent truncation
+                    egui::ScrollArea::horizontal().show(ui, |ui| {
+                        ui.colored_label(egui::Color32::RED, format!("❌ {}", error));
+                    });
                     if ui.button("Clear").clicked() {
                         self.error_message = None;
                     }
@@ -443,9 +512,13 @@ impl eframe::App for ShowelApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical(|ui| {
                 // Query editor - fixed at top
-                if self.query_editor.show(ui) {
+                let (execute, cancel) = self.query_editor.show(ui, self.is_query_running);
+                if execute {
                     let query = self.query_editor.sql.clone();
                     self.execute_query(query);
+                }
+                if cancel {
+                    self.cancel_query();
                 }
 
                 ui.separator();
