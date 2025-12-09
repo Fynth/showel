@@ -305,6 +305,8 @@ pub struct ResultsTable {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
     pub selected_cell: Option<(usize, usize)>, // (row, col)
+    pub sort_column: Option<usize>,
+    pub sort_ascending: bool,
 }
 
 impl Default for ResultsTable {
@@ -313,6 +315,8 @@ impl Default for ResultsTable {
             columns: Vec::new(),
             rows: Vec::new(),
             selected_cell: None,
+            sort_column: None,
+            sort_ascending: true,
         }
     }
 }
@@ -320,6 +324,7 @@ impl Default for ResultsTable {
 impl ResultsTable {
     pub fn show(&mut self, ui: &mut Ui) -> Option<(String, String, usize, usize)> {
         let mut clicked_cell = None;
+        let mut sort_by_column: Option<usize> = None;
         if self.columns.is_empty() {
             ui.label("No results to display. Execute a query to see results.");
             return None;
@@ -328,7 +333,9 @@ impl ResultsTable {
         ui.horizontal(|ui| {
             ui.label(format!("Results: {} rows", self.rows.len()));
             ui.separator();
-            ui.label("💡 Double-click a cell to edit");
+            ui.label("Double-click a cell to edit");
+            ui.separator();
+            ui.label("Click column header to sort");
         });
         ui.separator();
 
@@ -349,9 +356,24 @@ impl ResultsTable {
                         self.columns.len(),
                     )
                     .header(20.0, |mut header| {
-                        for column in &self.columns {
+                        for (col_idx, column) in self.columns.iter().enumerate() {
                             header.col(|ui| {
-                                ui.strong(column);
+                                let (text, is_sorted) = if self.sort_column == Some(col_idx) {
+                                    let arrow = if self.sort_ascending { " ▲" } else { " ▼" };
+                                    (format!("{}{}", column, arrow), true)
+                                } else {
+                                    (column.clone(), false)
+                                };
+
+                                let button = if is_sorted {
+                                    ui.button(egui::RichText::new(text).strong())
+                                } else {
+                                    ui.button(text)
+                                };
+
+                                if button.clicked() {
+                                    sort_by_column = Some(col_idx);
+                                }
                             });
                         }
                     })
@@ -386,6 +408,16 @@ impl ResultsTable {
                     });
             });
 
+        // Handle column sort
+        if let Some(col_idx) = sort_by_column {
+            if self.sort_column == Some(col_idx) {
+                self.sort_ascending = !self.sort_ascending;
+            } else {
+                self.sort_column = Some(col_idx);
+                self.sort_ascending = true;
+            }
+        }
+
         clicked_cell
     }
 
@@ -393,6 +425,12 @@ impl ResultsTable {
         if row_idx < self.rows.len() && col_idx < self.rows[row_idx].len() {
             self.rows[row_idx][col_idx] = new_value;
         }
+    }
+
+    pub fn get_sort_info(&self) -> Option<(String, bool)> {
+        self.sort_column.map(|idx| {
+            (self.columns[idx].clone(), self.sort_ascending)
+        })
     }
 }
 

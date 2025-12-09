@@ -13,7 +13,7 @@ enum DbCommand {
     GetTables(String),
     GetColumnTypes(String, String), // schema, table
     ExecuteQuery(String),
-    LoadTableData(String, String, i64, i64),
+    LoadTableData(String, String, i64, i64, Option<String>, bool), // schema, table, limit, offset, sort_column, sort_ascending
     GetTableRowCount(String, String),
     CheckConnection,
     UpdateCell(String, String, String, String, Vec<String>, Vec<String>), // schema, table, column, value, row_data, columns
@@ -117,8 +117,9 @@ impl ShowelApp {
                                         Err(e) => DbResponse::Error(e.to_string()),
                                     }
                                 }
-                                DbCommand::LoadTableData(schema, table, limit, offset) => {
-                                    match db.get_table_data(&schema, &table, limit, offset).await {
+                                DbCommand::LoadTableData(schema, table, limit, offset, sort_column, sort_ascending) => {
+                                    let sort_col_ref = sort_column.as_deref();
+                                    match db.get_table_data(&schema, &table, limit, offset, sort_col_ref, sort_ascending).await {
                                         Ok(result) => {
                                             // Also get row count
                                             match db.get_table_row_count(&schema, &table).await {
@@ -240,9 +241,14 @@ impl ShowelApp {
             .command_tx
             .send(DbCommand::GetColumnTypes(schema.clone(), table.clone()));
 
+        // Get sort info
+        let (sort_column, sort_ascending) = self.results_table.get_sort_info()
+            .map(|(col, asc)| (Some(col), asc))
+            .unwrap_or((None, true));
+
         let _ = self
             .command_tx
-            .send(DbCommand::LoadTableData(schema, table, page_size, offset));
+            .send(DbCommand::LoadTableData(schema, table, page_size, offset, sort_column, sort_ascending));
     }
 
     fn check_connection(&mut self) {
@@ -492,6 +498,8 @@ impl eframe::App for ShowelApp {
                 ui.separator();
 
                 // Results table - scrollable area with remaining space
+                let prev_sort = self.results_table.get_sort_info();
+
                 if let Some((value, column_name, row_idx, col_idx)) = self.results_table.show(ui) {
                     // Get column type
                     let column_type = self.column_types.iter()
@@ -500,6 +508,15 @@ impl eframe::App for ShowelApp {
                         .unwrap_or_else(|| "text".to_string());
 
                     self.edit_dialog.open(value, column_name, row_idx, col_idx, column_type);
+                }
+
+                // Check if sort changed
+                let new_sort = self.results_table.get_sort_info();
+                if prev_sort != new_sort {
+                    // Reload table with new sort
+                    if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                        self.load_table_data(schema.clone(), table.clone());
+                    }
                 }
             });
         });

@@ -222,11 +222,18 @@ impl DatabaseConnection {
         table: &str,
         limit: i64,
         offset: i64,
+        sort_column: Option<&str>,
+        sort_ascending: bool,
     ) -> Result<QueryResult> {
-        let query = format!(
-            "SELECT * FROM {}.{} LIMIT {} OFFSET {}",
-            schema, table, limit, offset
-        );
+        let mut query = format!("SELECT * FROM {}.{}", schema, table);
+
+        if let Some(col) = sort_column {
+            let direction = if sort_ascending { "ASC" } else { "DESC" };
+            query.push_str(&format!(" ORDER BY {} {}", col, direction));
+        }
+
+        query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+
         self.execute_query(&query).await
     }
 

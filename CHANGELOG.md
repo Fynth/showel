@@ -17,6 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection profiles
 - Table structure viewer
 
+## [0.3.0] - 2024-12-09
+
+### Added
+- 🎉 **Column Sorting** - Click column headers to sort data
+- Sort indicators (▲ ascending / ▼ descending)
+- Toggle sort direction by clicking same column again
+- Visual feedback with bold headers for sorted columns
+- Sorting hint "🔼 Click column header to sort"
+- Persistent sort when paginating through data
+
+### Improved
+- Clickable column headers in results table
+- Visual distinction for sorted columns
+- Automatic reload when sort changes
+- ORDER BY clause added to SQL queries
+- Works seamlessly with pagination
+
+### Technical
+- Added `sort_column` and `sort_ascending` to ResultsTable
+- Modified `get_table_data()` to accept sort parameters
+- Updated `LoadTableData` command with sorting info
+- Dynamic ORDER BY clause generation
+- Sort state preserved across page navigation
+
 ## [0.2.1] - 2024-12-09
 
 ### Added
