@@ -1,4 +1,163 @@
-use egui::{Context, ScrollArea, TextEdit, Ui};
+use egui::{Context, ScrollArea, TextEdit, Ui, Color32};
+use serde_json;
+
+fn highlight_sql_line(line: &str, dark_theme: bool) -> Vec<(String, Color32)> {
+    let mut result = Vec::new();
+
+    // Work with char indices instead of byte indices to handle Unicode properly
+    let chars: Vec<char> = line.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        // Check for SQL keywords
+        let mut found_keyword = false;
+        let keywords = [
+            "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER",
+            "ON", "GROUP", "BY", "HAVING", "ORDER", "LIMIT", "OFFSET", "DISTINCT",
+            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP",
+            "ALTER", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA", "COLUMN",
+            "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "UNIQUE",
+            "NOT", "NULL", "DEFAULT", "AUTO_INCREMENT", "AND", "OR", "IN", "EXISTS",
+            "BETWEEN", "LIKE", "ILIKE", "AS", "COUNT", "SUM", "AVG", "MIN", "MAX",
+            "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL", "WITH", "RECURSIVE",
+            "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION"
+        ];
+
+        for &keyword in &keywords {
+            let keyword_chars: Vec<char> = keyword.chars().collect();
+            if i + keyword_chars.len() <= chars.len() &&
+               chars[i..i + keyword_chars.len()] == keyword_chars &&
+               (i + keyword_chars.len() == chars.len() ||
+                !chars.get(i + keyword_chars.len()).unwrap().is_alphanumeric() &&
+                *chars.get(i + keyword_chars.len()).unwrap() != '_') {
+                let color = if dark_theme {
+                    Color32::from_rgb(86, 156, 214) // Blue for keywords (dark theme)
+                } else {
+                    Color32::from_rgb(0, 0, 255) // Dark blue for keywords (light theme)
+                };
+                result.push((keyword.to_string(), color));
+                i += keyword_chars.len();
+                found_keyword = true;
+                break;
+            }
+        }
+
+        if found_keyword {
+            continue;
+        }
+
+        // Check for strings
+        if chars[i] == '\'' {
+            let mut end = i + 1;
+            while end < chars.len() && chars[end] != '\'' {
+                end += 1;
+            }
+            if end < chars.len() {
+                end += 1; // include closing quote
+            }
+            let color = if dark_theme {
+                Color32::from_rgb(206, 145, 120) // Orange for strings (dark theme)
+            } else {
+                Color32::from_rgb(128, 0, 0) // Dark red for strings (light theme)
+            };
+            result.push((chars[i..end].iter().collect::<String>(), color));
+            i = end;
+            continue;
+        }
+
+        if chars[i] == '"' {
+            let mut end = i + 1;
+            while end < chars.len() && chars[end] != '"' {
+                end += 1;
+            }
+            if end < chars.len() {
+                end += 1; // include closing quote
+            }
+            let color = if dark_theme {
+                Color32::from_rgb(206, 145, 120) // Orange for strings (dark theme)
+            } else {
+                Color32::from_rgb(128, 0, 0) // Dark red for strings (light theme)
+            };
+            result.push((chars[i..end].iter().collect::<String>(), color));
+            i = end;
+            continue;
+        }
+
+        // Check for comments
+        if chars[i] == '-' && i + 1 < chars.len() && chars[i + 1] == '-' {
+            let mut end = i + 2;
+            while end < chars.len() && chars[end] != '\n' {
+                end += 1;
+            }
+            let color = if dark_theme {
+                Color32::from_rgb(106, 153, 85) // Green for comments (dark theme)
+            } else {
+                Color32::from_rgb(0, 128, 0) // Dark green for comments (light theme)
+            };
+            result.push((chars[i..end].iter().collect::<String>(), color));
+            i = end;
+            continue;
+        }
+
+        if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            let mut end = i + 2;
+            while end + 1 < chars.len() && !(chars[end] == '*' && chars[end + 1] == '/') {
+                end += 1;
+            }
+            if end + 1 < chars.len() {
+                end += 2; // include */
+            }
+            let color = if dark_theme {
+                Color32::from_rgb(106, 153, 85) // Green for comments (dark theme)
+            } else {
+                Color32::from_rgb(0, 128, 0) // Dark green for comments (light theme)
+            };
+            result.push((chars[i..end].iter().collect::<String>(), color));
+            i = end;
+            continue;
+        }
+
+        // Check for numbers
+        if chars[i].is_ascii_digit() {
+            let mut end = i;
+            while end < chars.len() && (chars[end].is_ascii_digit() || chars[end] == '.') {
+                end += 1;
+            }
+            let color = if dark_theme {
+                Color32::from_rgb(181, 206, 168) // Light green for numbers (dark theme)
+            } else {
+                Color32::from_rgb(0, 100, 0) // Dark green for numbers (light theme)
+            };
+            result.push((chars[i..end].iter().collect::<String>(), color));
+            i = end;
+            continue;
+        }
+
+        // Check for operators and punctuation
+        let ch = chars[i];
+        if "!@#$%^&*()-+=[]{}|;:,.<>?/".contains(ch) {
+            let color = if dark_theme {
+                Color32::from_rgb(180, 180, 180) // Gray for operators (dark theme)
+            } else {
+                Color32::from_rgb(100, 100, 100) // Dark gray for operators (light theme)
+            };
+            result.push((ch.to_string(), color));
+            i += 1;
+            continue;
+        }
+
+        // Regular character
+        let color = if dark_theme {
+            Color32::from_rgb(220, 220, 220) // Light gray for regular text (dark theme)
+        } else {
+            Color32::from_rgb(50, 50, 50) // Dark gray for regular text (light theme)
+        };
+        result.push((ch.to_string(), color));
+        i += 1;
+    }
+
+    result
+}
 
 pub struct ConnectionDialog {
     pub host: String,
@@ -244,6 +403,10 @@ impl EditDialog {
 pub struct QueryEditor {
     pub sql: String,
     pub expanded: bool,
+    pub show_completions: bool,
+    pub completion_items: Vec<String>,
+    pub selected_completion: Option<usize>,
+    pub dark_theme: bool,
 }
 
 impl Default for QueryEditor {
@@ -251,12 +414,167 @@ impl Default for QueryEditor {
         Self {
             sql: "SELECT * FROM information_schema.tables LIMIT 10;".to_string(),
             expanded: true,
+            show_completions: false,
+            completion_items: Vec::new(),
+            selected_completion: None,
+            dark_theme: true, // Default to dark theme
         }
     }
 }
 
 impl QueryEditor {
-    pub fn show(&mut self, ui: &mut Ui, is_query_running: bool) -> (bool, bool) {
+    pub fn format_sql(&mut self) {
+        // Simple SQL formatting - capitalize keywords and add proper spacing
+        let mut formatted = String::new();
+        let mut in_string = false;
+        let mut in_comment = false;
+        let mut chars = self.sql.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\'' | '"' if !in_comment => {
+                    in_string = !in_string;
+                    formatted.push(ch);
+                }
+                '-' if !in_string && !in_comment => {
+                    chars.next(); // consume next char
+                    if chars.peek() == Some(&'-') {
+                        in_comment = true;
+                        formatted.push_str("--");
+                    } else {
+                        formatted.push('-');
+                    }
+                }
+                '/' if !in_string && !in_comment => {
+                    chars.next(); // consume next char
+                    if chars.peek() == Some(&'*') {
+                        in_comment = true;
+                        formatted.push_str("/*");
+                    } else {
+                        formatted.push('/');
+                    }
+                }
+                '*' if in_comment => {
+                    chars.next(); // consume next char
+                    if chars.peek() == Some(&'/') {
+                        in_comment = false;
+                        formatted.push_str("*/");
+                    } else {
+                        formatted.push('*');
+                    }
+                }
+                '\n' => {
+                    if in_comment && chars.peek() != Some(&'-') && chars.peek() != Some(&'/') {
+                        in_comment = false;
+                    }
+                    formatted.push('\n');
+                }
+                ch if ch.is_whitespace() => {
+                    // Skip extra whitespace
+                    if !formatted.ends_with(char::is_whitespace) {
+                        formatted.push(' ');
+                    }
+                }
+                ch => {
+                    if !in_string && !in_comment {
+                        // Capitalize keywords
+                        let mut word = String::new();
+                        word.push(ch);
+                        while let Some(&next_ch) = chars.peek() {
+                            if next_ch.is_alphanumeric() || next_ch == '_' {
+                                word.push(chars.next().unwrap());
+                            } else {
+                                break;
+                            }
+                        }
+
+                        let upper_word = word.to_uppercase();
+                        let keywords = [
+                            "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER",
+                            "ON", "GROUP", "BY", "HAVING", "ORDER", "LIMIT", "OFFSET", "DISTINCT",
+                            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP",
+                            "ALTER", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA", "COLUMN",
+                            "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "UNIQUE",
+                            "NOT", "NULL", "DEFAULT", "AND", "OR", "IN", "EXISTS", "AS"
+                        ];
+
+                        if keywords.contains(&upper_word.as_str()) {
+                            formatted.push_str(&upper_word);
+                        } else {
+                            formatted.push_str(&word);
+                        }
+                    } else {
+                        formatted.push(ch);
+                    }
+                }
+            }
+        }
+
+        self.sql = formatted;
+    }
+
+    pub fn update_completions(&mut self, tables: &[String], columns: &[String]) {
+        // Get the current word being typed
+        let cursor_pos = self.sql.len(); // For simplicity, assume cursor is at end
+        let text_before_cursor = &self.sql[..cursor_pos];
+
+        // Find the current word
+        let word_start = text_before_cursor.rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+            .map(|pos| pos + 1)
+            .unwrap_or(0);
+
+        let current_word = &text_before_cursor[word_start..];
+
+        if current_word.is_empty() {
+            self.show_completions = false;
+            return;
+        }
+
+        // Generate completion items
+        let mut items = Vec::new();
+
+        // Add SQL keywords
+        let keywords = [
+            "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER",
+            "ON", "GROUP", "BY", "HAVING", "ORDER", "LIMIT", "OFFSET", "DISTINCT",
+            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP",
+            "ALTER", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA", "COLUMN",
+            "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "UNIQUE",
+            "NOT", "NULL", "DEFAULT", "AND", "OR", "IN", "EXISTS", "BETWEEN",
+            "LIKE", "AS", "COUNT", "SUM", "AVG", "MIN", "MAX", "CASE", "WHEN",
+            "THEN", "ELSE", "END", "UNION", "ALL"
+        ];
+
+        for keyword in &keywords {
+            if keyword.to_lowercase().starts_with(&current_word.to_lowercase()) {
+                items.push(keyword.to_string());
+            }
+        }
+
+        // Add table names
+        for table in tables {
+            if table.to_lowercase().starts_with(&current_word.to_lowercase()) {
+                items.push(table.clone());
+            }
+        }
+
+        // Add column names
+        for column in columns {
+            if column.to_lowercase().starts_with(&current_word.to_lowercase()) {
+                items.push(column.clone());
+            }
+        }
+
+        // Remove duplicates and sort
+        items.sort();
+        items.dedup();
+
+        self.completion_items = items;
+        self.show_completions = !self.completion_items.is_empty();
+        self.selected_completion = None;
+    }
+
+    pub fn show(&mut self, ui: &mut Ui, is_query_running: bool, _query_history: &mut Vec<String>, show_history: &mut bool) -> (bool, bool) {
         let mut execute = false;
         let mut cancel = false;
 
@@ -279,38 +597,64 @@ impl QueryEditor {
             if ui.button("Clear").clicked() {
                 self.sql.clear();
             }
+            ui.separator();
+            if ui.button("📚 History").clicked() {
+                *show_history = !*show_history;
+            }
+            ui.separator();
+            let theme_icon = if self.dark_theme { "🌙" } else { "☀" };
+            if ui.button(theme_icon).on_hover_text("Toggle syntax theme").clicked() {
+                self.dark_theme = !self.dark_theme;
+            }
+            ui.separator();
+            ui.label(format!("Lines: {}", self.sql.lines().count()));
+            ui.separator();
+            if ui.button("🔧 Format").on_hover_text("Format SQL query").clicked() {
+                self.format_sql();
+            }
         });
         ui.separator();
 
         if self.expanded {
             ui.separator();
 
-            let lines: Vec<&str> = self.sql.lines().collect();
-            let num_lines = lines.len().max(1);
-            let editor_height = if num_lines > 5 { 150.0 } else { 100.0 };
+            // Inline syntax highlighting in TextEdit
+            let text_edit_response = ui.add(
+                TextEdit::multiline(&mut self.sql)
+                    .font(egui::TextStyle::Monospace)
+                    .text_color(Color32::TRANSPARENT) // Make text invisible
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(5)
+            );
 
-            ScrollArea::vertical()
-                .max_height(editor_height)
-                .id_source("sql_editor_scroll")
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        // Line numbers column
-                        ui.vertical(|ui| {
-                            for i in 1..=num_lines {
-                                ui.monospace(format!("{:3} ", i));
-                            }
+            // Draw highlighted text over the TextEdit
+            let rect = text_edit_response.rect;
+            let painter = ui.painter();
+            let font_id = ui.style().text_styles.get(&egui::TextStyle::Monospace).cloned().unwrap_or(egui::FontId::monospace(12.0));
+
+            // Calculate the actual text area within TextEdit (accounting for padding)
+            let line_height = ui.fonts(|fonts| fonts.row_height(&font_id));
+
+            // Calculate the actual text area within TextEdit (accounting for padding)
+            let text_padding = ui.spacing().button_padding; // TextEdit uses button padding
+            let text_start_x = rect.min.x + text_padding.x;
+            let text_start_y = rect.min.y + text_padding.y;
+
+            for (line_idx, line) in self.sql.lines().enumerate() {
+                let highlighted = highlight_sql_line(line, self.dark_theme);
+                let mut job = egui::text::LayoutJob::default();
+                for (text, color) in highlighted {
+                    if !text.is_empty() {
+                        job.append(&text, 0.0, egui::TextFormat {
+                            font_id: font_id.clone(),
+                            color,
+                            ..Default::default()
                         });
-                        ui.separator();
-
-                        // Text editor
-                        ui.add(
-                            TextEdit::multiline(&mut self.sql)
-                                .font(egui::TextStyle::Monospace)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(5),
-                        );
-                    });
-                });
+                    }
+                }
+                let galley = painter.layout_job(job);
+                painter.galley(egui::pos2(text_start_x, text_start_y + line_idx as f32 * line_height), galley, Color32::TRANSPARENT);
+            }
         }
 
         (execute, cancel)
@@ -340,6 +684,61 @@ impl Default for ResultsTable {
 }
 
 impl ResultsTable {
+    pub fn export_csv(&self) {
+        if self.columns.is_empty() {
+            return;
+        }
+
+        let mut csv_content = String::new();
+
+        // Add header row
+        csv_content.push_str(&self.columns.join(","));
+        csv_content.push('\n');
+
+        // Add data rows
+        for row in &self.rows {
+            let csv_row: Vec<String> = row.iter().map(|cell| {
+                // Escape quotes and wrap in quotes if necessary
+                if cell.contains(',') || cell.contains('"') || cell.contains('\n') {
+                    format!("\"{}\"", cell.replace('"', "\"\""))
+                } else {
+                    cell.clone()
+                }
+            }).collect();
+            csv_content.push_str(&csv_row.join(","));
+            csv_content.push('\n');
+        }
+
+        // For now, just print to console. In a real implementation, you'd save to a file
+        // or show a file save dialog
+        println!("CSV Export:\n{}", csv_content);
+    }
+
+    pub fn export_json(&self) {
+        if self.columns.is_empty() {
+            return;
+        }
+
+        use serde_json::json;
+
+        let mut json_array = Vec::new();
+
+        for row in &self.rows {
+            let mut json_row = serde_json::Map::new();
+            for (i, cell) in row.iter().enumerate() {
+                if i < self.columns.len() {
+                    json_row.insert(self.columns[i].clone(), json!(cell));
+                }
+            }
+            json_array.push(json_row);
+        }
+
+        let json_content = serde_json::to_string_pretty(&json_array).unwrap_or_else(|_| "[]".to_string());
+
+        // For now, just print to console. In a real implementation, you'd save to a file
+        println!("JSON Export:\n{}", json_content);
+    }
+
     pub fn show(&mut self, ui: &mut Ui) -> Option<(String, String, usize, usize)> {
         let mut clicked_cell = None;
         let mut sort_by_column: Option<usize> = None;
@@ -361,6 +760,14 @@ impl ResultsTable {
             ui.label("Double-click a cell to edit");
             ui.separator();
             ui.label("Click column header to sort");
+            ui.separator();
+            ui.label("Export:");
+            if ui.button("CSV").clicked() {
+                self.export_csv();
+            }
+            if ui.button("JSON").clicked() {
+                self.export_json();
+            }
         });
         ui.separator();
 
@@ -463,7 +870,7 @@ pub struct DatabaseTree {
     pub databases: Vec<String>,
     pub schemas: Vec<String>,
     pub tables: Vec<String>,
-    pub selected_database: Option<String>,
+
     pub selected_schema: Option<String>,
     pub selected_table: Option<String>,
     pub expanded_databases: std::collections::HashSet<String>,
@@ -476,7 +883,7 @@ impl Default for DatabaseTree {
             databases: Vec::new(),
             schemas: Vec::new(),
             tables: Vec::new(),
-            selected_database: None,
+
             selected_schema: None,
             selected_table: None,
             expanded_databases: std::collections::HashSet::new(),

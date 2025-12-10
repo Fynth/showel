@@ -84,6 +84,11 @@ impl DatabaseConnection {
         *self.cancelled.lock().await = true;
     }
 
+    pub async fn reset_cancel(&self) {
+        *self.cancelled.lock().await = false;
+    }
+
+
     pub async fn get_databases(&self) -> Result<Vec<String>> {
         let client = self.client.lock().await;
         let client = client.as_ref().context("Not connected to database")?;
@@ -130,30 +135,6 @@ impl DatabaseConnection {
         Ok(rows.iter().map(|row| row.get(0)).collect())
     }
 
-    pub async fn get_table_columns(&self, schema: &str, table: &str) -> Result<Vec<ColumnInfo>> {
-        let client = self.client.lock().await;
-        let client = client.as_ref().context("Not connected to database")?;
-
-        let rows = client
-            .query(
-                "SELECT column_name, data_type, is_nullable, column_default
-                 FROM information_schema.columns
-                 WHERE table_schema = $1 AND table_name = $2
-                 ORDER BY ordinal_position",
-                &[&schema, &table],
-            )
-            .await?;
-
-        Ok(rows
-            .iter()
-            .map(|row| ColumnInfo {
-                name: row.get(0),
-                data_type: row.get(1),
-                nullable: row.get::<_, String>(2) == "YES",
-                default: row.get(3),
-            })
-            .collect())
-    }
 
     pub async fn get_column_types(&self, schema: &str, table: &str) -> Result<Vec<(String, String)>> {
         let client = self.client.lock().await;
@@ -176,6 +157,11 @@ impl DatabaseConnection {
     }
 
     pub async fn execute_query(&self, query: &str) -> Result<QueryResult> {
+        // Check if cancelled before starting
+        if *self.cancelled.lock().await {
+            return Err(anyhow::anyhow!("Query cancelled"));
+        }
+
         let client = self.client.lock().await;
         let client = client.as_ref().context("Not connected to database")?;
 
@@ -186,7 +172,17 @@ impl DatabaseConnection {
             || query.to_uppercase().starts_with("WITH")
             || query.to_uppercase().starts_with("SHOW")
         {
+            // For SELECT queries, we can't easily cancel mid-execution with tokio-postgres
+            // But we can check cancellation before and after
+            if *self.cancelled.lock().await {
+                return Err(anyhow::anyhow!("Query cancelled"));
+            }
+
             let rows = client.query(query, &[]).await?;
+
+            if *self.cancelled.lock().await {
+                return Err(anyhow::anyhow!("Query cancelled"));
+            }
 
             if rows.is_empty() {
                 return Ok(QueryResult {
@@ -213,6 +209,11 @@ impl DatabaseConnection {
                 affected_rows: 0,
             })
         } else {
+            // For non-SELECT queries, check cancellation before execution
+            if *self.cancelled.lock().await {
+                return Err(anyhow::anyhow!("Query cancelled"));
+            }
+
             let affected = client.execute(query, &[]).await?;
             Ok(QueryResult {
                 columns: vec![],
@@ -221,6 +222,8 @@ impl DatabaseConnection {
             })
         }
     }
+
+
 
     pub async fn get_table_data(
         &self,
@@ -313,13 +316,6 @@ impl DatabaseConnection {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ColumnInfo {
-    pub name: String,
-    pub data_type: String,
-    pub nullable: bool,
-    pub default: Option<String>,
-}
 
 #[derive(Debug, Clone)]
 pub struct QueryResult {
@@ -338,20 +334,7 @@ impl Default for QueryResult {
     }
 }
 
-impl QueryResult {
-    pub fn is_boolean_type(data_type: &str) -> bool {
-        matches!(data_type.to_lowercase().as_str(), "bool" | "boolean")
-    }
 
-    pub fn is_numeric_type(data_type: &str) -> bool {
-        matches!(
-            data_type.to_lowercase().as_str(),
-            "int2" | "int4" | "int8" | "integer" | "smallint" | "bigint"
-            | "numeric" | "decimal" | "real" | "double precision"
-            | "float4" | "float8"
-        )
-    }
-}
 
 fn format_value(row: &Row, index: usize) -> String {
     let column = &row.columns()[index];
