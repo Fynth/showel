@@ -827,7 +827,7 @@ impl ResultsTable {
                             });
                         }
 
-                        // Add loading rows if more data available
+                        // Add loading rows if more data available (only for virtual scrolling mode)
                         let remaining = if self.total_rows > 0 {
                             self.total_rows as usize - self.rows.len()
                         } else {

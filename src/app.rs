@@ -62,7 +62,9 @@ pub struct ShowelApp {
     current_schema: Option<String>,
     current_table: Option<String>,
     table_page: i64,
+    table_page_size: i64,
     table_total_rows: i64,
+    use_pagination: bool, // Toggle between pagination and virtual scrolling
 
     // Timer for periodic checks
     last_connection_check: std::time::Instant,
@@ -244,7 +246,9 @@ impl ShowelApp {
             current_schema: None,
             current_table: None,
             table_page: 0,
+            table_page_size: 100,
             table_total_rows: 0,
+            use_pagination: true, // Default to pagination mode
             last_connection_check: std::time::Instant::now(),
             need_repaint: false,
             is_query_running: false,
@@ -597,9 +601,102 @@ impl eframe::App for ShowelApp {
 
                 ui.separator();
 
+                // Pagination controls (only show when viewing a table)
+                if self.current_table.is_some() {
+                    ui.horizontal(|ui| {
+                        // Toggle between pagination and virtual scrolling
+                        ui.checkbox(&mut self.use_pagination, "Use Pagination");
+                        ui.separator();
 
+                        if self.use_pagination {
+                            let total_pages = if self.table_total_rows > 0 {
+                                (self.table_total_rows as f64 / self.table_page_size as f64).ceil() as i64
+                            } else {
+                                1
+                            };
 
+                            ui.label(format!(
+                                "Page {} of {}",
+                                self.table_page + 1,
+                                total_pages.max(1)
+                            ));
 
+                            if ui.button("◀ Previous").clicked() && self.table_page > 0 {
+                                self.table_page -= 1;
+                                if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                                    let page_size = self.table_page_size;
+                                    let offset = self.table_page * page_size;
+                                    let (sort_column, sort_ascending) = self.results_table.get_sort_info()
+                                        .map(|(col, asc)| (Some(col), asc))
+                                        .unwrap_or((None, true));
+                                    let _ = self.command_tx.send(DbCommand::LoadTableData(
+                                        schema.clone(), table.clone(), page_size, offset, sort_column, sort_ascending
+                                    ));
+                                }
+                            }
+
+                            if ui.button("Next ▶").clicked() && self.table_page < total_pages - 1 {
+                                self.table_page += 1;
+                                if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                                    let page_size = self.table_page_size;
+                                    let offset = self.table_page * page_size;
+                                    let (sort_column, sort_ascending) = self.results_table.get_sort_info()
+                                        .map(|(col, asc)| (Some(col), asc))
+                                        .unwrap_or((None, true));
+                                    let _ = self.command_tx.send(DbCommand::LoadTableData(
+                                        schema.clone(), table.clone(), page_size, offset, sort_column, sort_ascending
+                                    ));
+                                }
+                            }
+
+                            ui.separator();
+                            ui.label(format!("Showing {} rows per page", self.table_page_size));
+
+                            // Page size selector
+                            ui.add_space(10.0);
+                            ui.label("Rows per page:");
+                            if ui.selectable_label(self.table_page_size == 50, "50").clicked() {
+                                self.table_page_size = 50;
+                                self.table_page = 0;
+                                if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                                    let offset = self.table_page * self.table_page_size;
+                                    let (sort_column, sort_ascending) = self.results_table.get_sort_info()
+                                        .map(|(col, asc)| (Some(col), asc))
+                                        .unwrap_or((None, true));
+                                    let _ = self.command_tx.send(DbCommand::LoadTableData(
+                                        schema.clone(), table.clone(), self.table_page_size, offset, sort_column, sort_ascending
+                                    ));
+                                }
+                            }
+                            if ui.selectable_label(self.table_page_size == 100, "100").clicked() {
+                                self.table_page_size = 100;
+                                self.table_page = 0;
+                                if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                                    let offset = self.table_page * self.table_page_size;
+                                    let (sort_column, sort_ascending) = self.results_table.get_sort_info()
+                                        .map(|(col, asc)| (Some(col), asc))
+                                        .unwrap_or((None, true));
+                                    let _ = self.command_tx.send(DbCommand::LoadTableData(
+                                        schema.clone(), table.clone(), self.table_page_size, offset, sort_column, sort_ascending
+                                    ));
+                                }
+                            }
+                            if ui.selectable_label(self.table_page_size == 200, "200").clicked() {
+                                self.table_page_size = 200;
+                                self.table_page = 0;
+                                if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table) {
+                                    let offset = self.table_page * self.table_page_size;
+                                    let (sort_column, sort_ascending) = self.results_table.get_sort_info()
+                                        .map(|(col, asc)| (Some(col), asc))
+                                        .unwrap_or((None, true));
+                                    let _ = self.command_tx.send(DbCommand::LoadTableData(
+                                        schema.clone(), table.clone(), self.table_page_size, offset, sort_column, sort_ascending
+                                    ));
+                                }
+                            }
+                        }
+                    });
+                }
 
                 // Results table header - fixed
                 ui.horizontal(|ui| {
