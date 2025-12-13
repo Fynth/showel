@@ -279,7 +279,7 @@ impl DatabaseConnection {
             Ok(rows) if !rows.is_empty() => rows[0].get::<_, String>(0),
             _ => {
                 // Fallback to first column (usually 'id')
-                columns.get(0).context("No columns available")?.clone()
+                columns.first().context("No columns available")?.clone()
             }
         };
 
@@ -317,21 +317,11 @@ impl DatabaseConnection {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
     pub affected_rows: usize,
-}
-
-impl Default for QueryResult {
-    fn default() -> Self {
-        Self {
-            columns: Vec::new(),
-            rows: Vec::new(),
-            affected_rows: 0,
-        }
-    }
 }
 
 

@@ -62,7 +62,6 @@ pub struct ShowelApp {
     current_schema: Option<String>,
     current_table: Option<String>,
     table_page: i64,
-    table_page_size: i64,
     table_total_rows: i64,
 
     // Timer for periodic checks
@@ -245,7 +244,6 @@ impl ShowelApp {
             current_schema: None,
             current_table: None,
             table_page: 0,
-            table_page_size: 100,
             table_total_rows: 0,
             last_connection_check: std::time::Instant::now(),
             need_repaint: false,
@@ -296,7 +294,7 @@ impl ShowelApp {
         // Add to history if not already the most recent query
         let trimmed_query = query.trim();
         if !trimmed_query.is_empty() &&
-           self.query_history.last().map_or(true, |last| last != trimmed_query) {
+           self.query_history.last().is_none_or(|last| last != trimmed_query) {
             self.query_history.push(trimmed_query.to_string());
             // Keep only the last 50 queries
             if self.query_history.len() > 50 {
@@ -317,25 +315,42 @@ impl ShowelApp {
 
 
     fn load_table_data(&mut self, schema: String, table: String) {
-        let page_size = self.table_page_size;
-        let offset = self.table_page * page_size;
-
         self.current_schema = Some(schema.clone());
         self.current_table = Some(table.clone());
+
+        // Reset table state for new table
+        self.results_table.columns.clear();
+        self.results_table.rows.clear();
+        self.results_table.loaded_rows = 0;
+        self.results_table.total_rows = 0;
 
         // Load column types first
         let _ = self
             .command_tx
             .send(DbCommand::GetColumnTypes(schema.clone(), table.clone()));
 
-        // Get sort info
-        let (sort_column, sort_ascending) = self.results_table.get_sort_info()
-            .map(|(col, asc)| (Some(col), asc))
-            .unwrap_or((None, true));
+        // Load first page of data
+        self.load_more_table_data();
+    }
 
-        let _ = self
-            .command_tx
-            .send(DbCommand::LoadTableData(schema, table, page_size, offset, sort_column, sort_ascending));
+    fn load_more_table_data(&mut self) {
+        // Only stop loading if we know the total count and have loaded all rows
+        if self.results_table.total_rows > 0 && self.results_table.loaded_rows >= self.results_table.total_rows as usize {
+            return;
+        }
+        if let (Some(ref schema), Some(ref table)) = (&self.current_schema, &self.current_table) {
+            let page_size = self.results_table.page_size as i64;
+            let offset = self.results_table.loaded_rows as i64;
+
+            // Get sort info
+            let (sort_column, sort_ascending) = self.results_table.get_sort_info()
+                .map(|(col, asc)| (Some(col), asc))
+                .unwrap_or((None, true));
+
+            let _ = self
+                .command_tx
+                .send(DbCommand::LoadTableData(schema.clone(), table.clone(), page_size, offset, sort_column, sort_ascending));
+        }
     }
 
     fn check_connection(&mut self) {
@@ -391,12 +406,19 @@ impl ShowelApp {
                 }
                 DbResponse::TableData(result, count) => {
                     self.table_total_rows = count;
-                    self.results_table.columns = result.columns;
-                    self.results_table.rows = result.rows;
+                    self.results_table.total_rows = count;
+                    let rows_len = result.rows.len();
+                    if self.results_table.loaded_rows == 0 {
+                        self.results_table.columns = result.columns;
+                        self.results_table.rows = result.rows;
+                    } else {
+                        self.results_table.rows.extend(result.rows);
+                    }
+                    self.results_table.loaded_rows += rows_len;
                     if let (Some(schema), Some(table)) = (&self.current_schema, &self.current_table)
                     {
                         self.status_message =
-                            format!("Loaded {}.{} ({} total rows)", schema, table, count);
+                            format!("Loaded {}.{} ({} / {} rows)", schema, table, self.results_table.loaded_rows, count);
                     }
                 }
                 DbResponse::Error(err) => {
@@ -577,49 +599,11 @@ impl eframe::App for ShowelApp {
 
 
 
-                // Table pagination if viewing a table - fixed
-                if self.current_table.is_some() {
-                    ui.horizontal(|ui| {
-                        let total_pages = (self.table_total_rows as f64
-                            / self.table_page_size as f64)
-                            .ceil() as i64;
 
-                        if ui.button("◀ Previous").clicked() && self.table_page > 0 {
-                            self.table_page -= 1;
-                            if let (Some(schema), Some(table)) =
-                                (&self.current_schema, &self.current_table)
-                            {
-                                self.load_table_data(schema.clone(), table.clone());
-                            }
-                        }
-
-                        ui.label(format!(
-                            "Page {} of {}",
-                            self.table_page + 1,
-                            total_pages.max(1)
-                        ));
-
-                        if ui.button("Next ▶").clicked() && self.table_page < total_pages - 1 {
-                            self.table_page += 1;
-                            if let (Some(schema), Some(table)) =
-                                (&self.current_schema, &self.current_table)
-                            {
-                                self.load_table_data(schema.clone(), table.clone());
-                            }
-                        }
-
-                        ui.separator();
-                        ui.label(format!("Showing {} rows per page", self.table_page_size));
-                    });
-                    ui.separator();
-                }
 
                 // Results table header - fixed
                 ui.horizontal(|ui| {
                     ui.heading("Results");
-                    if !self.results_table.columns.is_empty() {
-                        ui.label(format!("({} rows)", self.results_table.rows.len()));
-                    }
                 });
 
                 ui.separator();
@@ -635,6 +619,11 @@ impl eframe::App for ShowelApp {
                         .unwrap_or_else(|| "text".to_string());
 
                     self.edit_dialog.open(value, column_name, row_idx, col_idx, column_type);
+                }
+
+                if self.results_table.load_more {
+                    self.load_more_table_data();
+                    self.results_table.load_more = false;
                 }
 
                 // Check if sort changed

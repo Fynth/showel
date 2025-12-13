@@ -1,5 +1,4 @@
 use egui::{Context, ScrollArea, TextEdit, Ui, Color32};
-use serde_json;
 
 fn highlight_sql_line(line: &str, dark_theme: bool) -> Vec<(String, Color32)> {
     let mut result = Vec::new();
@@ -251,6 +250,7 @@ impl ConnectionDialog {
     }
 }
 
+#[derive(Default)]
 pub struct EditDialog {
     pub open: bool,
     pub value: String,
@@ -259,20 +259,6 @@ pub struct EditDialog {
     pub column_type: String,
     pub row_index: usize,
     pub col_index: usize,
-}
-
-impl Default for EditDialog {
-    fn default() -> Self {
-        Self {
-            open: false,
-            value: String::new(),
-            original_value: String::new(),
-            column_name: String::new(),
-            column_type: String::new(),
-            row_index: 0,
-            col_index: 0,
-        }
-    }
 }
 
 impl EditDialog {
@@ -361,10 +347,8 @@ impl EditDialog {
                         }
 
                         // Validation hint for numeric types
-                        if is_numeric && !self.value.is_empty() && self.value.to_uppercase() != "NULL" {
-                            if self.value.parse::<f64>().is_err() {
-                                ui.colored_label(egui::Color32::RED, "⚠ Invalid number");
-                            }
+                        if is_numeric && !self.value.is_empty() && self.value.to_uppercase() != "NULL" && self.value.parse::<f64>().is_err() {
+                            ui.colored_label(egui::Color32::RED, "⚠ Invalid number");
                         }
                     }
 
@@ -589,10 +573,8 @@ impl QueryEditor {
                 if ui.button("⏹ Cancel").clicked() {
                     cancel = true;
                 }
-            } else {
-                if ui.button("▶ Execute").clicked() {
-                    execute = true;
-                }
+            } else if ui.button("▶ Execute").clicked() {
+                execute = true;
             }
             if ui.button("Clear").clicked() {
                 self.sql.clear();
@@ -667,7 +649,11 @@ pub struct ResultsTable {
     pub selected_cell: Option<(usize, usize)>, // (row, col)
     pub sort_column: Option<usize>,
     pub sort_ascending: bool,
-    pub max_display_rows: usize,
+    // Virtual scrolling support
+    pub total_rows: i64, // Total rows in the table (-1 if unknown)
+    pub loaded_rows: usize, // How many rows are currently loaded
+    pub page_size: usize, // How many rows to load at once
+    pub load_more: bool, // Flag to trigger loading more rows
 }
 
 impl Default for ResultsTable {
@@ -678,7 +664,10 @@ impl Default for ResultsTable {
             selected_cell: None,
             sort_column: None,
             sort_ascending: true,
-            max_display_rows: 1000,
+            total_rows: 0,
+            loaded_rows: 0,
+            page_size: 100,
+            load_more: false,
         }
     }
 }
@@ -747,15 +736,15 @@ impl ResultsTable {
             return None;
         }
 
-        let display_rows = self.rows.len().min(self.max_display_rows);
-        let truncated = self.rows.len() > self.max_display_rows;
+
 
         ui.horizontal(|ui| {
-            if truncated {
-                ui.label(format!("Results: {} rows (showing first {})", self.rows.len(), display_rows));
+            let total_display = if self.total_rows > 0 {
+                self.total_rows.to_string()
             } else {
-                ui.label(format!("Results: {} rows", self.rows.len()));
-            }
+                "?".to_string()
+            };
+            ui.label(format!("Results: {} / {} rows", self.loaded_rows, total_display));
             ui.separator();
             ui.label("Double-click a cell to edit");
             ui.separator();
@@ -810,7 +799,7 @@ impl ResultsTable {
                         }
                     })
                     .body(|mut body| {
-                        for (row_idx, row) in self.rows.iter().enumerate().take(display_rows) {
+                        for (row_idx, row) in self.rows.iter().enumerate() {
                             body.row(18.0, |mut row_ui| {
                                 for (col_idx, cell) in row.iter().enumerate() {
                                     row_ui.col(|ui| {
@@ -836,6 +825,28 @@ impl ResultsTable {
                                     });
                                 }
                             });
+                        }
+
+                        // Add loading rows if more data available
+                        let remaining = if self.total_rows > 0 {
+                            self.total_rows as usize - self.rows.len()
+                        } else {
+                            0
+                        };
+                        if remaining > 0 {
+                            let loading_count = remaining.min(10); // Show up to 10 loading rows
+                            for _ in 0..loading_count {
+                                body.row(18.0, |mut row_ui| {
+                                    for _ in 0..self.columns.len() {
+                                        row_ui.col(|ui| {
+                                            ui.label("Loading...");
+                                        });
+                                    }
+                                });
+                            }
+                            if !self.load_more {
+                                self.load_more = true;
+                            }
                         }
                     });
             });
@@ -866,6 +877,7 @@ impl ResultsTable {
     }
 }
 
+#[derive(Default)]
 pub struct DatabaseTree {
     pub databases: Vec<String>,
     pub schemas: Vec<String>,
@@ -875,21 +887,6 @@ pub struct DatabaseTree {
     pub selected_table: Option<String>,
     pub expanded_databases: std::collections::HashSet<String>,
     pub expanded_schemas: std::collections::HashSet<String>,
-}
-
-impl Default for DatabaseTree {
-    fn default() -> Self {
-        Self {
-            databases: Vec::new(),
-            schemas: Vec::new(),
-            tables: Vec::new(),
-
-            selected_schema: None,
-            selected_table: None,
-            expanded_databases: std::collections::HashSet::new(),
-            expanded_schemas: std::collections::HashSet::new(),
-        }
-    }
 }
 
 impl DatabaseTree {
