@@ -8,7 +8,7 @@ fn highlight_sql_line(line: &str, dark_theme: bool) -> Vec<(String, Color32)> {
     let mut i = 0;
 
     while i < chars.len() {
-        // Check for SQL keywords
+        // Check for SQL keywords (case-insensitive)
         let mut found_keyword = false;
         let keywords = [
             "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER",
@@ -24,20 +24,24 @@ fn highlight_sql_line(line: &str, dark_theme: bool) -> Vec<(String, Color32)> {
 
         for &keyword in &keywords {
             let keyword_chars: Vec<char> = keyword.chars().collect();
-            if i + keyword_chars.len() <= chars.len() &&
-               chars[i..i + keyword_chars.len()] == keyword_chars &&
-               (i + keyword_chars.len() == chars.len() ||
-                !chars.get(i + keyword_chars.len()).unwrap().is_alphanumeric() &&
-                *chars.get(i + keyword_chars.len()).unwrap() != '_') {
-                let color = if dark_theme {
-                    Color32::from_rgb(86, 156, 214) // Blue for keywords (dark theme)
-                } else {
-                    Color32::from_rgb(0, 0, 255) // Dark blue for keywords (light theme)
-                };
-                result.push((keyword.to_string(), color));
-                i += keyword_chars.len();
-                found_keyword = true;
-                break;
+            if i + keyword_chars.len() <= chars.len() {
+                // collect the text at current position to compare case-insensitively
+                let slice: String = chars[i..i + keyword_chars.len()].iter().collect();
+                if slice.eq_ignore_ascii_case(keyword) &&
+                   (i + keyword_chars.len() == chars.len() ||
+                    !chars.get(i + keyword_chars.len()).unwrap().is_alphanumeric() &&
+                    *chars.get(i + keyword_chars.len()).unwrap() != '_') {
+                    let color = if dark_theme {
+                        Color32::from_rgb(86, 156, 214) // Blue for keywords (dark theme)
+                    } else {
+                        Color32::from_rgb(0, 0, 255) // Dark blue for keywords (light theme)
+                    };
+                    // Preserve the original case when drawing
+                    result.push((slice, color));
+                    i += keyword_chars.len();
+                    found_keyword = true;
+                    break;
+                }
             }
         }
 
@@ -421,8 +425,9 @@ impl QueryEditor {
                     formatted.push(ch);
                 }
                 '-' if !in_string && !in_comment => {
-                    chars.next(); // consume next char
+                    // Peek first; only consume when we confirm it's a comment start
                     if chars.peek() == Some(&'-') {
+                        chars.next(); // consume the second '-'
                         in_comment = true;
                         formatted.push_str("--");
                     } else {
@@ -430,8 +435,9 @@ impl QueryEditor {
                     }
                 }
                 '/' if !in_string && !in_comment => {
-                    chars.next(); // consume next char
+                    // Peek first; only consume when it's a block comment start
                     if chars.peek() == Some(&'*') {
+                        chars.next(); // consume the '*'
                         in_comment = true;
                         formatted.push_str("/*");
                     } else {
@@ -439,8 +445,9 @@ impl QueryEditor {
                     }
                 }
                 '*' if in_comment => {
-                    chars.next(); // consume next char
+                    // Peek first; only consume when it's the end of a block comment
                     if chars.peek() == Some(&'/') {
+                        chars.next(); // consume the '/'
                         in_comment = false;
                         formatted.push_str("*/");
                     } else {
@@ -448,14 +455,17 @@ impl QueryEditor {
                     }
                 }
                 '\n' => {
-                    if in_comment && chars.peek() != Some(&'-') && chars.peek() != Some(&'/') {
-                        in_comment = false;
+                    // Keep newline; end comment on newline only for single-line comments
+                    if in_comment {
+                        // do nothing here; for '--' comments we remain in comment until newline
+                        // for block comments we only exit on '*/'
                     }
                     formatted.push('\n');
                 }
                 ch if ch.is_whitespace() => {
-                    // Skip extra whitespace
-                    if !formatted.ends_with(char::is_whitespace) {
+                    // Skip extra whitespace. Use last character check instead of incorrect ends_with usage.
+                    let last_is_ws = formatted.chars().rev().next().map(|c| c.is_whitespace()).unwrap_or(false);
+                    if !last_is_ws {
                         formatted.push(' ');
                     }
                 }
@@ -498,19 +508,38 @@ impl QueryEditor {
     }
 
     pub fn update_completions(&mut self, tables: &[String], columns: &[String]) {
-        // Get the current word being typed
-        let cursor_pos = self.sql.len(); // For simplicity, assume cursor is at end
-        let text_before_cursor = &self.sql[..cursor_pos];
+        // Determine the current cursor position. For now we fall back to end of text
+        // because egui TextEdit doesn't always expose the cursor here.
+        let cursor_pos = self.sql.len().min(self.sql.len());
 
-        // Find the current word
-        let word_start = text_before_cursor.rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
-            .map(|pos| pos + 1)
-            .unwrap_or(0);
+        // Find the current word start by walking backwards until a delimiter is found.
+        let mut word_start = cursor_pos;
+        while word_start > 0 {
+            // Use `next_back()` instead of constructing a reversed iterator
+            let ch = self.sql[..word_start].chars().next_back().unwrap();
+            if ch.is_alphanumeric() || ch == '_' || ch == '.' {
+                word_start -= ch.len_utf8();
+                continue;
+            }
+            break;
+        }
+        // If we walked to the beginning, ensure proper start index
+        if word_start > cursor_pos {
+            word_start = 0;
+        }
 
-        let current_word = &text_before_cursor[word_start..];
+        // Safely get the current word slice
+        let current_word = if word_start <= cursor_pos {
+            &self.sql[word_start..cursor_pos]
+        } else {
+            ""
+        };
 
-        if current_word.is_empty() {
+        // If there's no current word, clear completions and return
+        if current_word.trim().is_empty() {
+            self.completion_items.clear();
             self.show_completions = false;
+            self.selected_completion = None;
             return;
         }
 
@@ -637,6 +666,43 @@ impl QueryEditor {
                 let galley = painter.layout_job(job);
                 painter.galley(egui::pos2(text_start_x, text_start_y + line_idx as f32 * line_height), galley, Color32::TRANSPARENT);
             }
+
+            // Show completion popup/list under the editor if available
+            if self.show_completions && !self.completion_items.is_empty() {
+                // Determine current word start to allow replacing it when a completion is chosen.
+                let cursor_pos = self.sql.len().min(self.sql.len());
+                let mut word_start = cursor_pos;
+                while word_start > 0 {
+                    // Use `next_back()` for clarity and performance
+                    let ch = self.sql[..word_start].chars().next_back().unwrap();
+                    if ch.is_alphanumeric() || ch == '_' || ch == '.' {
+                        word_start -= ch.len_utf8();
+                        continue;
+                    }
+                    break;
+                }
+                if word_start > cursor_pos {
+                    word_start = 0;
+                }
+
+                // Render a simple selectable list of completions
+                ui.separator();
+                ui.vertical(|ui| {
+                    // Limit displayed items to avoid huge lists
+                    for (i, item) in self.completion_items.iter().enumerate().take(20) {
+                        let selected = self.selected_completion == Some(i);
+                        if ui.selectable_label(selected, item).clicked() {
+                            // Replace current word with the chosen completion
+                            let before = &self.sql[..word_start];
+                            let after = &self.sql[cursor_pos..];
+                            self.sql = format!("{}{}{}", before, item, after);
+                            self.show_completions = false;
+                            self.selected_completion = None;
+                            break;
+                        }
+                    }
+                });
+            }
         }
 
         (execute, cancel)
@@ -703,6 +769,34 @@ impl ResultsTable {
         println!("CSV Export:\n{}", csv_content);
     }
 
+    pub fn export_sql_inserts(&self, table_name: &str) {
+        if self.columns.is_empty() {
+            return;
+        }
+
+        let mut sql_content = String::new();
+
+        for row in &self.rows {
+        let columns: Vec<String> = self.columns.iter().map(|col| format!("\"{}\"", col)).collect();
+        let values: Vec<String> = row.iter().map(|value| {
+            // NULL is a special token; numeric values are emitted raw, others quoted
+            if value.to_uppercase() == "NULL" {
+                "NULL".to_string()
+            } else if value.parse::<f64>().is_ok() {
+                value.clone()
+            } else {
+                // Escape single quotes for SQL strings
+                format!("'{}'", value.replace("'", "''"))
+            }
+        }).collect();
+
+            sql_content.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n",
+                table_name, columns.join(", "), values.join(", ")));
+        }
+
+        println!("SQL Export:\n{}", sql_content);
+    }
+
     pub fn export_json(&self) {
         if self.columns.is_empty() {
             return;
@@ -726,6 +820,37 @@ impl ResultsTable {
 
         // For now, just print to console. In a real implementation, you'd save to a file
         println!("JSON Export:\n{}", json_content);
+    }
+
+    pub fn export_json_with_metadata(&self, table_name: &str, schema: &str) {
+        if self.columns.is_empty() {
+            return;
+        }
+
+        use serde_json::json;
+
+        let mut json_obj = serde_json::Map::new();
+        json_obj.insert("table".to_string(), json!(table_name));
+        json_obj.insert("schema".to_string(), json!(schema));
+        json_obj.insert("timestamp".to_string(), json!(chrono::Local::now().to_rfc3339()));
+
+        let mut json_array = Vec::new();
+
+        for row in &self.rows {
+            let mut json_row = serde_json::Map::new();
+            for (i, cell) in row.iter().enumerate() {
+                if i < self.columns.len() {
+                    json_row.insert(self.columns[i].clone(), json!(cell));
+                }
+            }
+            json_array.push(json_row);
+        }
+
+        json_obj.insert("data".to_string(), json!(json_array));
+
+        let json_content = serde_json::to_string_pretty(&json_obj).unwrap_or_else(|_| "{}".to_string());
+
+        println!("JSON Export with Metadata:\n{}", json_content);
     }
 
     pub fn show(&mut self, ui: &mut Ui) -> Option<(String, String, usize, usize)> {
@@ -828,8 +953,9 @@ impl ResultsTable {
                         }
 
                         // Add loading rows if more data available (only for virtual scrolling mode)
+                        // Use loaded_rows to determine how many remain instead of rows.len()
                         let remaining = if self.total_rows > 0 {
-                            self.total_rows as usize - self.rows.len()
+                            (self.total_rows as usize).saturating_sub(self.loaded_rows)
                         } else {
                             0
                         };
