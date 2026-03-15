@@ -1,0 +1,9 @@
+[package]
+name = "services"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+database.workspace = true
+drivers.workspace = true
+models.workspace = true

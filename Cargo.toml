@@ -1,0 +1,12 @@
+[workspace]
+members = ["app", "database", "drivers", "ui", "models", "services"]
+resolver = "2"
+
+[workspace.dependencies]
+ui = { path = "ui" }
+models = { path = "models" }
+drivers = { path = "drivers" }
+database = { path = "database" }
+services = {path = "services"}
+
+dioxus = "0.7.3"
