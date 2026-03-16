@@ -1,0 +1,24 @@
+@mixin focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus);
+}
+
+@mixin interactive {
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+
+  &:hover {
+    background: var(--color-hover);
+  }
+
+  &:active {
+    background: var(--color-active);
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+}

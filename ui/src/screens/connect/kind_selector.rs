@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use models::DatabaseKind;
+
 #[component]
 pub fn KindSelector(mut selected_kind: Signal<DatabaseKind>) -> Element {
     let current_value = match selected_kind() {
@@ -9,12 +10,14 @@ pub fn KindSelector(mut selected_kind: Signal<DatabaseKind>) -> Element {
     };
 
     rsx! {
-        div {
+        div { class: "field",
             label {
+                class: "field__label",
                 r#for: "db-kind",
                 "Connection type"
             }
             select {
+                class: "input",
                 id: "db-kind",
                 value: "{current_value}",
                 onchange: move |event| {
@@ -30,7 +33,6 @@ pub fn KindSelector(mut selected_kind: Signal<DatabaseKind>) -> Element {
                 option { value: "postgres", "PostgreSQL" }
                 option { value: "clickhouse", "ClickHouse" }
             }
-
         }
     }
 }

@@ -1,0 +1,20 @@
+@use "tokens" as *;
+
+body {
+  font-family: $font-family-sans;
+  font-size: $font-size-md;
+  line-height: $line-height-normal;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+code,
+pre,
+textarea {
+  font-family: $font-family-mono;
+}

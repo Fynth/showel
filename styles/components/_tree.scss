@@ -1,0 +1,205 @@
+@use "../base/tokens" as *;
+@use "../base/states" as *;
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.tree__branch {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.tree__row {
+  padding-left: calc(var(--tree-depth) * 16px);
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  min-height: 32px;
+  color: var(--color-text-muted);
+}
+
+.tree__row--interactive {
+  flex-wrap: wrap;
+}
+
+.tree__row--schema {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tree__button {
+  flex: 1;
+  min-width: 0;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  @include interactive;
+}
+
+.tree__button,
+.tree__row--schema {
+  overflow-wrap: anywhere;
+}
+
+.history {
+  margin-top: $spacing-sm;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.session-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.session-list__item {
+  display: flex;
+  align-items: stretch;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+  box-shadow: 0 0 0 1px transparent;
+}
+
+.session-list__item--active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-active);
+  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-3));
+}
+
+.session-list__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $spacing-2xs;
+  padding: $spacing-xs;
+  border-radius: $radius-sm;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  @include interactive;
+}
+
+.session-list__kind {
+  color: var(--color-primary);
+  font-size: $font-size-xs;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.session-list__name {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history__item {
+  margin-bottom: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.history__meta {
+  color: var(--color-text-muted);
+  font-size: $font-size-sm;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2xs;
+}
+
+.history__connection {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  min-width: 0;
+}
+
+.history__topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.history__title {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.history__outcome {
+  flex-shrink: 0;
+  font-size: $font-size-xs;
+}
+
+.history__outcome--success {
+  color: var(--color-success);
+}
+
+.history__outcome--error {
+  color: var(--color-danger);
+}
+
+.history__connection-kind {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-panel-3);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.history__connection-target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: $font-size-xs;
+}
+
+.history__sql {
+  margin: 0;
+  padding: $spacing-sm;
+  border-radius: $radius-sm;
+  background: var(--editor-bg);
+  overflow: hidden;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 72px;
+  font-size: $font-size-xs;
+}
+
+.history__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-sm;
+}

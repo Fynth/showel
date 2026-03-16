@@ -1,0 +1,35 @@
+@use "../base/tokens" as *;
+
+.app {
+  height: 100vh;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: minmax($toolbar-height, auto) 1fr minmax($statusbar-height, auto);
+  background: var(--color-bg);
+  color: var(--color-text);
+  overflow: hidden;
+}
+
+.app__body {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app__body--welcome {
+  display: grid;
+  place-items: center;
+  padding: clamp($spacing-lg, 3vw, $spacing-2xl);
+}
+
+.app__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: clamp($spacing-md, 3vw, $spacing-2xl);
+  background: var(--color-backdrop);
+  backdrop-filter: blur(10px);
+}
