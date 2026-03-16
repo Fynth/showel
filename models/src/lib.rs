@@ -67,3 +67,8 @@ pub enum ConnectionRequest {
     Postgres(PostgresFormData),
     ClickHouse(ClickHouseFormData),
 }
+
+pub enum AppState {
+    Disconnected,
+    Connected(DatabaseConnection),
+}
