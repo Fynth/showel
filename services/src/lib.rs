@@ -1,22 +1,34 @@
 use database::DatabaseDriver;
-use drivers::sqlite::SqliteDriver;
+use drivers::{
+    postgres::{PgConfig, PgDriver},
+    sqlite::SqliteDriver,
+};
+use models::*;
 
 pub async fn connect_to_db(
-    config: models::DatabaseConfig,
+    request: models::ConnectionRequest,
 ) -> Result<models::DatabaseConnection, models::DatabaseError> {
-    match config {
-        models::DatabaseConfig::Sqlite(path) => {
-            let pool = SqliteDriver::connect(path).await?;
+    match request {
+        ConnectionRequest::Sqlite(data) => {
+            let pool = SqliteDriver::connect(data.path)
+                .await
+                .map_err(models::DatabaseError::Sqlite)?;
             Ok(models::DatabaseConnection::Sqlite(pool))
         }
-        models::DatabaseConfig::Postgres {
-            host,
-            port,
-            username,
-            password,
-            database,
-        } => {
-            // postgres connect...
+        ConnectionRequest::Postgres(data) => {
+            let config = PgConfig {
+                host: data.host,
+                port: data.port,
+                username: data.username,
+                password: data.password,
+                database: data.database,
+            };
+            let pool = PgDriver::connect(config)
+                .await
+                .map_err(models::DatabaseError::Postgres)?;
+            Ok(models::DatabaseConnection::Postgres(pool))
+        }
+        ConnectionRequest::ClickHouse(data) => {
             todo!()
         }
     }

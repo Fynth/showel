@@ -6,5 +6,5 @@ edition = "2024"
 [dependencies]
 database.workspace = true
 models.workspace = true
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
+sqlx = { version = "0.8.6", features = ["sqlite", "postgres", "runtime-tokio-rustls"] }
 tokio = "1.50.0"
