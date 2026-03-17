@@ -2,8 +2,8 @@ name: Build Windows MSI
 
 on:
   push:
-    branches: [ main, master ] # Сборка будет запускаться при пуше в эти ветки
-  workflow_dispatch: # Позволяет запустить сборку вручную кнопкой в GitHub
+    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -21,10 +21,11 @@ jobs:
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --locked
 
-      - name: Ensure Windows bundle icon exists
+      - name: Prepare bundle resources
         shell: pwsh
         run: |
-          $iconBase64 = "AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAArV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          $ErrorActionPreference = "Stop"
+          $iconBase64 = "AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAArV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
           $iconBytes = [Convert]::FromBase64String($iconBase64)
 
           foreach ($iconPath in @("icons/icon.ico", "app/icons/icon.ico")) {
@@ -37,6 +38,33 @@ jobs:
               [System.IO.File]::WriteAllBytes($iconPath, $iconBytes)
             }
           }
+
+          New-Item -ItemType Directory -Path "app/ui/assets" -Force | Out-Null
+          Copy-Item -Path "ui/assets/*" -Destination "app/ui/assets" -Recurse -Force
+
+          New-Item -ItemType Directory -Path "app/assets" -Force | Out-Null
+          if (Test-Path "assets") {
+            $assetFiles = Get-ChildItem -Path "assets" -Recurse -File -ErrorAction SilentlyContinue
+            if ($assetFiles.Count -gt 0) {
+              Copy-Item -Path "assets/*" -Destination "app/assets" -Recurse -Force
+            } else {
+              Set-Content -Path "app/assets/bundle-placeholder.txt" -Value "Placeholder bundle asset for CI."
+            }
+          } else {
+            Set-Content -Path "app/assets/bundle-placeholder.txt" -Value "Placeholder bundle asset for CI."
+          }
+
+          $webViewLoaderCandidates = @(
+            "libs/WebView2Loader.dll",
+            "dist/x86_64-pc-windows-gnu/release/WebView2Loader.dll"
+          )
+          $webViewLoader = $webViewLoaderCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $webViewLoader) {
+            throw "WebView2Loader.dll not found in any expected location."
+          }
+
+          New-Item -ItemType Directory -Path "app/libs" -Force | Out-Null
+          Copy-Item -Path $webViewLoader -Destination "app/libs/WebView2Loader.dll" -Force
 
       - name: Build and Bundle MSI
         run: dx bundle --release --platform desktop --package app --features bundle --package-types msi
