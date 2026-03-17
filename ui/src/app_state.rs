@@ -3,7 +3,7 @@ use models::{AppState, ConnectionRequest, ConnectionSession, DatabaseConnection}
 
 pub static APP_STATE: GlobalSignal<AppState> = Signal::global(AppState::default);
 pub static APP_THEME: GlobalSignal<String> = Signal::global(|| "theme-dark".to_string());
-pub static APP_SHOW_HISTORY: GlobalSignal<bool> = Signal::global(|| true);
+pub static APP_SHOW_HISTORY: GlobalSignal<bool> = Signal::global(|| false);
 
 pub fn open_connection_screen() {
     APP_STATE.with_mut(|state| {

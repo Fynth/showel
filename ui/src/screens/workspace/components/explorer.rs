@@ -1,26 +1,42 @@
+use crate::app_state::activate_session;
 use crate::screens::workspace::actions::{
-    run_table_preview_for_tab, set_active_tab_sql, tab_connection_or_error,
+    ensure_tab_for_session, run_table_preview_for_tab, set_active_tab_sql, tab_connection_or_error,
 };
 use dioxus::prelude::*;
 use models::{ExplorerNode, ExplorerNodeKind, QueryTabState, TablePreviewSource};
 
+#[derive(Clone, PartialEq)]
+pub struct ExplorerConnectionSection {
+    pub session_id: u64,
+    pub name: String,
+    pub kind_label: String,
+    pub status: String,
+    pub is_active: bool,
+    pub nodes: Vec<ExplorerNode>,
+}
+
 #[component]
 pub fn SidebarConnectionTree(
-    tree_nodes: Vec<ExplorerNode>,
+    sections: Vec<ExplorerConnectionSection>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
 ) -> Element {
+    let selected_node = use_signal(String::new);
+
     rsx! {
-        if tree_nodes.is_empty() {
-            p { class: "empty-state", "No schemas or objects loaded." }
+        if sections.is_empty() {
+            p { class: "empty-state", "No active connections." }
         } else {
             div { class: "tree",
-                for node in tree_nodes {
-                    ExplorerNodeView {
-                        node,
-                        depth: 0,
+                div { class: "tree__header", "Connections" }
+                for section in sections {
+                    ExplorerConnectionView {
+                        section,
                         tabs,
                         active_tab_id,
+                        next_tab_id,
+                        selected_node,
                     }
                 }
             }
@@ -29,94 +45,283 @@ pub fn SidebarConnectionTree(
 }
 
 #[component]
-fn ExplorerNodeView(
-    node: ExplorerNode,
-    depth: usize,
+fn ExplorerConnectionView(
+    section: ExplorerConnectionSection,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    selected_node: Signal<String>,
 ) -> Element {
-    let label = match node.kind {
-        ExplorerNodeKind::Schema => format!("schema: {}", node.name),
-        ExplorerNodeKind::Table => format!("table: {}", node.name),
-        ExplorerNodeKind::View => format!("view: {}", node.name),
-    };
-    let row_style = format!("--tree-depth: {depth};");
-    let is_actionable = matches!(node.kind, ExplorerNodeKind::Table | ExplorerNodeKind::View);
+    let mut expanded = use_signal(|| true);
+    let object_count = count_objects(&section.nodes);
+
+    rsx! {
+        div { class: if section.is_active {
+                "tree__connection tree__connection--active"
+            } else {
+                "tree__connection"
+            },
+            button {
+                class: "tree__connection-toggle",
+                onclick: {
+                    let session_id = section.session_id;
+                    move |_| {
+                        activate_session(session_id);
+                        expanded.toggle();
+                    }
+                },
+                span {
+                    class: if expanded() {
+                        "tree__chevron tree__chevron--open"
+                    } else {
+                        "tree__chevron"
+                    },
+                    ">"
+                }
+                div {
+                    class: "tree__connection-copy",
+                    div {
+                        class: "tree__connection-topline",
+                        span { class: "tree__connection-kind", "{section.kind_label}" }
+                        span { class: "tree__connection-title", "{section.name}" }
+                    }
+                    span {
+                        class: "tree__connection-meta",
+                        "{section.status} · {object_count} objects"
+                    }
+                }
+            }
+
+            if expanded() {
+                div { class: "tree__connection-body",
+                    if section.nodes.is_empty() {
+                        p { class: "empty-state", "No objects loaded for this connection." }
+                    } else {
+                        for node in section.nodes {
+                            ExplorerSchemaView {
+                                node,
+                                session_id: section.session_id,
+                                tabs,
+                                active_tab_id,
+                                next_tab_id,
+                                selected_node,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ExplorerSchemaView(
+    node: ExplorerNode,
+    session_id: u64,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    selected_node: Signal<String>,
+) -> Element {
+    let mut expanded = use_signal(|| true);
+    let (tables, views) = split_children(&node.children);
+    let object_count = tables.len() + views.len();
+
+    rsx! {
+        div { class: "tree__schema",
+            button {
+                class: "tree__schema-toggle",
+                onclick: move |_| expanded.toggle(),
+                span {
+                    class: if expanded() {
+                        "tree__chevron tree__chevron--open"
+                    } else {
+                        "tree__chevron"
+                    },
+                    ">"
+                }
+                div {
+                    class: "tree__schema-copy",
+                    span { class: "tree__schema-title", "{node.name}" }
+                    span {
+                        class: "tree__schema-meta",
+                        "{object_count} objects"
+                    }
+                }
+            }
+
+            if expanded() {
+                div { class: "tree__schema-body",
+                    if !tables.is_empty() {
+                        ExplorerGroupView {
+                            title: "Tables".to_string(),
+                            session_id,
+                            nodes: tables,
+                            tabs,
+                            active_tab_id,
+                            next_tab_id,
+                            selected_node,
+                        }
+                    }
+                    if !views.is_empty() {
+                        ExplorerGroupView {
+                            title: "Views".to_string(),
+                            session_id,
+                            nodes: views,
+                            tabs,
+                            active_tab_id,
+                            next_tab_id,
+                            selected_node,
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ExplorerGroupView(
+    title: String,
+    session_id: u64,
+    nodes: Vec<ExplorerNode>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    selected_node: Signal<String>,
+) -> Element {
+    rsx! {
+        div { class: "tree__group",
+            div { class: "tree__group-header", "{title}" }
+            div { class: "tree__group-items",
+                for node in nodes {
+                    ExplorerObjectRow {
+                        node,
+                        session_id,
+                        tabs,
+                        active_tab_id,
+                        next_tab_id,
+                        selected_node,
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ExplorerObjectRow(
+    node: ExplorerNode,
+    session_id: u64,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    selected_node: Signal<String>,
+) -> Element {
     let preview_sql = format!("select * from {} limit 100;", node.qualified_name);
-    let table_name = node.name.clone();
+    let object_name = node.name.clone();
     let preview_source = TablePreviewSource {
         schema: node.schema.clone(),
         table_name: node.name.clone(),
         qualified_name: node.qualified_name.clone(),
     };
+    let selected = selected_node() == node.qualified_name;
+    let kind_badge = match node.kind {
+        ExplorerNodeKind::Table => "T",
+        ExplorerNodeKind::View => "V",
+        ExplorerNodeKind::Schema => "",
+    };
+    let kind_label = match node.kind {
+        ExplorerNodeKind::Table => "Table",
+        ExplorerNodeKind::View => "View",
+        ExplorerNodeKind::Schema => "Schema",
+    };
 
     rsx! {
-        div { class: "tree__branch",
-            if is_actionable {
-                div {
-                    class: "tree__row tree__row--interactive",
-                    style: "{row_style}",
-                    button {
-                        class: "tree__button",
-                        onclick: {
-                            let sql = preview_sql.clone();
-                            let object_name = table_name.clone();
-                            move |_| {
-                                set_active_tab_sql(
-                                    tabs,
-                                    active_tab_id(),
-                                    sql.clone(),
-                                    format!("Preview query ready for {object_name}. Double-click to load rows."),
-                                );
-                            }
-                        },
-                        ondoubleclick: {
-                            let source = preview_source.clone();
-                            move |_| {
-                                let current_id = active_tab_id();
-                                let current_tab = tabs
-                                    .read()
-                                    .iter()
-                                    .find(|tab| tab.id == current_id)
-                                    .cloned();
-                                let Some(current_tab) = current_tab else {
-                                    return;
-                                };
-
-                                let Some(connection) =
-                                    tab_connection_or_error(tabs, current_id, current_tab.session_id)
-                                else {
-                                    return;
-                                };
-
-                                run_table_preview_for_tab(
-                                    tabs,
-                                    current_id,
-                                    connection,
-                                    source.clone(),
-                                    0,
-                                    current_tab.page_size,
-                                );
-                            }
-                        },
-                        "{label}"
-                    }
-                }
+        button {
+            class: if selected {
+                "tree__object tree__object--selected"
             } else {
-                p {
-                    class: "tree__row tree__row--schema",
-                    style: "{row_style}",
-                    "{label}"
+                "tree__object"
+            },
+            onclick: {
+                let sql = preview_sql.clone();
+                let qualified_name = node.qualified_name.clone();
+                move |_| {
+                    selected_node.set(qualified_name.clone());
+                    let target_tab_id =
+                        ensure_tab_for_session(tabs, active_tab_id, next_tab_id, session_id);
+                    set_active_tab_sql(
+                        tabs,
+                        target_tab_id,
+                        sql.clone(),
+                        format!("Preview query ready for {object_name}. Double-click to load rows."),
+                    );
                 }
+            },
+            ondoubleclick: {
+                let source = preview_source.clone();
+                let qualified_name = node.qualified_name.clone();
+                move |_| {
+                    selected_node.set(qualified_name.clone());
+                    let current_id =
+                        ensure_tab_for_session(tabs, active_tab_id, next_tab_id, session_id);
+                    let current_tab = tabs
+                        .read()
+                        .iter()
+                        .find(|tab| tab.id == current_id)
+                        .cloned();
+                    let Some(current_tab) = current_tab else {
+                        return;
+                    };
+
+                    let Some(connection) =
+                        tab_connection_or_error(tabs, current_id, current_tab.session_id)
+                    else {
+                        return;
+                    };
+
+                    run_table_preview_for_tab(
+                        tabs,
+                        current_id,
+                        connection,
+                        source.clone(),
+                        0,
+                        current_tab.page_size,
+                    );
+                }
+            },
+            div {
+                class: "tree__object-badge",
+                "{kind_badge}"
             }
-            for child in node.children {
-                ExplorerNodeView {
-                    node: child,
-                    depth: depth + 1,
-                    tabs,
-                    active_tab_id,
-                }
+            div {
+                class: "tree__object-copy",
+                div { class: "tree__object-name", "{node.name}" }
+                div { class: "tree__object-kind", "{kind_label}" }
             }
         }
     }
+}
+
+fn split_children(children: &[ExplorerNode]) -> (Vec<ExplorerNode>, Vec<ExplorerNode>) {
+    let mut tables = Vec::new();
+    let mut views = Vec::new();
+
+    for child in children {
+        match child.kind {
+            ExplorerNodeKind::Table => tables.push(child.clone()),
+            ExplorerNodeKind::View => views.push(child.clone()),
+            ExplorerNodeKind::Schema => {}
+        }
+    }
+
+    tables.sort_by(|left, right| left.name.cmp(&right.name));
+    views.sort_by(|left, right| left.name.cmp(&right.name));
+
+    (tables, views)
+}
+
+fn count_objects(nodes: &[ExplorerNode]) -> usize {
+    nodes.iter().map(|node| node.children.len()).sum()
 }

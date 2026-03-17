@@ -1,41 +1,41 @@
 .theme-dark {
-  --color-bg: #0d1117;
-  --color-panel: #141922;
-  --color-panel-2: #1a202a;
-  --color-panel-3: #212937;
-  --color-border: #2a3443;
-  --color-border-strong: #39465a;
+  --color-bg: #000000;
+  --color-panel: #050608;
+  --color-panel-2: #090b0e;
+  --color-panel-3: #101318;
+  --color-border: #1b222d;
+  --color-border-strong: #273140;
 
-  --color-text: #e5ebf5;
-  --color-text-muted: #95a0b4;
-  --color-text-dim: #687489;
+  --color-text: #eef3fb;
+  --color-text-muted: #9aa8bb;
+  --color-text-dim: #6c798b;
 
-  --color-primary: #4d8eff;
-  --color-primary-hover: #6aa2ff;
-  --color-primary-active: #3b78e0;
-  --color-success: #38c793;
-  --color-danger: #f05b72;
-  --color-warning: #f0b24d;
-  --color-focus: rgba(77, 142, 255, 0.45);
+  --color-primary: #2f7cff;
+  --color-primary-hover: #4a8dff;
+  --color-primary-active: #2169de;
+  --color-success: #31c38a;
+  --color-danger: #ef5f77;
+  --color-warning: #f0b248;
+  --color-focus: rgba(47, 124, 255, 0.45);
 
-  --color-hover: rgba(255, 255, 255, 0.04);
-  --color-active: rgba(77, 142, 255, 0.14);
-  --color-backdrop: rgba(4, 8, 14, 0.62);
+  --color-hover: rgba(255, 255, 255, 0.035);
+  --color-active: rgba(47, 124, 255, 0.18);
+  --color-backdrop: rgba(0, 0, 0, 0.78);
 
-  --editor-bg: #0f141d;
-  --editor-overlay: rgba(10, 14, 22, 0.12);
-  --editor-line: rgba(255, 255, 255, 0.04);
-  --editor-token-plain: #d8e0ef;
-  --editor-token-keyword: #7fb4ff;
-  --editor-token-string: #9be08f;
-  --editor-token-number: #f7c66f;
-  --editor-token-comment: #6f7d92;
-  --editor-token-function: #7dd8ff;
-  --editor-token-type: #d6a8ff;
-  --editor-token-identifier: #c5d0e0;
-  --editor-token-attribute: #ff9db4;
-  --editor-token-operator: #ff8f6b;
-  --editor-token-punctuation: #7d8aa0;
-  --grid-header: #171d27;
-  --grid-row-hover: rgba(255, 255, 255, 0.03);
+  --editor-bg: #020304;
+  --editor-overlay: rgba(255, 255, 255, 0.01);
+  --editor-line: rgba(255, 255, 255, 0.03);
+  --editor-token-plain: #dbe6f8;
+  --editor-token-keyword: #63a0ff;
+  --editor-token-string: #91d883;
+  --editor-token-number: #f5c06b;
+  --editor-token-comment: #667588;
+  --editor-token-function: #79cfff;
+  --editor-token-type: #b9a6ff;
+  --editor-token-identifier: #c8d5e8;
+  --editor-token-attribute: #ff96b0;
+  --editor-token-operator: #ff9a76;
+  --editor-token-punctuation: #7d8da3;
+  --grid-header: #06080b;
+  --grid-row-hover: rgba(47, 124, 255, 0.06);
 }

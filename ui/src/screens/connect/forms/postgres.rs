@@ -4,17 +4,43 @@ use models::{ConnectionRequest, PostgresFormData};
 
 #[component]
 pub fn PostgresForm() -> Element {
-    let mut host = use_signal(|| "".to_string());
+    let mut host = use_signal(|| "localhost".to_string());
     let mut port = use_signal(|| "5432".to_string());
-    let mut username = use_signal(|| "".to_string());
+    let mut username = use_signal(|| "postgres".to_string());
     let mut password = use_signal(|| "".to_string());
-    let mut database = use_signal(|| "".to_string());
+    let mut database = use_signal(|| "postgres".to_string());
     let mut status = use_signal(|| "Idle".to_string());
 
     rsx! {
         form {
             class: "connect-form",
-            onsubmit: move |event| event.prevent_default(),
+            onsubmit: move |event| {
+                event.prevent_default();
+
+                status.set("Connecting...".to_string());
+                let request = ConnectionRequest::Postgres(PostgresFormData {
+                    host: host(),
+                    port: port().parse().unwrap_or(5432),
+                    username: username(),
+                    password: password(),
+                    database: database(),
+                });
+
+                spawn(async move {
+                    match services::connect_to_db(request.clone()).await {
+                        Ok(connection) => {
+                            add_connection_session(request.clone(), connection);
+                            match services::save_connection_request(request).await {
+                                Ok(()) => status.set("Connected".to_string()),
+                                Err(err) => status.set(format!(
+                                    "Connected, but failed to save connection: {err}"
+                                )),
+                            }
+                        }
+                        Err(err) => status.set(format!("Error: {err:?}")),
+                    }
+                });
+            },
             div {
                 class: "connect-form__grid",
                 div {
@@ -24,7 +50,7 @@ pub fn PostgresForm() -> Element {
                         class: "input",
                         id: "pg-host",
                         value: "{host}",
-                        placeholder: "localhost",
+                        placeholder: "localhost or postgres://user:pass@host:5432/db",
                         oninput: move |event| host.set(event.value()),
                     }
                 }
@@ -81,30 +107,7 @@ pub fn PostgresForm() -> Element {
 
             button {
                 class: "button button--primary",
-                onclick: move |_| {
-                    let request = ConnectionRequest::Postgres(PostgresFormData {
-                        host: host(),
-                        port: port().parse().unwrap_or(5432),
-                        username: username(),
-                        password: password(),
-                        database: database(),
-                    });
-
-                    spawn(async move {
-                        match services::connect_to_db(request.clone()).await {
-                            Ok(connection) => {
-                                add_connection_session(request.clone(), connection);
-                                match services::save_connection_request(request).await {
-                                    Ok(()) => status.set("Connected".to_string()),
-                                    Err(err) => status.set(format!(
-                                        "Connected, but failed to save connection: {err}"
-                                    )),
-                                }
-                            }
-                            Err(err) => status.set(format!("Error: {err:?}")),
-                        }
-                    });
-                },
+                r#type: "submit",
                 "Connect"
             }
 

@@ -4,36 +4,175 @@
 .tree {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: $spacing-sm;
 }
 
-.tree__branch {
+.tree__header {
+  padding: 0 $spacing-xs;
+  color: var(--color-text-dim);
+  font-size: $font-size-xs;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tree__connection {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  padding: $spacing-xs;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+}
+
+.tree__connection--active {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-active);
+}
+
+.tree__connection-toggle {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  width: 100%;
+  padding: $spacing-xs;
+  border-radius: $radius-sm;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  @include interactive;
+}
+
+.tree__connection-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree__connection-topline {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-xs;
+  min-width: 0;
+}
+
+.tree__connection-kind {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tree__connection-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.tree__connection-meta {
+  color: var(--color-text-dim);
+  font-size: $font-size-xs;
+}
+
+.tree__connection-body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: 0 $spacing-xs $spacing-xs;
+}
+
+.tree__schema {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  padding: $spacing-xs;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel-2);
+}
+
+.tree__schema-toggle {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  width: 100%;
+  padding: $spacing-xs;
+  border-radius: $radius-sm;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  @include interactive;
+}
+
+.tree__chevron {
+  flex-shrink: 0;
+  color: var(--color-text-dim);
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.tree__chevron--open {
+  transform: rotate(90deg);
+}
+
+.tree__schema-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2xs;
+}
+
+.tree__schema-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tree__schema-meta {
+  color: var(--color-text-dim);
+  font-size: $font-size-xs;
+}
+
+.tree__schema-body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: 0 $spacing-xs $spacing-xs;
+}
+
+.tree__group {
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
 }
 
-.tree__row {
-  padding-left: calc(var(--tree-depth) * 16px);
+.tree__group-header {
+  padding: 0 $spacing-xs;
+  color: var(--color-text-dim);
+  font-size: $font-size-xs;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tree__group-items {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2xs;
+}
+
+.tree__object {
   display: flex;
   align-items: center;
   gap: $spacing-sm;
-  min-height: 32px;
-  color: var(--color-text-muted);
-}
-
-.tree__row--interactive {
-  flex-wrap: wrap;
-}
-
-.tree__row--schema {
-  font-size: $font-size-sm;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.tree__button {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   padding: $spacing-xs $spacing-sm;
   border-radius: $radius-sm;
@@ -43,9 +182,44 @@
   @include interactive;
 }
 
-.tree__button,
-.tree__row--schema {
-  overflow-wrap: anywhere;
+.tree__object--selected {
+  background: var(--color-active);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.tree__object-badge {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-panel-3);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.tree__object-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree__object-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.tree__object-kind {
+  color: var(--color-text-dim);
+  font-size: $font-size-xs;
 }
 
 .history {
@@ -79,7 +253,7 @@
 .session-list__item--active {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px var(--color-active);
-  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-3));
+  background: var(--color-panel-2);
 }
 
 .session-list__main {
@@ -119,15 +293,15 @@
   background: var(--color-panel);
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
 }
 
 .history__meta {
   color: var(--color-text-muted);
-  font-size: $font-size-sm;
+  font-size: $font-size-xs;
   display: flex;
   flex-direction: column;
-  gap: $spacing-2xs;
+  gap: 6px;
 }
 
 .history__connection {
@@ -139,7 +313,7 @@
 
 .history__topline {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: $spacing-sm;
 }
@@ -148,11 +322,21 @@
   min-width: 0;
   font-weight: 600;
   color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history__outcome {
   flex-shrink: 0;
-  font-size: $font-size-xs;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel-2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .history__outcome--success {
@@ -168,7 +352,7 @@
   padding: 2px 6px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  background: var(--color-panel-3);
+  background: var(--color-panel-2);
   color: var(--color-primary);
   font-size: 10px;
   font-weight: 700;
@@ -194,12 +378,16 @@
   color: var(--color-text);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 72px;
+  max-height: 88px;
   font-size: $font-size-xs;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
 }
 
 .history__actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: $spacing-sm;
+  gap: $spacing-xs;
 }

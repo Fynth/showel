@@ -2,11 +2,16 @@
 @use "../base/states" as *;
 
 .tabbar {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-height: 42px;
   display: flex;
   align-items: center;
   gap: $spacing-xs;
   padding: $spacing-sm $spacing-md 0;
-  background: linear-gradient(180deg, var(--color-panel-2), var(--color-panel));
+  margin-bottom: -1px;
+  background: var(--color-panel);
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -25,6 +30,8 @@
 }
 
 .tabbar__tab--active {
+  position: relative;
+  z-index: 1;
   background: var(--editor-bg);
   border-color: var(--color-border);
   border-bottom-color: transparent;
@@ -38,7 +45,7 @@
   gap: $spacing-sm;
   max-width: clamp(140px, 18vw, 220px);
   min-width: 0;
-  background: var(--color-panel-3);
+  background: var(--color-panel-2);
 }
 
 .tabbar__copy {

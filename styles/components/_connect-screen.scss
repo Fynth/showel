@@ -16,7 +16,7 @@
   padding: clamp($spacing-lg, 2.4vw, $spacing-2xl);
   border: 1px solid var(--color-border);
   border-radius: $radius-lg;
-  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-2));
+  background: var(--color-panel);
   box-shadow: $shadow-md;
 }
 

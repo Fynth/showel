@@ -25,17 +25,20 @@ pub fn QueryHistoryPanel(
                 .split_once(" · ")
                 .map(|(kind, target)| (kind.to_string(), target.to_string()))
                 .unwrap_or_else(|| (String::new(), item.connection_name.clone()));
-            let outcome_class = if item.outcome.starts_with("Error") {
+            let is_error = item.outcome.starts_with("Error");
+            let outcome_class = if is_error {
                 "history__outcome history__outcome--error"
             } else {
                 "history__outcome history__outcome--success"
             };
+            let outcome_label = if is_error { "Error" } else { "Success" }.to_string();
             (
                 item,
                 source_session_id,
                 connection_kind,
                 connection_target,
                 outcome_class,
+                outcome_label,
             )
         })
         .collect::<Vec<_>>();
@@ -47,7 +50,7 @@ pub fn QueryHistoryPanel(
             if history_entries.is_empty() {
                 p { class: "empty-state", "No executed queries yet." }
             } else {
-                for (item, source_session_id, connection_kind, connection_target, outcome_class) in history_entries {
+                for (item, source_session_id, connection_kind, connection_target, outcome_class, outcome_label) in history_entries {
                     div {
                         class: "history__item",
                         div {
@@ -55,7 +58,11 @@ pub fn QueryHistoryPanel(
                             div {
                                 class: "history__topline",
                                 p { class: "history__title", "{item.tab_title}" }
-                                p { class: outcome_class, "{item.outcome}" }
+                                p {
+                                    class: outcome_class,
+                                    title: "{item.outcome}",
+                                    "{outcome_label}"
+                                }
                             }
                             if !connection_target.is_empty() {
                                 div {
@@ -82,7 +89,7 @@ pub fn QueryHistoryPanel(
                                 button {
                                     class: "button button--ghost button--small",
                                     onclick: move |_| activate_session(session_id),
-                                    "Activate Source"
+                                    "Activate"
                                 }
                             },
                             button {
@@ -98,7 +105,7 @@ pub fn QueryHistoryPanel(
                                         );
                                     }
                                 },
-                                "Reuse in active tab"
+                                "Load in tab"
                             }
                         }
                     }

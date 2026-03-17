@@ -9,7 +9,7 @@ mod tabs;
 pub use agent_panel::{
     AcpAgentPanel, apply_acp_events, default_acp_panel_state, extract_sql_candidate,
 };
-pub use explorer::SidebarConnectionTree;
+pub use explorer::{ExplorerConnectionSection, SidebarConnectionTree};
 pub use history::QueryHistoryPanel;
 pub use result_table::ResultTable;
 pub use session_rail::SessionRail;

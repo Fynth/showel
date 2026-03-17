@@ -4,6 +4,7 @@ use models::{
     AcpUiMessage, QueryTabState,
 };
 
+use crate::app_state::session_connection;
 use crate::screens::workspace::actions::update_active_tab_sql;
 
 #[component]
@@ -15,6 +16,8 @@ pub fn AcpAgentPanel(
     sql_connection_label: String,
 ) -> Element {
     let state = panel_state();
+    let sql_generation_label = sql_connection_label.clone();
+    let chat_label = sql_connection_label.clone();
     let mut registry_busy = use_signal(|| false);
     let mut registry_status = use_signal(String::new);
     let registry_agents =
@@ -94,7 +97,17 @@ pub fn AcpAgentPanel(
                             article {
                                 class: format!("agent-panel__message agent-panel__message--{}", message_kind_class(&message.kind)),
                                 p { class: "agent-panel__message-role", "{message_kind_label(&message.kind)}" }
-                                pre { class: "agent-panel__message-body", "{message.text}" }
+                                if matches!(message.kind, AcpMessageKind::Thought) {
+                                    div { class: "agent-panel__thinking",
+                                        span { class: "agent-panel__thinking-dot" }
+                                        span { class: "agent-panel__thinking-dot" }
+                                        span { class: "agent-panel__thinking-dot" }
+                                    }
+                                } else if matches!(message.kind, AcpMessageKind::Tool) {
+                                    div { class: "agent-panel__tool-emoji", "🛠" }
+                                } else {
+                                    pre { class: "agent-panel__message-body", "{message.text}" }
+                                }
                                 if matches!(message.kind, AcpMessageKind::Agent) {
                                     if let Some(sql) = extract_sql_candidate(&message.text) {
                                         div { class: "agent-panel__message-actions",
@@ -216,30 +229,69 @@ pub fn AcpAgentPanel(
                                 if request.is_empty() {
                                     return;
                                 }
+                                let connection = active_editor_connection(tabs, active_tab_id());
+                                let connection_label = sql_generation_label.clone();
+                                panel_state.with_mut(|state| {
+                                    state.busy = true;
+                                    state.pending_sql_insert = true;
+                                    state.status =
+                                        "Preparing connected database context for the agent..."
+                                            .to_string();
+                                });
+                                spawn(async move {
+                                    let prompt = match connection {
+                                        Some(connection) => {
+                                            match services::build_acp_database_context(
+                                                connection,
+                                                connection_label.clone(),
+                                            )
+                                            .await
+                                            {
+                                                Ok(db_context) => build_sql_generation_prompt(
+                                                    &connection_label,
+                                                    &request,
+                                                    Some(db_context),
+                                                ),
+                                                Err(_) => build_sql_generation_prompt(
+                                                    &connection_label,
+                                                    &request,
+                                                    None,
+                                                ),
+                                            }
+                                        }
+                                        None => build_sql_generation_prompt(
+                                            &connection_label,
+                                            &request,
+                                            None,
+                                        ),
+                                    };
 
-                                let prompt = build_sql_generation_prompt(&sql_connection_label, &request);
-                                match services::send_acp_prompt(prompt) {
-                                    Ok(()) => {
-                                        panel_state.with_mut(|state| {
-                                            push_message(
-                                                state,
-                                                AcpMessageKind::User,
-                                                format!("Generate SQL: {request}"),
-                                            );
-                                            state.prompt.clear();
-                                            state.busy = true;
-                                            state.pending_sql_insert = true;
-                                            state.status =
-                                                "Waiting for agent SQL to insert into the editor...".to_string();
-                                        });
+                                    match services::send_acp_prompt(prompt) {
+                                        Ok(()) => {
+                                            panel_state.with_mut(|state| {
+                                                push_message(
+                                                    state,
+                                                    AcpMessageKind::User,
+                                                    format!("Generate SQL: {request}"),
+                                                );
+                                                state.prompt.clear();
+                                                state.busy = true;
+                                                state.pending_sql_insert = true;
+                                                state.status =
+                                                    "Waiting for agent SQL to insert into the editor..."
+                                                        .to_string();
+                                            });
+                                        }
+                                        Err(err) => {
+                                            panel_state.with_mut(|state| {
+                                                state.status = err.clone();
+                                                state.busy = false;
+                                                state.pending_sql_insert = false;
+                                                push_message(state, AcpMessageKind::Error, err);
+                                            });
+                                        }
                                     }
-                                    Err(err) => {
-                                        panel_state.with_mut(|state| {
-                                            state.status = err.clone();
-                                            push_message(state, AcpMessageKind::Error, err);
-                                        });
-                                    }
-                                }
+                                });
                             },
                             "Generate SQL"
                         }
@@ -251,24 +303,61 @@ pub fn AcpAgentPanel(
                                 if prompt.is_empty() {
                                     return;
                                 }
+                                let connection = active_editor_connection(tabs, active_tab_id());
+                                let connection_label = chat_label.clone();
+                                panel_state.with_mut(|state| {
+                                    state.busy = true;
+                                    state.pending_sql_insert = false;
+                                    state.status =
+                                        "Preparing connected database context for the agent..."
+                                            .to_string();
+                                });
+                                spawn(async move {
+                                    let contextual_prompt = match connection {
+                                        Some(connection) => {
+                                            match services::build_acp_database_context(
+                                                connection,
+                                                connection_label.clone(),
+                                            )
+                                            .await
+                                            {
+                                                Ok(db_context) => build_chat_prompt(
+                                                    &connection_label,
+                                                    &prompt,
+                                                    Some(db_context),
+                                                ),
+                                                Err(_) => build_chat_prompt(
+                                                    &connection_label,
+                                                    &prompt,
+                                                    None,
+                                                ),
+                                            }
+                                        }
+                                        None => {
+                                            build_chat_prompt(&connection_label, &prompt, None)
+                                        }
+                                    };
 
-                                match services::send_acp_prompt(prompt.clone()) {
-                                    Ok(()) => {
-                                        panel_state.with_mut(|state| {
-                                            push_message(state, AcpMessageKind::User, prompt);
-                                            state.prompt.clear();
-                                            state.busy = true;
-                                            state.pending_sql_insert = false;
-                                            state.status = "Waiting for agent response...".to_string();
-                                        });
+                                    match services::send_acp_prompt(contextual_prompt) {
+                                        Ok(()) => {
+                                            panel_state.with_mut(|state| {
+                                                push_message(state, AcpMessageKind::User, prompt);
+                                                state.prompt.clear();
+                                                state.busy = true;
+                                                state.pending_sql_insert = false;
+                                                state.status =
+                                                    "Waiting for agent response...".to_string();
+                                            });
+                                        }
+                                        Err(err) => {
+                                            panel_state.with_mut(|state| {
+                                                state.status = err.clone();
+                                                state.busy = false;
+                                                push_message(state, AcpMessageKind::Error, err);
+                                            });
+                                        }
                                     }
-                                    Err(err) => {
-                                        panel_state.with_mut(|state| {
-                                            state.status = err.clone();
-                                            push_message(state, AcpMessageKind::Error, err);
-                                        });
-                                    }
-                                }
+                                });
                             },
                             "Send Prompt"
                         }
@@ -503,12 +592,18 @@ pub fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>) {
                 state.busy = false;
                 state.pending_permission = None;
                 state.status = format!("Prompt finished: {stop_reason}");
+                state
+                    .messages
+                    .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
             }
             AcpEvent::Error(error) => {
                 state.busy = false;
                 state.pending_permission = None;
                 state.pending_sql_insert = false;
                 state.status = error.clone();
+                state
+                    .messages
+                    .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
                 push_message(state, AcpMessageKind::Error, error);
             }
             AcpEvent::Disconnected => {
@@ -518,6 +613,9 @@ pub fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>) {
                 state.connection = None;
                 state.pending_permission = None;
                 state.status = "ACP agent disconnected.".to_string();
+                state
+                    .messages
+                    .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
             }
         }
     }
@@ -533,18 +631,38 @@ fn apply_connected(state: &mut AcpPanelState, connection: AcpConnectionInfo) {
 }
 
 fn push_or_append_message(state: &mut AcpPanelState, kind: AcpMessageKind, text: String) {
-    if text.is_empty() {
+    if text.is_empty() && !matches!(kind, AcpMessageKind::Tool | AcpMessageKind::Thought) {
+        return;
+    }
+
+    if matches!(kind, AcpMessageKind::Thought) {
+        if state
+            .messages
+            .last()
+            .is_some_and(|last| matches!(last.kind, AcpMessageKind::Thought))
+        {
+            return;
+        }
+
+        push_message(state, kind, String::new());
         return;
     }
 
     if let Some(last) = state.messages.last_mut() {
         if last.kind == kind {
+            if matches!(kind, AcpMessageKind::Tool) {
+                return;
+            }
             last.text.push_str(&text);
             return;
         }
     }
 
-    push_message(state, kind, text);
+    if matches!(kind, AcpMessageKind::Tool) {
+        push_message(state, kind, "🛠".to_string());
+    } else {
+        push_message(state, kind, text);
+    }
 }
 
 fn push_message(state: &mut AcpPanelState, kind: AcpMessageKind, text: String) {
@@ -557,8 +675,8 @@ fn message_kind_label(kind: &AcpMessageKind) -> &'static str {
     match kind {
         AcpMessageKind::User => "User",
         AcpMessageKind::Agent => "Agent",
-        AcpMessageKind::Thought => "Thought",
-        AcpMessageKind::Tool => "Tool",
+        AcpMessageKind::Thought => "Thinking",
+        AcpMessageKind::Tool => "🛠",
         AcpMessageKind::System => "System",
         AcpMessageKind::Error => "Error",
     }
@@ -625,13 +743,29 @@ fn extract_any_fenced_block(text: &str) -> Option<String> {
     Some(rest[..end].trim().to_string())
 }
 
-fn build_sql_generation_prompt(connection_label: &str, request: &str) -> String {
-    format!(
+fn build_sql_generation_prompt(
+    connection_label: &str,
+    request: &str,
+    db_context: Option<String>,
+) -> String {
+    let mut prompt = format!(
         "You are generating SQL for the active database connection.\n\
-Database context: {connection_label}\n\
-Return exactly one SQL query inside a single ```sql``` block with no explanation.\n\
-User request: {request}"
-    )
+Database context: {connection_label}\n"
+    );
+    if let Some(db_context) = db_context {
+        prompt.push_str("Use this live database snapshot:\n");
+        prompt.push_str(&db_context);
+        prompt.push('\n');
+    }
+    prompt.push_str(
+        "When creating tables, always define an auto-generated primary key `id`.\n\
+For SQLite use `id INTEGER PRIMARY KEY AUTOINCREMENT`.\n\
+For PostgreSQL use `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`.\n\
+When inserting rows, omit the `id` column unless the user explicitly asks to provide it manually.\n\
+Return exactly one SQL query inside a single ```sql``` block with no explanation.\n",
+    );
+    prompt.push_str(&format!("User request: {request}"));
+    prompt
 }
 
 fn insert_sql_into_editor(
@@ -664,4 +798,34 @@ fn insert_sql_into_editor(
         state.pending_sql_insert = false;
         state.status = "Inserted agent SQL into the active editor.".to_string();
     });
+}
+
+fn build_chat_prompt(connection_label: &str, prompt: &str, db_context: Option<String>) -> String {
+    let mut message = format!(
+        "You are helping with the active database connection.\n\
+Database context: {connection_label}\n"
+    );
+    if let Some(db_context) = db_context {
+        message.push_str("Use this live database snapshot when answering:\n");
+        message.push_str(&db_context);
+        message.push('\n');
+    }
+    message.push_str(
+        "If you propose schema creation, always use an auto-generated primary key `id`.\n\
+If you propose inserts, omit `id` unless the user explicitly asks for manual ids.\n",
+    );
+    message.push_str(&format!("User request: {prompt}"));
+    message
+}
+
+fn active_editor_connection(
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+) -> Option<models::DatabaseConnection> {
+    let session_id = tabs
+        .read()
+        .iter()
+        .find(|tab| tab.id == active_tab_id)
+        .map(|tab| tab.session_id)?;
+    session_connection(session_id)
 }

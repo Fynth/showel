@@ -4,13 +4,15 @@
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(220px, clamp(240px, 22vw, 300px)) minmax(0, 1fr);
-  gap: clamp($spacing-sm, 1.6vw, $spacing-lg);
-  padding: clamp($spacing-sm, 1.6vw, $spacing-lg);
-  background:
-    radial-gradient(circle at top left, var(--color-panel-2), transparent 38%),
-    var(--color-bg);
+  grid-template-columns: minmax(180px, clamp(200px, 18vw, 240px)) minmax(0, 1fr);
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  background: var(--color-bg);
   overflow: hidden;
+}
+
+.workspace--sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .workspace__sidebar {
@@ -19,27 +21,17 @@
   flex-direction: column;
   border: 1px solid var(--color-border);
   border-radius: $radius-lg;
-  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-2));
-  overflow: hidden;
-}
-
-.workspace__sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: $spacing-md;
-  padding: clamp($spacing-md, 1.4vw, $spacing-lg);
-  border-bottom: 1px solid var(--color-border);
   background: var(--color-panel);
+  overflow: hidden;
 }
 
 .workspace__sidebar-body {
   min-height: 0;
   overflow: auto;
-  padding: clamp($spacing-sm, 1.2vw, $spacing-md);
+  padding: $spacing-sm;
   display: flex;
   flex-direction: column;
-  gap: $spacing-md;
+  gap: $spacing-sm;
 }
 
 .workspace__title {
@@ -61,7 +53,7 @@
   grid-template-rows: auto 1fr;
   border: 1px solid var(--color-border);
   border-radius: $radius-lg;
-  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-2));
+  background: var(--color-panel);
   overflow: hidden;
 }
 
@@ -79,26 +71,11 @@
 .workspace__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: $spacing-md;
-  padding: clamp($spacing-sm, 1.1vw, $spacing-md) clamp($spacing-md, 1.4vw, $spacing-lg);
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
   border-bottom: 1px solid var(--color-border);
-  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-3));
-}
-
-.workspace__header-copy {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-xs;
-  min-width: 0;
-}
-
-.workspace__headline {
-  font-size: clamp($font-size-xl, 1.25vw, $font-size-2xl);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--color-panel);
 }
 
 .workspace__toolbar {
@@ -115,8 +92,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
-  padding: $spacing-xs clamp($spacing-sm, 1.2vw, $spacing-md) clamp($spacing-sm, 1.2vw, $spacing-md);
+  gap: $spacing-xs;
+  padding: $spacing-xs $spacing-sm $spacing-sm;
   border-top: 1px solid var(--color-border);
   background: var(--color-panel);
   overflow: hidden;
@@ -130,8 +107,8 @@
 .workspace__panel {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
-  padding: clamp($spacing-sm, 1.2vw, $spacing-md);
+  gap: $spacing-xs;
+  padding: $spacing-sm;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel);
@@ -152,12 +129,11 @@
 
 @media (max-width: 980px) {
   .workspace {
-    grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+    grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
   }
 
   .workspace__header {
-    align-items: flex-start;
-    flex-direction: column;
+    justify-content: flex-start;
   }
 
   .workspace__toolbar {
@@ -174,19 +150,15 @@
 @media (max-width: 860px) {
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(220px, auto) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .workspace__sidebar {
-    max-height: min(42vh, 420px);
+    max-height: min(34vh, 320px);
   }
 }
 
 @media (max-width: 640px) {
-  .workspace__headline {
-    white-space: normal;
-  }
-
   .workspace__toolbar {
     gap: $spacing-xs;
   }
@@ -198,7 +170,6 @@
     padding: $spacing-sm;
   }
 
-  .workspace__sidebar-header,
   .workspace__header {
     padding-top: $spacing-sm;
     padding-bottom: $spacing-sm;
