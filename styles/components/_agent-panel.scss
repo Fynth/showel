@@ -47,6 +47,39 @@
   gap: $spacing-sm;
 }
 
+.agent-panel__section,
+.agent-panel__registry-card {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+}
+
+.agent-panel__section-header,
+.agent-panel__registry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.agent-panel__section-title,
+.agent-panel__registry-title {
+  font-size: $font-size-md;
+  font-weight: 600;
+}
+
+.agent-panel__registry-copy,
+.agent-panel__registry-actions,
+.agent-panel__message-actions {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
 .agent-panel__permission {
   display: flex;
   flex-direction: column;
@@ -151,6 +184,10 @@
   font-family: $font-family-mono;
   font-size: $font-size-sm;
   line-height: 1.5;
+}
+
+.agent-panel__message-actions {
+  margin-top: $spacing-xs;
 }
 
 .agent-panel__prompt {

@@ -6,7 +6,9 @@ mod session_rail;
 mod sql_editor;
 mod tabs;
 
-pub use agent_panel::{AcpAgentPanel, apply_acp_events, default_acp_panel_state};
+pub use agent_panel::{
+    AcpAgentPanel, apply_acp_events, default_acp_panel_state, extract_sql_candidate,
+};
 pub use explorer::SidebarConnectionTree;
 pub use history::QueryHistoryPanel;
 pub use result_table::ResultTable;

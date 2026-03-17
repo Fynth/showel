@@ -13,6 +13,15 @@ pub struct AcpConnectionInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcpRegistryAgent {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub installed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AcpMessageKind {
     User,
     Agent,
@@ -62,6 +71,7 @@ pub struct AcpPanelState {
     pub status: String,
     pub connected: bool,
     pub busy: bool,
+    pub pending_sql_insert: bool,
     pub connection: Option<AcpConnectionInfo>,
     pub messages: Vec<AcpUiMessage>,
     pub next_message_id: u64,
@@ -77,6 +87,7 @@ impl AcpPanelState {
             status: "ACP agent is disconnected.".to_string(),
             connected: false,
             busy: false,
+            pending_sql_insert: false,
             connection: None,
             messages: Vec::new(),
             next_message_id: 1,
