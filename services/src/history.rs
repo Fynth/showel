@@ -4,9 +4,11 @@ use models::{
     SqliteFormData,
 };
 use serde::{Deserialize, Serialize};
+use std::{fs, io::ErrorKind, path::PathBuf};
 
 use crate::storage::{
-    query_history_path, read_json_file, read_text_file, saved_connections_path, write_json_file,
+    query_history_path, read_json_file, read_text_file, saved_connections_path, session_state_path,
+    write_json_file,
 };
 
 const MAX_SAVED_CONNECTIONS: usize = 10;
@@ -40,6 +42,13 @@ struct ClickHouseConnectionMetadata {
     port: u16,
     username: String,
     database: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct PersistedSessionState {
+    #[serde(default)]
+    open_requests: Vec<ConnectionRequest>,
+    active_connection_name: Option<String>,
 }
 
 pub async fn load_saved_connections() -> Result<Vec<SavedConnection>, String> {
@@ -98,12 +107,48 @@ pub async fn append_query_history(item: QueryHistoryItem) -> Result<(), String> 
     write_json_file(query_history_path(), &history).await
 }
 
+pub async fn save_session_state(
+    open_requests: Vec<ConnectionRequest>,
+    active_connection_name: Option<String>,
+) -> Result<(), String> {
+    let state = PersistedSessionState {
+        open_requests,
+        active_connection_name,
+    };
+    write_json_file(session_state_path(), &state).await
+}
+
+pub async fn load_session_state() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
+    let state: PersistedSessionState = read_json_file(session_state_path()).await?;
+    Ok((state.open_requests, state.active_connection_name))
+}
+
+pub fn save_session_state_sync(
+    open_requests: Vec<ConnectionRequest>,
+    active_connection_name: Option<String>,
+) -> Result<(), String> {
+    let state = PersistedSessionState {
+        open_requests,
+        active_connection_name,
+    };
+    write_session_state_sync(session_state_path(), &state)
+}
+
+pub fn load_session_state_sync() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
+    let state = read_session_state_sync(session_state_path())?;
+    Ok((state.open_requests, state.active_connection_name))
+}
+
 async fn persist_saved_connections(
     saved_connections: &[SavedConnection],
     previous_names: &[String],
 ) -> Result<(), String> {
+    let mut secret_errors = Vec::new();
+
     for saved_connection in saved_connections {
-        sync_connection_secret(saved_connection)?;
+        if let Err(err) = sync_connection_secret(saved_connection) {
+            secret_errors.push(err);
+        }
     }
 
     for removed_name in previous_names {
@@ -111,7 +156,9 @@ async fn persist_saved_connections(
             .iter()
             .any(|saved| &saved.name == removed_name)
         {
-            delete_secret(removed_name)?;
+            if let Err(err) = delete_secret(removed_name) {
+                secret_errors.push(err);
+            }
         }
     }
 
@@ -120,44 +167,54 @@ async fn persist_saved_connections(
         .cloned()
         .map(to_persisted_connection)
         .collect::<Vec<_>>();
-    write_json_file(saved_connections_path(), &persisted).await
+    write_json_file(saved_connections_path(), &persisted).await?;
+
+    if secret_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "saved connection metadata, but secure storage had issues: {}",
+            secret_errors.join("; ")
+        ))
+    }
 }
 
 fn hydrate_saved_connections(
     persisted: Vec<PersistedSavedConnection>,
 ) -> Result<Vec<SavedConnection>, String> {
-    persisted
-        .into_iter()
-        .map(|saved_connection| {
-            let password = load_secret(&saved_connection.name)?;
-            let request = match saved_connection.request {
-                PersistedConnectionRequest::Sqlite(data) => ConnectionRequest::Sqlite(data),
-                PersistedConnectionRequest::Postgres(data) => {
-                    ConnectionRequest::Postgres(PostgresFormData {
-                        host: data.host,
-                        port: data.port,
-                        username: data.username,
-                        password: password.unwrap_or_default(),
-                        database: data.database,
-                    })
-                }
-                PersistedConnectionRequest::ClickHouse(data) => {
-                    ConnectionRequest::ClickHouse(ClickHouseFormData {
-                        host: data.host,
-                        port: data.port,
-                        username: data.username,
-                        password: password.unwrap_or_default(),
-                        database: data.database,
-                    })
-                }
-            };
+    let mut restored = Vec::with_capacity(persisted.len());
 
-            Ok(SavedConnection {
-                name: saved_connection.name,
-                request,
-            })
-        })
-        .collect()
+    for saved_connection in persisted {
+        let password = load_secret(&saved_connection.name).ok().flatten();
+        let request = match saved_connection.request {
+            PersistedConnectionRequest::Sqlite(data) => ConnectionRequest::Sqlite(data),
+            PersistedConnectionRequest::Postgres(data) => {
+                ConnectionRequest::Postgres(PostgresFormData {
+                    host: data.host,
+                    port: data.port,
+                    username: data.username,
+                    password: password.clone().unwrap_or_default(),
+                    database: data.database,
+                })
+            }
+            PersistedConnectionRequest::ClickHouse(data) => {
+                ConnectionRequest::ClickHouse(ClickHouseFormData {
+                    host: data.host,
+                    port: data.port,
+                    username: data.username,
+                    password: password.unwrap_or_default(),
+                    database: data.database,
+                })
+            }
+        };
+
+        restored.push(SavedConnection {
+            name: saved_connection.name,
+            request,
+        });
+    }
+
+    Ok(restored)
 }
 
 fn to_persisted_connection(saved_connection: SavedConnection) -> PersistedSavedConnection {
@@ -249,4 +306,24 @@ fn secret_key(connection_name: &str) -> String {
     }
 
     format!("connection-{hash:016x}")
+}
+
+fn read_session_state_sync(path: PathBuf) -> Result<PersistedSessionState, String> {
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str::<PersistedSessionState>(&content)
+            .map_err(|err| format!("failed to parse {}: {err}", path.display())),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(PersistedSessionState::default()),
+        Err(err) => Err(format!("failed to read {}: {err}", path.display())),
+    }
+}
+
+fn write_session_state_sync(path: PathBuf, value: &PersistedSessionState) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create storage dir {}: {err}", parent.display()))?;
+    }
+
+    let json = serde_json::to_string_pretty(value)
+        .map_err(|err| format!("failed to serialize {}: {err}", path.display()))?;
+    fs::write(&path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))
 }

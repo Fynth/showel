@@ -42,6 +42,14 @@
   white-space: nowrap;
 }
 
+.results__cell-content {
+  display: block;
+  max-width: min(40vw, 320px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .results__cell--editable {
   cursor: text;
 }

@@ -10,7 +10,37 @@ pub fn SqliteForm() -> Element {
     rsx! {
         form {
             class: "connect-form",
-            onsubmit: move |event| event.prevent_default(),
+            onsubmit: move |event| {
+                event.prevent_default();
+
+                let current_path = path().trim().to_string();
+                if current_path.is_empty() {
+                    status.set("Config is empty".to_string());
+                    return;
+                }
+
+                status.set("Connecting...".to_string());
+                let request = ConnectionRequest::Sqlite(SqliteFormData {
+                    path: current_path,
+                });
+
+                spawn(async move {
+                    match services::connect_to_db(request.clone()).await {
+                        Ok(connection) => {
+                            add_connection_session(request.clone(), connection);
+                            match services::save_connection_request(request).await {
+                                Ok(()) => status.set("Connected".to_string()),
+                                Err(err) => status.set(format!(
+                                    "Connected, but failed to save connection: {err}"
+                                )),
+                            }
+                        }
+                        Err(err) => {
+                            status.set(format!("Error: {err:?}"));
+                        }
+                    }
+                });
+            },
             div {
                 class: "field",
                 label {
@@ -31,34 +61,7 @@ pub fn SqliteForm() -> Element {
 
             button {
                 class: "button button--primary",
-                onclick: move |_| {
-                    let current_path = path().trim().to_string();
-                    if current_path.is_empty() {
-                        status.set("Config is empty".to_string());
-                        return;
-                    }
-
-                    let request = ConnectionRequest::Sqlite(SqliteFormData {
-                        path: current_path,
-                    });
-
-                    spawn(async move {
-                        match services::connect_to_db(request.clone()).await {
-                            Ok(connection) => {
-                                add_connection_session(request.clone(), connection);
-                                match services::save_connection_request(request).await {
-                                    Ok(()) => status.set("Connected".to_string()),
-                                    Err(err) => status.set(format!(
-                                        "Connected, but failed to save connection: {err}"
-                                    )),
-                                }
-                            }
-                            Err(err) => {
-                                status.set(format!("Error: {err:?}"));
-                            }
-                        }
-                    });
-                },
+                r#type: "submit",
                 "Connect"
             }
 

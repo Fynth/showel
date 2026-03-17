@@ -107,10 +107,18 @@ pub fn ResultTable(
                                                             }
                                                         }
                                                     } else {
-                                                        "{cell}"
+                                                        div {
+                                                            class: "results__cell-content",
+                                                            title: "{cell}",
+                                                            "{cell}"
+                                                        }
                                                     }
                                                 } else {
-                                                    "{cell}"
+                                                    div {
+                                                        class: "results__cell-content",
+                                                        title: "{cell}",
+                                                        "{cell}"
+                                                    }
                                                 }
                                             }
                                         }

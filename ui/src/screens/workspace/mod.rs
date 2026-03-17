@@ -3,15 +3,16 @@ mod components;
 
 use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, open_connection_screen};
 use dioxus::prelude::*;
-use models::{ExplorerNode, QueryHistoryItem, QueryTabState};
+use models::{QueryHistoryItem, QueryTabState};
 use std::collections::HashSet;
 use std::time::Duration;
 
 use self::{
     actions::{new_query_tab, update_active_tab_sql},
     components::{
-        AcpAgentPanel, QueryHistoryPanel, SessionRail, SidebarConnectionTree, TabsManager,
-        apply_acp_events, default_acp_panel_state, extract_sql_candidate,
+        AcpAgentPanel, ExplorerConnectionSection, QueryHistoryPanel, SessionRail,
+        SidebarConnectionTree, TabsManager, apply_acp_events, default_acp_panel_state,
+        extract_sql_candidate,
     },
 };
 
@@ -22,20 +23,18 @@ pub fn Workspace() -> Element {
         .as_ref()
         .map(|session| session.name.clone())
         .unwrap_or_else(|| "No connection".to_string());
-    let connection_kind = active_session
-        .as_ref()
-        .map(|session| format!("{:?}", session.kind))
-        .unwrap_or_else(|| "No active driver".to_string());
     let show_history = APP_SHOW_HISTORY();
 
     let mut tree_status = use_signal(|| "Loading explorer...".to_string());
-    let mut tree_nodes = use_signal(Vec::<ExplorerNode>::new);
+    let mut tree_sections = use_signal(Vec::<ExplorerConnectionSection>::new);
     let mut tree_reload = use_signal(|| 0_u64);
     let mut next_tab_id = use_signal(|| 1_u64);
     let mut next_history_id = use_signal(|| 1_u64);
     let mut active_tab_id = use_signal(|| 0_u64);
     let mut tabs = use_signal(Vec::<QueryTabState>::new);
     let mut history = use_signal(Vec::<QueryHistoryItem>::new);
+    let mut show_connections = use_signal(|| false);
+    let mut show_explorer = use_signal(|| true);
     let mut show_sql_editor = use_signal(|| true);
     let mut show_agent_panel = use_signal(|| false);
     let mut acp_panel_state = use_signal(default_acp_panel_state);
@@ -46,33 +45,62 @@ pub fn Workspace() -> Element {
 
     use_effect(move || {
         let reload_tick = tree_reload();
-        let current_connection = {
+        let (sessions, active_session_id) = {
             let app_state = APP_STATE.read();
-            app_state
-                .active_session()
-                .map(|session| session.connection.clone())
+            (app_state.sessions.clone(), app_state.active_session_id)
         };
 
         spawn(async move {
             let _ = reload_tick;
-            match current_connection {
-                Some(connection) => {
-                    tree_status.set("Loading explorer...".to_string());
-                    match services::load_connection_tree(connection).await {
-                        Ok(nodes) => {
-                            tree_nodes.set(nodes);
-                            tree_status.set("Explorer ready".to_string());
-                        }
-                        Err(err) => {
-                            tree_nodes.set(Vec::new());
-                            tree_status.set(format!("Explorer error: {err:?}"));
-                        }
+            if sessions.is_empty() {
+                tree_sections.set(Vec::new());
+                tree_status.set("Select or create a connection".to_string());
+                return;
+            }
+
+            tree_status.set("Loading explorer...".to_string());
+            let mut sections = Vec::new();
+            let mut failed_count = 0usize;
+
+            for session in sessions {
+                match services::load_connection_tree(session.connection.clone()).await {
+                    Ok(nodes) => sections.push(ExplorerConnectionSection {
+                        session_id: session.id,
+                        name: session.name,
+                        kind_label: match session.kind {
+                            models::DatabaseKind::Sqlite => "SQLite".to_string(),
+                            models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+                            models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
+                        },
+                        status: "Ready".to_string(),
+                        is_active: Some(session.id) == active_session_id,
+                        nodes,
+                    }),
+                    Err(err) => {
+                        failed_count += 1;
+                        sections.push(ExplorerConnectionSection {
+                            session_id: session.id,
+                            name: session.name,
+                            kind_label: match session.kind {
+                                models::DatabaseKind::Sqlite => "SQLite".to_string(),
+                                models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+                                models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
+                            },
+                            status: format!("Error: {err:?}"),
+                            is_active: Some(session.id) == active_session_id,
+                            nodes: Vec::new(),
+                        });
                     }
                 }
-                None => {
-                    tree_nodes.set(Vec::new());
-                    tree_status.set("Select or create a connection".to_string());
-                }
+            }
+
+            tree_sections.set(sections);
+            if failed_count == 0 {
+                tree_status.set("Explorer ready".to_string());
+            } else {
+                tree_status.set(format!(
+                    "Explorer ready, {failed_count} connection(s) failed"
+                ));
             }
         });
     });
@@ -182,40 +210,44 @@ pub fn Workspace() -> Element {
 
     rsx! {
         div {
-            class: "workspace",
-            aside {
-                class: "workspace__sidebar",
-                div {
-                    class: "workspace__sidebar-header",
+            class: if show_connections() || show_explorer() || show_history {
+                "workspace"
+            } else {
+                "workspace workspace--sidebar-hidden"
+            },
+            if show_connections() || show_explorer() || show_history {
+                aside {
+                    class: "workspace__sidebar",
                     div {
-                        h2 { class: "workspace__title", "Workspace" }
-                        p { class: "workspace__meta", "{connection_kind}" }
-                    }
-                }
-                div {
-                    class: "workspace__sidebar-body",
-                    SessionRail {
-                        tabs,
-                        active_tab_id,
-                    }
-                    div {
-                        class: "workspace__panel",
-                        div {
-                            class: "workspace__panel-header",
-                            h2 { class: "workspace__section-title", "Explorer" }
-                            p { class: "workspace__hint", "{tree_status}" }
+                        class: "workspace__sidebar-body",
+                        if show_connections() {
+                            SessionRail {
+                                tabs,
+                                active_tab_id,
+                            }
                         }
-                        SidebarConnectionTree {
-                            tree_nodes: tree_nodes(),
-                            tabs,
-                            active_tab_id,
+                        if show_explorer() {
+                            div {
+                                class: "workspace__panel",
+                                div {
+                                    class: "workspace__panel-header",
+                                    h2 { class: "workspace__section-title", "Explorer" }
+                                    p { class: "workspace__hint", "{tree_status}" }
+                                }
+                                SidebarConnectionTree {
+                                    sections: tree_sections(),
+                                    tabs,
+                                    active_tab_id,
+                                    next_tab_id,
+                                }
+                            }
                         }
-                    }
-                    if show_history {
-                        QueryHistoryPanel {
-                            history: history(),
-                            tabs,
-                            active_tab_id,
+                        if show_history {
+                            QueryHistoryPanel {
+                                history: history(),
+                                tabs,
+                                active_tab_id,
+                            }
                         }
                     }
                 }
@@ -225,15 +257,25 @@ pub fn Workspace() -> Element {
                 header {
                     class: "workspace__header",
                     div {
-                        class: "workspace__header-copy",
-                        h2 { class: "workspace__headline", "{connection_label}" }
-                        p {
-                            class: "workspace__meta",
-                            "Switch connections without losing tabs or query history."
-                        }
-                    }
-                    div {
                         class: "workspace__toolbar",
+                        button {
+                            class: if show_connections() {
+                                "button button--ghost button--small button--active"
+                            } else {
+                                "button button--ghost button--small"
+                            },
+                            onclick: move |_| show_connections.toggle(),
+                            if show_connections() { "Hide Connections" } else { "Show Connections" }
+                        }
+                        button {
+                            class: if show_explorer() {
+                                "button button--ghost button--small button--active"
+                            } else {
+                                "button button--ghost button--small"
+                            },
+                            onclick: move |_| show_explorer.toggle(),
+                            if show_explorer() { "Hide Explorer" } else { "Show Explorer" }
+                        }
                         button {
                             class: if show_history {
                                 "button button--ghost button--small button--active"

@@ -1,4 +1,4 @@
-use crate::app_state::session_connection;
+use crate::app_state::{activate_session, session_connection};
 use dioxus::prelude::*;
 use models::{
     DatabaseConnection, QueryHistoryItem, QueryOutput, QueryTabState, TablePreviewSource,
@@ -19,6 +19,38 @@ pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> Qu
         last_run_sql: None,
         preview_source: None,
     }
+}
+
+pub fn ensure_tab_for_session(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    mut active_tab_id: Signal<u64>,
+    mut next_tab_id: Signal<u64>,
+    session_id: u64,
+) -> u64 {
+    activate_session(session_id);
+
+    if let Some(existing_tab_id) = tabs
+        .read()
+        .iter()
+        .find(|tab| tab.session_id == session_id)
+        .map(|tab| tab.id)
+    {
+        active_tab_id.set(existing_tab_id);
+        return existing_tab_id;
+    }
+
+    let tab_id = next_tab_id();
+    next_tab_id += 1;
+    tabs.with_mut(|all_tabs| {
+        all_tabs.push(new_query_tab(
+            tab_id,
+            session_id,
+            format!("Query {tab_id}"),
+            "select 1 as id;".to_string(),
+        ));
+    });
+    active_tab_id.set(tab_id);
+    tab_id
 }
 
 pub fn update_active_tab_sql(

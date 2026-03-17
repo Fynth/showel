@@ -11,12 +11,14 @@ pub enum DatabaseKind {
 pub enum DatabaseConnection {
     Sqlite(sqlx::SqlitePool),
     Postgres(sqlx::PgPool),
+    ClickHouse(ClickHouseFormData),
 }
 
 #[derive(Debug)]
 pub enum DatabaseError {
     Sqlite(sqlx::Error),
     Postgres(sqlx::Error),
+    ClickHouse(String),
     UnsupportedDriver(String),
 }
 
@@ -41,6 +43,24 @@ pub struct ClickHouseFormData {
     pub username: String,
     pub password: String,
     pub database: String,
+}
+
+impl ClickHouseFormData {
+    pub fn effective_username(&self) -> &str {
+        if self.username.trim().is_empty() {
+            "default"
+        } else {
+            self.username.trim()
+        }
+    }
+
+    pub fn effective_database(&self) -> &str {
+        if self.database.trim().is_empty() {
+            "default"
+        } else {
+            self.database.trim()
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,7 +94,10 @@ impl ConnectionRequest {
             ),
             ConnectionRequest::ClickHouse(data) => format!(
                 "ClickHouse · {}@{}:{}/{}",
-                data.username, data.host, data.port, data.database
+                data.effective_username(),
+                data.host,
+                data.port,
+                data.effective_database()
             ),
         }
     }

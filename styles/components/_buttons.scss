@@ -10,7 +10,7 @@
   gap: $spacing-sm;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
-  background: var(--color-panel-3);
+  background: var(--color-panel-2);
   color: var(--color-text);
   cursor: pointer;
   @include interactive;
@@ -33,7 +33,7 @@
 
 .button--active {
   border-color: var(--color-primary);
-  background: var(--color-active);
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-panel-2));
 }
 
 .button--small {

@@ -16,6 +16,10 @@ pub(crate) fn query_history_path() -> PathBuf {
     storage_root().join("query_history.json")
 }
 
+pub(crate) fn session_state_path() -> PathBuf {
+    storage_root().join("session_state.json")
+}
+
 async fn ensure_storage_dir(path: &PathBuf) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)

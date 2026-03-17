@@ -1,5 +1,6 @@
 use database::DatabaseDriver;
 use drivers::{
+    clickhouse::ClickHouseDriver,
     postgres::{PgConfig, PgDriver},
     sqlite::SqliteDriver,
 };
@@ -28,8 +29,11 @@ pub async fn connect_to_db(
                 .map_err(DatabaseError::Postgres)?;
             Ok(DatabaseConnection::Postgres(pool))
         }
-        ConnectionRequest::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
-            "ClickHouse driver is not implemented yet".to_string(),
-        )),
+        ConnectionRequest::ClickHouse(data) => {
+            let connection = ClickHouseDriver::connect(data)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(DatabaseConnection::ClickHouse(connection))
+        }
     }
 }

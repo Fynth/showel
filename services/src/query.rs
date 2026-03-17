@@ -1,8 +1,9 @@
+use drivers::clickhouse::execute_json_query;
 use models::{
     DatabaseConnection, DatabaseError, EditableTableContext, QueryOutput, QueryPage,
     TablePreviewSource,
 };
-use sqlx::{Column, Row};
+use sqlx::{Column, Row, TypeInfo};
 
 const LOCATOR_COLUMN: &str = "__showel_locator";
 
@@ -55,6 +56,18 @@ pub async fn load_table_preview_page(
                 rows, source, page_size, offset,
             )))
         }
+        DatabaseConnection::ClickHouse(config) => {
+            let sql = format!(
+                "select * from {} limit {} offset {}",
+                source.qualified_name, limit, offset
+            );
+            let response = execute_json_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(QueryOutput::Table(clickhouse_rows_to_paginated_page(
+                response, page_size, offset,
+            )))
+        }
     }
 }
 
@@ -97,6 +110,9 @@ pub async fn update_table_cell(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
+        DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
+            "ClickHouse cell updates are not supported".to_string(),
+        )),
     }
 }
 
@@ -177,6 +193,27 @@ pub async fn execute_query_page(
                     .await
                     .map_err(DatabaseError::Postgres)?;
                 Ok(QueryOutput::AffectedRows(result.rows_affected()))
+            }
+        }
+        DatabaseConnection::ClickHouse(config) => {
+            if is_paginated_query(&normalized) {
+                let response =
+                    execute_json_query(&config, &build_paginated_query(&sql, page_size, offset))
+                        .await
+                        .map_err(DatabaseError::ClickHouse)?;
+                Ok(QueryOutput::Table(clickhouse_rows_to_paginated_page(
+                    response, page_size, offset,
+                )))
+            } else if is_tabular_query(&normalized) {
+                let response = execute_json_query(&config, &sql)
+                    .await
+                    .map_err(DatabaseError::ClickHouse)?;
+                Ok(QueryOutput::Table(clickhouse_rows_to_page(response)))
+            } else {
+                drivers::clickhouse::execute_text_query(&config, &sql)
+                    .await
+                    .map_err(DatabaseError::ClickHouse)?;
+                Ok(QueryOutput::AffectedRows(0))
             }
         }
     }
@@ -439,7 +476,22 @@ fn sqlite_cell_to_string(row: &sqlx::sqlite::SqliteRow, idx: usize) -> String {
     if let Ok(value) = row.try_get::<Option<String>, _>(idx) {
         return value.unwrap_or_else(|| "NULL".to_string());
     }
+    if let Ok(value) = row.try_get::<Option<i16>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<i32>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
     if let Ok(value) = row.try_get::<Option<i64>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<f32>, _>(idx) {
         return value
             .map(|value| value.to_string())
             .unwrap_or_else(|| "NULL".to_string());
@@ -460,14 +512,29 @@ fn sqlite_cell_to_string(row: &sqlx::sqlite::SqliteRow, idx: usize) -> String {
             .unwrap_or_else(|| "NULL".to_string());
     }
 
-    "<unsupported>".to_string()
+    format!("<unsupported:{}>", row.columns()[idx].type_info().name())
 }
 
 fn postgres_cell_to_string(row: &sqlx::postgres::PgRow, idx: usize) -> String {
     if let Ok(value) = row.try_get::<Option<String>, _>(idx) {
         return value.unwrap_or_else(|| "NULL".to_string());
     }
+    if let Ok(value) = row.try_get::<Option<i16>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<i32>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
     if let Ok(value) = row.try_get::<Option<i64>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<f32>, _>(idx) {
         return value
             .map(|value| value.to_string())
             .unwrap_or_else(|| "NULL".to_string());
@@ -487,8 +554,153 @@ fn postgres_cell_to_string(row: &sqlx::postgres::PgRow, idx: usize) -> String {
             .map(|bytes| format!("<{} bytes>", bytes.len()))
             .unwrap_or_else(|| "NULL".to_string());
     }
+    if let Ok(value) = row.try_get::<Option<uuid::Uuid>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<bigdecimal::BigDecimal>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, _>(idx) {
+        return value
+            .map(|value| value.0.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<time::Date>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<time::Time>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<time::PrimitiveDateTime>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<time::OffsetDateTime>, _>(idx) {
+        return value
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<Vec<String>>, _>(idx) {
+        return value
+            .map(format_array)
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<Vec<i32>>, _>(idx) {
+        return value
+            .map(format_array)
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<Vec<i64>>, _>(idx) {
+        return value
+            .map(format_array)
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<Vec<f64>>, _>(idx) {
+        return value
+            .map(format_array)
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<Vec<bool>>, _>(idx) {
+        return value
+            .map(format_array)
+            .unwrap_or_else(|| "NULL".to_string());
+    }
+    if let Ok(value) = row.try_get::<Option<Vec<uuid::Uuid>>, _>(idx) {
+        return value
+            .map(format_array)
+            .unwrap_or_else(|| "NULL".to_string());
+    }
 
-    "<unsupported>".to_string()
+    format!("<unsupported:{}>", row.columns()[idx].type_info().name())
+}
+
+fn clickhouse_rows_to_page(response: drivers::clickhouse::ClickHouseJsonResponse) -> QueryPage {
+    QueryPage {
+        columns: response
+            .meta
+            .into_iter()
+            .map(|column| column.name)
+            .collect(),
+        rows: response
+            .data
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|value| clickhouse_json_value_to_string(&value))
+                    .collect()
+            })
+            .collect(),
+        editable: None,
+        offset: 0,
+        page_size: 0,
+        has_previous: false,
+        has_next: false,
+    }
+}
+
+fn clickhouse_rows_to_paginated_page(
+    mut response: drivers::clickhouse::ClickHouseJsonResponse,
+    page_size: u32,
+    offset: u64,
+) -> QueryPage {
+    let has_next = response.data.len() > page_size as usize;
+    if has_next {
+        response.data.truncate(page_size as usize);
+    }
+
+    QueryPage {
+        columns: response
+            .meta
+            .into_iter()
+            .map(|column| column.name)
+            .collect(),
+        rows: response
+            .data
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|value| clickhouse_json_value_to_string(&value))
+                    .collect()
+            })
+            .collect(),
+        editable: None,
+        offset,
+        page_size,
+        has_previous: offset > 0,
+        has_next,
+    }
+}
+
+fn clickhouse_json_value_to_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::String(value) => value.clone(),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+            serde_json::to_string(value).unwrap_or_else(|_| "<unsupported>".to_string())
+        }
+    }
+}
+
+fn format_array<T: ToString>(values: Vec<T>) -> String {
+    format!(
+        "[{}]",
+        values
+            .into_iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 fn quote_identifier(identifier: &str) -> String {
