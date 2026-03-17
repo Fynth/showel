@@ -32,7 +32,7 @@ pub fn activate_session(session_id: u64) {
 }
 
 pub fn session_connection(session_id: u64) -> Option<DatabaseConnection> {
-    APP_STATE.read().session_connection(session_id)
+    APP_STATE.read().session_connection(session_id).cloned()
 }
 
 pub fn add_connection_session(request: ConnectionRequest, connection: DatabaseConnection) -> u64 {
@@ -103,40 +103,48 @@ pub fn restore_connection_sessions(
     restored: Vec<(ConnectionRequest, DatabaseConnection)>,
     active_name: Option<String>,
 ) {
-    APP_STATE.with_mut(|state| {
-        let existing_names = state
+    // First collect existing session names and release SSH tunnels
+    let existing_names = {
+        let state = APP_STATE.read();
+        state
             .sessions
             .iter()
             .map(|session| session.name.clone())
-            .collect::<Vec<_>>();
-        for name in existing_names {
-            connection::release_ssh_tunnel(&name);
-        }
+            .collect::<Vec<_>>()
+    };
 
-        state.sessions.clear();
-        state.active_session_id = None;
-        state.next_session_id = 1;
+    // Release SSH tunnels outside the lock to avoid potential deadlocks
+    for name in existing_names {
+        connection::release_ssh_tunnel(&name);
+    }
+
+    // Now replace sessions atomically
+    APP_STATE.with_mut(|state| {
+        let mut new_sessions = Vec::with_capacity(restored.len());
+        let mut next_id = 1;
 
         for (request, connection) in restored {
-            let session_id = state.next_session_id;
-            state.next_session_id += 1;
             let session_name = request.display_name();
             let session_kind = request.kind();
-            state.sessions.push(ConnectionSession {
-                id: session_id,
+            new_sessions.push(ConnectionSession {
+                id: next_id,
                 name: session_name,
                 kind: session_kind,
                 request,
                 connection,
             });
+            next_id += 1;
         }
 
+        state.sessions = new_sessions;
+        state.next_session_id = next_id;
         state.active_session_id = active_name
             .as_deref()
             .and_then(|name| state.session_id_by_name(name))
             .or_else(|| state.sessions.first().map(|session| session.id));
         state.show_connection_screen = state.sessions.is_empty();
     });
+
     persist_session_state();
 }
 
@@ -154,5 +162,10 @@ fn persist_session_state() {
         (requests, active)
     };
 
-    let _ = storage::save_session_state_sync(open_requests, active_connection_name);
+    // Use spawn_blocking to avoid blocking the UI thread
+    tokio::task::spawn_blocking(move || {
+        if let Err(err) = storage::save_session_state_sync(open_requests, active_connection_name) {
+            eprintln!("Failed to persist session state: {}", err);
+        }
+    });
 }

@@ -46,20 +46,33 @@ pub async fn connect_to_db(
                 None
             };
 
-            let config = PgConfig {
-                host: data.host,
-                port: data.port,
-                username: data.username,
-                password: data.password,
-                database: data.database,
+            // Use a closure to ensure tunnel cleanup on error
+            let connect_postgres = || async {
+                let config = PgConfig {
+                    host: data.host.clone(),
+                    port: data.port,
+                    username: data.username.clone(),
+                    password: data.password.clone(),
+                    database: data.database.clone(),
+                };
+                PgDriver::connect(config)
+                    .await
+                    .map_err(DatabaseError::Postgres)
+                    .map(DatabaseConnection::Postgres)
             };
-            let pool = PgDriver::connect(config)
-                .await
-                .map_err(DatabaseError::Postgres)?;
+
+            let result = connect_postgres().await;
+
             if let Some(tunnel) = tunnel {
-                register_ssh_tunnel(session_name, tunnel);
+                if result.is_ok() {
+                    register_ssh_tunnel(session_name, tunnel);
+                } else {
+                    // Clean up the tunnel if connection failed
+                    release_ssh_tunnel(&session_name);
+                }
             }
-            Ok(DatabaseConnection::Postgres(pool))
+
+            result
         }
         ConnectionRequest::ClickHouse(mut data) => {
             let tunnel = if let Some(config) = data.ssh_tunnel.as_ref() {
@@ -80,13 +93,26 @@ pub async fn connect_to_db(
                 None
             };
 
-            let connection = ClickHouseDriver::connect(data)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            // Use a closure to ensure tunnel cleanup on error
+            let connect_clickhouse = || async {
+                ClickHouseDriver::connect(data.clone())
+                    .await
+                    .map_err(DatabaseError::ClickHouse)
+                    .map(DatabaseConnection::ClickHouse)
+            };
+
+            let result = connect_clickhouse().await;
+
             if let Some(tunnel) = tunnel {
-                register_ssh_tunnel(session_name, tunnel);
+                if result.is_ok() {
+                    register_ssh_tunnel(session_name, tunnel);
+                } else {
+                    // Clean up the tunnel if connection failed
+                    release_ssh_tunnel(&session_name);
+                }
             }
-            Ok(DatabaseConnection::ClickHouse(connection))
+
+            result
         }
     }
 }

@@ -44,9 +44,8 @@ impl AppState {
             .find(|session| session.id == session_id)
     }
 
-    pub fn session_connection(&self, session_id: u64) -> Option<DatabaseConnection> {
-        self.session(session_id)
-            .map(|session| session.connection.clone())
+    pub fn session_connection(&self, session_id: u64) -> Option<&DatabaseConnection> {
+        self.session(session_id).map(|session| &session.connection)
     }
 
     pub fn session_name(&self, session_id: u64) -> Option<String> {
