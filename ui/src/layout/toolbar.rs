@@ -43,9 +43,9 @@ pub fn Toolbar() -> Element {
                 if has_sessions {
                     button {
                         class: if show_connect_screen {
-                            "button button--ghost"
+                            "button button--ghost button--small"
                         } else {
-                            "button button--primary"
+                            "button button--primary button--small"
                         },
                         onclick: move |_| {
                             if show_connect_screen {
@@ -58,7 +58,7 @@ pub fn Toolbar() -> Element {
                     }
                 }
                 button {
-                    class: "button button--ghost",
+                    class: "button button--ghost button--small",
                     onclick: move |_| {
                         if APP_THEME() == "theme-dark" {
                             *APP_THEME.write() = "theme-light".to_string();

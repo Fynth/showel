@@ -6,7 +6,7 @@ use crate::{
             replace_active_tab_sql, run_query_for_tab, set_active_tab_status,
             tab_connection_or_error, update_active_tab_sql,
         },
-        components::{ResultTable, SqlEditor},
+        components::{ActionIcon, IconButton, ResultTable, SqlEditor},
     },
 };
 use dioxus::prelude::*;
@@ -210,8 +210,10 @@ pub fn TabsManager(
                 }
                 div {
                     class: "editor__actions",
-                    button {
-                        class: "button button--primary",
+                    IconButton {
+                        icon: ActionIcon::Run,
+                        label: "Run SQL".to_string(),
+                        primary: true,
                         onclick: move |_| {
                             let current_id = active_tab_id();
                             let current_tab = tabs
@@ -257,10 +259,10 @@ pub fn TabsManager(
                                 Some((history, next_history_id, tab_title, connection_name)),
                             );
                         },
-                        "Run SQL"
                     }
-                    button {
-                        class: "button button--ghost",
+                    IconButton {
+                        icon: ActionIcon::Clear,
+                        label: "Clear SQL editor".to_string(),
                         onclick: {
                             let current_id = active_tab_id();
                             move |_| {
@@ -272,18 +274,18 @@ pub fn TabsManager(
                                 );
                             }
                         },
-                        "Clear"
                     }
-                    button {
-                        class: "button button--ghost",
+                    IconButton {
+                        icon: ActionIcon::Format,
+                        label: "Format SQL".to_string(),
                         onclick: {
                             let current_tab = active_tab.clone();
                             move |_| format_active_sql(tabs, current_tab.clone())
                         },
-                        "Format SQL"
                     }
-                    button {
-                        class: "button button--ghost",
+                    IconButton {
+                        icon: ActionIcon::Structure,
+                        label: "Open structure".to_string(),
                         disabled: active_tab.preview_source.is_none(),
                         onclick: {
                             let current_tab = active_tab.clone();
@@ -294,43 +296,42 @@ pub fn TabsManager(
                                 current_tab.clone(),
                             )
                         },
-                        "Open Structure"
                     }
-                    button {
-                        class: "button button--ghost",
+                    IconButton {
+                        icon: ActionIcon::ExportCsv,
+                        label: "Export CSV".to_string(),
                         disabled: !has_tabular_result(&active_tab),
                         onclick: {
                             let current_tab = active_tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Csv)
                         },
-                        "Export CSV"
                     }
-                    button {
-                        class: "button button--ghost",
+                    IconButton {
+                        icon: ActionIcon::ExportJson,
+                        label: "Export JSON".to_string(),
                         disabled: !has_tabular_result(&active_tab),
                         onclick: {
                             let current_tab = active_tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Json)
                         },
-                        "Export JSON"
                     }
-                    button {
-                        class: "button button--ghost",
+                    IconButton {
+                        icon: ActionIcon::ExportXlsx,
+                        label: "Export XLSX".to_string(),
                         disabled: !has_tabular_result(&active_tab),
                         onclick: {
                             let current_tab = active_tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Xlsx)
                         },
-                        "Export XLSX"
                     }
-                    button {
-                        class: "button button--ghost",
+                    IconButton {
+                        icon: ActionIcon::ImportCsv,
+                        label: "Import CSV".to_string(),
                         disabled: active_tab.preview_source.is_none(),
                         onclick: {
                             let current_tab = active_tab.clone();
                             move |_| import_csv_into_active_table(tabs, current_tab.clone())
                         },
-                        "Import CSV"
                     }
                 }
                 if let Some(QueryOutput::Table(page)) = active_tab.result.clone() {
@@ -339,8 +340,10 @@ pub fn TabsManager(
                         p { class: "editor__pagination-meta",
                             "Rows {page.offset + 1}-{page.offset + page.rows.len() as u64} · page size {page.page_size}"
                         }
-                        button {
-                            class: "button button--ghost",
+                        IconButton {
+                            icon: ActionIcon::Previous,
+                            label: "Previous page".to_string(),
+                            small: true,
                             disabled: !page.has_previous || active_tab.last_run_sql.is_none(),
                             onclick: {
                                 let current_tab = active_tab.clone();
@@ -357,10 +360,11 @@ pub fn TabsManager(
                                     );
                                 }
                             },
-                            "Previous"
                         }
-                        button {
-                            class: "button button--ghost",
+                        IconButton {
+                            icon: ActionIcon::Next,
+                            label: "Next page".to_string(),
+                            small: true,
                             disabled: !page.has_next || active_tab.last_run_sql.is_none(),
                             onclick: {
                                 let current_tab = active_tab.clone();
@@ -377,7 +381,6 @@ pub fn TabsManager(
                                     );
                                 }
                             },
-                            "Next"
                         }
                     }
                 }

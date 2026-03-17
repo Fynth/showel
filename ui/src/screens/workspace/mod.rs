@@ -10,9 +10,9 @@ use std::time::Duration;
 use self::{
     actions::{new_query_tab, update_active_tab_sql},
     components::{
-        AcpAgentPanel, ExplorerConnectionSection, QueryHistoryPanel, SavedQueriesPanel,
-        SessionRail, SidebarConnectionTree, TabsManager, apply_acp_events, default_acp_panel_state,
-        extract_sql_candidate,
+        AcpAgentPanel, ActionIcon, ExplorerConnectionSection, IconButton, QueryHistoryPanel,
+        SavedQueriesPanel, SessionRail, SidebarConnectionTree, TabsManager, apply_acp_events,
+        default_acp_panel_state, extract_sql_candidate,
     },
 };
 
@@ -335,60 +335,73 @@ pub fn Workspace() -> Element {
                     class: "workspace__header",
                     div {
                         class: "workspace__toolbar",
-                        button {
-                            class: if show_connections() {
-                                "button button--ghost button--small button--active"
+                        IconButton {
+                            icon: ActionIcon::Connections,
+                            label: if show_connections() {
+                                "Hide connections".to_string()
                             } else {
-                                "button button--ghost button--small"
+                                "Show connections".to_string()
                             },
+                            active: show_connections(),
+                            small: true,
                             onclick: move |_| show_connections.toggle(),
-                            if show_connections() { "Hide Connections" } else { "Show Connections" }
                         }
-                        button {
-                            class: if show_explorer() {
-                                "button button--ghost button--small button--active"
+                        IconButton {
+                            icon: ActionIcon::Explorer,
+                            label: if show_explorer() {
+                                "Hide explorer".to_string()
                             } else {
-                                "button button--ghost button--small"
+                                "Show explorer".to_string()
                             },
+                            active: show_explorer(),
+                            small: true,
                             onclick: move |_| show_explorer.toggle(),
-                            if show_explorer() { "Hide Explorer" } else { "Show Explorer" }
                         }
-                        button {
-                            class: if show_history {
-                                "button button--ghost button--small button--active"
+                        IconButton {
+                            icon: ActionIcon::History,
+                            label: if show_history {
+                                "Hide history".to_string()
                             } else {
-                                "button button--ghost button--small"
+                                "Show history".to_string()
                             },
+                            active: show_history,
+                            small: true,
                             onclick: move |_| APP_SHOW_HISTORY.with_mut(|visible| *visible = !*visible),
-                            if show_history { "Hide History" } else { "Show History" }
                         }
-                        button {
-                            class: if show_sql_editor() {
-                                "button button--ghost button--small button--active"
+                        IconButton {
+                            icon: ActionIcon::SqlEditor,
+                            label: if show_sql_editor() {
+                                "Hide SQL editor".to_string()
                             } else {
-                                "button button--ghost button--small"
+                                "Show SQL editor".to_string()
                             },
+                            active: show_sql_editor(),
+                            small: true,
                             onclick: move |_| show_sql_editor.toggle(),
-                            if show_sql_editor() { "Hide SQL Editor" } else { "Show SQL Editor" }
                         }
-                        button {
-                            class: if show_agent_panel() {
-                                "button button--ghost button--small button--active"
+                        IconButton {
+                            icon: ActionIcon::Agent,
+                            label: if show_agent_panel() {
+                                "Hide agent panel".to_string()
                             } else {
-                                "button button--ghost button--small"
+                                "Show agent panel".to_string()
                             },
+                            active: show_agent_panel(),
+                            small: true,
                             onclick: move |_| show_agent_panel.toggle(),
-                            if show_agent_panel() { "Hide Agent" } else { "Show Agent" }
                         }
-                        button {
-                            class: "button button--ghost button--small",
+                        IconButton {
+                            icon: ActionIcon::Refresh,
+                            label: "Refresh explorer".to_string(),
+                            small: true,
                             onclick: move |_| tree_reload += 1,
-                            "Refresh Explorer"
                         }
-                        button {
-                            class: "button button--ghost button--small",
+                        IconButton {
+                            icon: ActionIcon::NewConnection,
+                            label: "New connection".to_string(),
+                            primary: true,
+                            small: true,
                             onclick: move |_| open_connection_screen(),
-                            "New Connection"
                         }
                     }
                 }

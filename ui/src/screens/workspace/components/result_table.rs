@@ -2,6 +2,7 @@ use crate::screens::workspace::actions::{
     apply_active_tab_filter, clear_active_tab_filter, load_tab_page, refresh_tab_result,
     set_active_tab_status, tab_connection_or_error, toggle_active_tab_sort,
 };
+use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
 use models::{
     EditableTableContext, PendingCellChange, PendingInsertRow, PendingTableChanges, QueryFilter,
@@ -141,25 +142,30 @@ pub fn ResultTable(
                                     div {
                                         class: "results__toolbar-actions",
                                         if page.editable.is_some() {
-                                            button {
-                                                class: "button button--ghost button--small",
+                                            IconButton {
+                                                icon: ActionIcon::InsertRow,
+                                                label: "Insert draft row".to_string(),
+                                                small: true,
                                                 onclick: move |_| insert_empty_row(tabs, active_tab_id),
-                                                "Insert Row"
                                             }
-                                            button {
-                                                class: "button button--ghost button--small",
+                                            IconButton {
+                                                icon: ActionIcon::Apply,
+                                                label: "Apply pending changes".to_string(),
+                                                small: true,
                                                 disabled: !has_pending_changes,
                                                 onclick: move |_| apply_pending_changes(tabs, active_tab_id),
-                                                "Apply Changes"
                                             }
-                                            button {
-                                                class: "button button--ghost button--small",
+                                            IconButton {
+                                                icon: ActionIcon::Undo,
+                                                label: "Discard pending changes".to_string(),
+                                                small: true,
                                                 disabled: !has_pending_changes,
                                                 onclick: move |_| discard_pending_changes(tabs, active_tab_id),
-                                                "Discard Changes"
                                             }
-                                            button {
-                                                class: "button button--ghost button--small",
+                                            IconButton {
+                                                icon: ActionIcon::Delete,
+                                                label: "Delete selected row".to_string(),
+                                                small: true,
                                                 disabled: selected_row.is_none(),
                                                 onclick: {
                                                     let selected_row_index = selected_row_index();
@@ -169,24 +175,21 @@ pub fn ResultTable(
                                                         }
                                                     }
                                                 },
-                                                "Delete Row"
                                             }
                                         }
-                                        button {
-                                            class: if details_visible {
-                                                "button button--ghost button--small button--active"
+                                        IconButton {
+                                            icon: ActionIcon::Details,
+                                            label: if details_visible {
+                                                "Hide row details".to_string()
                                             } else {
-                                                    "button button--ghost button--small"
-                                                },
-                                                disabled: selected_row.is_none(),
-                                                onclick: move |_| show_row_details.toggle(),
-                                                if details_visible {
-                                                    "Hide Row Details"
-                                                } else {
-                                                    "Show Row Details"
-                                                }
-                                            }
+                                                "Show row details".to_string()
+                                            },
+                                            active: details_visible,
+                                            small: true,
+                                            disabled: selected_row.is_none(),
+                                            onclick: move |_| show_row_details.toggle(),
                                         }
+                                    }
                                     }
 
                                     if filter_enabled {
@@ -201,24 +204,28 @@ pub fn ResultTable(
                                                     option { value: "and", "Match all (AND)" }
                                                     option { value: "or", "Match any (OR)" }
                                                 }
-                                                button {
-                                                    class: "button button--ghost button--small",
+                                                IconButton {
+                                                    icon: ActionIcon::AddRule,
+                                                    label: "Add filter rule".to_string(),
+                                                    small: true,
                                                     onclick: {
                                                         let columns = page.columns.clone();
                                                         move |_| add_filter_rule(filter_draft, &columns)
                                                     },
-                                                    "+ Rule"
                                                 }
-                                                button {
-                                                    class: "button button--ghost button--small",
+                                                IconButton {
+                                                    icon: ActionIcon::FilterApply,
+                                                    label: "Apply filters".to_string(),
+                                                    small: true,
                                                     onclick: move |_| {
                                                         apply_active_tab_filter(tabs, active_tab_id(), filter_draft());
                                                     },
                                                     disabled: !has_meaningful_rules(&filter_draft()),
-                                                    "Apply"
                                                 }
-                                                button {
-                                                    class: "button button--ghost button--small",
+                                                IconButton {
+                                                    icon: ActionIcon::FilterClear,
+                                                    label: "Clear filters".to_string(),
+                                                    small: true,
                                                     onclick: {
                                                         let columns = page.columns.clone();
                                                         move |_| {
@@ -227,7 +234,6 @@ pub fn ResultTable(
                                                         }
                                                     },
                                                     disabled: active_filter.is_none() && !has_meaningful_rules(&filter_draft()),
-                                                    "Clear"
                                                 }
                                             }
 
@@ -286,8 +292,10 @@ pub fn ResultTable(
                                                                 },
                                                             }
                                                         }
-                                                        button {
-                                                            class: "button button--ghost button--small",
+                                                        IconButton {
+                                                            icon: ActionIcon::Clear,
+                                                            label: "Remove filter rule".to_string(),
+                                                            small: true,
                                                             onclick: {
                                                                 let columns = page.columns.clone();
                                                                 move |_| remove_filter_rule(
@@ -297,7 +305,6 @@ pub fn ResultTable(
                                                                 )
                                                             },
                                                             disabled: filter_draft().rules.len() <= 1,
-                                                            "Remove"
                                                         }
                                                     }
                                                 }
@@ -451,10 +458,11 @@ pub fn ResultTable(
                                                     "Full values for the selected row."
                                                 }
                                             }
-                                            button {
-                                                class: "button button--ghost button--small",
+                                            IconButton {
+                                                icon: ActionIcon::Close,
+                                                label: "Close row details".to_string(),
+                                                small: true,
                                                 onclick: move |_| show_row_details.set(false),
-                                                "Close"
                                             }
                                         }
                                         div {

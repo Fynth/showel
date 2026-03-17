@@ -1,6 +1,7 @@
 mod agent_panel;
 mod explorer;
 mod history;
+mod icon_button;
 mod result_table;
 mod saved_queries;
 mod session_rail;
@@ -12,6 +13,7 @@ pub(crate) use agent_panel::{
 };
 pub use explorer::{ExplorerConnectionSection, SidebarConnectionTree};
 pub use history::QueryHistoryPanel;
+pub use icon_button::{ActionIcon, IconButton};
 pub use result_table::ResultTable;
 pub use saved_queries::SavedQueriesPanel;
 pub use session_rail::SessionRail;

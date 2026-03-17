@@ -4,8 +4,8 @@
 .toolbar {
   display: flex;
   align-items: center;
-  gap: $spacing-lg;
-  padding: 0 clamp($spacing-md, 1.6vw, $spacing-lg);
+  gap: $spacing-md;
+  padding: 0 clamp($spacing-sm, 1.2vw, $spacing-md);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-panel);
   min-width: 0;
@@ -15,42 +15,48 @@
 .toolbar__brand {
   display: flex;
   align-items: center;
-  gap: $spacing-md;
+  gap: 10px;
 }
 
 .toolbar__logo {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--color-primary);
   color: white;
   font-weight: 700;
+  font-size: $font-size-sm;
 }
 
 .toolbar__brand-copy {
   display: flex;
   flex-direction: column;
+  gap: 1px;
   min-width: 0;
+  line-height: 1;
 }
 
 .toolbar__eyebrow {
   color: var(--color-text-dim);
-  font-size: $font-size-xs;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  line-height: 1;
 }
 
 .toolbar__title {
-  font-size: $font-size-lg;
+  font-size: $font-size-md;
+  line-height: 1.05;
 }
 
 .toolbar__connection {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: 6px;
   color: var(--color-text-muted);
+  font-size: $font-size-sm;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -58,8 +64,8 @@
 }
 
 .toolbar__connection-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--color-success);
 }
@@ -68,14 +74,14 @@
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 @media (max-width: 920px) {
   .toolbar {
-    gap: $spacing-md;
+    gap: $spacing-sm;
   }
 
   .toolbar__connection {
@@ -87,8 +93,8 @@
   .toolbar {
     height: auto;
     min-height: $toolbar-height;
-    padding-top: $spacing-sm;
-    padding-bottom: $spacing-sm;
+    padding-top: $spacing-xs;
+    padding-bottom: $spacing-xs;
     flex-wrap: wrap;
     align-content: center;
   }
