@@ -1,0 +1,74 @@
+@use "../base/tokens" as *;
+
+.results {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+}
+
+.results__summary {
+  padding: $spacing-md;
+  color: var(--color-text-muted);
+}
+
+.results__table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  font-size: $font-size-sm;
+}
+
+.results__head {
+  position: sticky;
+  top: 0;
+  padding: $spacing-sm $spacing-md;
+  background: var(--grid-header);
+  border-bottom: 1px solid var(--color-border-strong);
+  text-align: left;
+}
+
+.results__row:hover {
+  background: var(--grid-row-hover);
+}
+
+.results__cell {
+  padding: $spacing-sm $spacing-md;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.results__cell--editable {
+  cursor: text;
+}
+
+.results__cell--editable:hover {
+  background: var(--grid-row-hover);
+}
+
+.results__cell-input {
+  width: 100%;
+  min-width: 120px;
+  padding: $spacing-xs $spacing-sm;
+  border: 1px solid var(--color-primary);
+  border-radius: $radius-sm;
+  background: var(--editor-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.results__cell-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--color-focus);
+}
+
+@media (max-width: 760px) {
+  .results__head,
+  .results__cell {
+    padding: $spacing-xs $spacing-sm;
+  }
+}

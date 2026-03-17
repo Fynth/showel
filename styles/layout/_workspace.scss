@@ -1,0 +1,210 @@
+@use "../base/tokens" as *;
+
+.workspace {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, clamp(240px, 22vw, 300px)) minmax(0, 1fr);
+  gap: clamp($spacing-sm, 1.6vw, $spacing-lg);
+  padding: clamp($spacing-sm, 1.6vw, $spacing-lg);
+  background:
+    radial-gradient(circle at top left, var(--color-panel-2), transparent 38%),
+    var(--color-bg);
+  overflow: hidden;
+}
+
+.workspace__sidebar {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-lg;
+  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-2));
+  overflow: hidden;
+}
+
+.workspace__sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: clamp($spacing-md, 1.4vw, $spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+
+.workspace__sidebar-body {
+  min-height: 0;
+  overflow: auto;
+  padding: clamp($spacing-sm, 1.2vw, $spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.workspace__title {
+  font-size: $font-size-xl;
+  font-weight: 600;
+}
+
+.workspace__meta,
+.workspace__hint,
+.workspace__status {
+  color: var(--color-text-muted);
+  font-size: $font-size-sm;
+}
+
+.workspace__main {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-lg;
+  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-2));
+  overflow: hidden;
+}
+
+.workspace__content {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace__content--with-agent {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, clamp(320px, 26vw, 420px));
+}
+
+.workspace__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: clamp($spacing-sm, 1.1vw, $spacing-md) clamp($spacing-md, 1.4vw, $spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-3));
+}
+
+.workspace__header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  min-width: 0;
+}
+
+.workspace__headline {
+  font-size: clamp($font-size-xl, 1.25vw, $font-size-2xl);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.workspace__results {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-xs clamp($spacing-sm, 1.2vw, $spacing-md) clamp($spacing-sm, 1.2vw, $spacing-md);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-panel);
+  overflow: hidden;
+}
+
+.workspace__section-title {
+  font-size: $font-size-lg;
+  font-weight: 600;
+}
+
+.workspace__panel {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: clamp($spacing-sm, 1.2vw, $spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+  min-width: 0;
+}
+
+.workspace__panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.workspace__empty {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+}
+
+@media (max-width: 980px) {
+  .workspace {
+    grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  }
+
+  .workspace__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workspace__toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .workspace__content--with-agent {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, auto) minmax(0, 1fr);
+  }
+
+  .workspace__sidebar {
+    max-height: min(42vh, 420px);
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace__headline {
+    white-space: normal;
+  }
+
+  .workspace__toolbar {
+    gap: $spacing-xs;
+  }
+}
+
+@media (max-height: 860px) {
+  .workspace {
+    gap: $spacing-sm;
+    padding: $spacing-sm;
+  }
+
+  .workspace__sidebar-header,
+  .workspace__header {
+    padding-top: $spacing-sm;
+    padding-bottom: $spacing-sm;
+  }
+
+  .workspace__sidebar-body {
+    gap: $spacing-sm;
+  }
+}

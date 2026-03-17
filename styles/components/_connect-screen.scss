@@ -1,0 +1,122 @@
+@use "../base/tokens" as *;
+
+.connect-screen {
+  width: min(960px, 100%);
+  min-width: 0;
+}
+
+.connect-screen--overlay {
+  width: min(1040px, 100%);
+}
+
+.connect-screen__panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: clamp($spacing-md, 2vw, $spacing-xl);
+  padding: clamp($spacing-lg, 2.4vw, $spacing-2xl);
+  border: 1px solid var(--color-border);
+  border-radius: $radius-lg;
+  background: linear-gradient(180deg, var(--color-panel), var(--color-panel-2));
+  box-shadow: $shadow-md;
+}
+
+.connect-screen__hero,
+.connect-screen__section,
+.connect-screen__recent {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.connect-screen__hero {
+  grid-column: 1 / -1;
+}
+
+.connect-screen__hero-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-lg;
+}
+
+.connect-screen__eyebrow {
+  color: var(--color-primary);
+  font-size: $font-size-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.connect-screen__title {
+  font-size: clamp($font-size-xl, 1.2vw, $font-size-2xl);
+}
+
+.connect-screen__section-title {
+  font-size: $font-size-lg;
+  font-weight: 600;
+}
+
+.connect-screen__subtitle,
+.connect-screen__status {
+  color: var(--color-text-muted);
+}
+
+.connect-form,
+.connect-form__grid {
+  display: grid;
+  gap: $spacing-md;
+}
+
+.connect-form__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recent-connection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+}
+
+.recent-connection__name {
+  font-size: $font-size-sm;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-connection__meta {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 980px) {
+  .connect-screen {
+    width: min(760px, 100%);
+  }
+
+  .connect-screen__panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .connect-screen__hero-topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 680px) {
+  .connect-form__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.empty-state {
+  color: var(--color-text-dim);
+  font-size: $font-size-sm;
+}

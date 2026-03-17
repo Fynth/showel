@@ -1,0 +1,74 @@
+use crate::app_state::{APP_STATE, APP_THEME, open_connection_screen, show_workspace};
+use dioxus::prelude::*;
+
+#[component]
+pub fn Toolbar() -> Element {
+    let (connection_label, has_sessions, show_connect_screen) = {
+        let app_state = APP_STATE.read();
+        let label = match app_state.active_session() {
+            Some(session) => format!(
+                "{} active · {} open",
+                session.name,
+                app_state.sessions.len()
+            ),
+            None => "No active connection".to_string(),
+        };
+
+        (
+            label,
+            app_state.has_sessions(),
+            app_state.show_connection_screen,
+        )
+    };
+    let theme = APP_THEME();
+    rsx! {
+        header {
+            class: "toolbar",
+            div {
+                class: "toolbar__brand",
+                div { class: "toolbar__logo", "S" }
+                div {
+                    class: "toolbar__brand-copy",
+                    span { class: "toolbar__eyebrow", "Database Client" }
+                    strong { class: "toolbar__title", "Showel" }
+                }
+            }
+            div {
+                class: "toolbar__connection",
+                span { class: "toolbar__connection-dot" }
+                "{connection_label}"
+            }
+            div {
+                class: "toolbar__actions",
+                if has_sessions {
+                    button {
+                        class: if show_connect_screen {
+                            "button button--ghost"
+                        } else {
+                            "button button--primary"
+                        },
+                        onclick: move |_| {
+                            if show_connect_screen {
+                                show_workspace();
+                            } else {
+                                open_connection_screen();
+                            }
+                        },
+                        if show_connect_screen { "Back to Workspace" } else { "New Connection" }
+                    }
+                }
+                button {
+                    class: "button button--ghost",
+                    onclick: move |_| {
+                        if APP_THEME() == "theme-dark" {
+                            *APP_THEME.write() = "theme-light".to_string();
+                        } else {
+                            *APP_THEME.write() = "theme-dark".to_string();
+                        }
+                    },
+                    if theme == "theme-dark" { "Light Theme" } else { "Dark Theme" }
+                }
+            }
+        }
+    }
+}
