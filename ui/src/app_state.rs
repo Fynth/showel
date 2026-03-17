@@ -74,6 +74,13 @@ pub fn add_connection_session(request: ConnectionRequest, connection: DatabaseCo
 
 pub fn remove_session(session_id: u64) {
     APP_STATE.with_mut(|state| {
+        let removed_names = state
+            .sessions
+            .iter()
+            .filter(|session| session.id == session_id)
+            .map(|session| session.name.clone())
+            .collect::<Vec<_>>();
+
         state.sessions.retain(|session| session.id != session_id);
 
         if state.active_session_id == Some(session_id) {
@@ -84,6 +91,10 @@ pub fn remove_session(session_id: u64) {
             state.active_session_id = None;
             state.show_connection_screen = true;
         }
+
+        for name in removed_names {
+            services::release_ssh_tunnel(&name);
+        }
     });
     persist_session_state();
 }
@@ -93,6 +104,15 @@ pub fn restore_connection_sessions(
     active_name: Option<String>,
 ) {
     APP_STATE.with_mut(|state| {
+        let existing_names = state
+            .sessions
+            .iter()
+            .map(|session| session.name.clone())
+            .collect::<Vec<_>>();
+        for name in existing_names {
+            services::release_ssh_tunnel(&name);
+        }
+
         state.sessions.clear();
         state.active_session_id = None;
         state.next_session_id = 1;

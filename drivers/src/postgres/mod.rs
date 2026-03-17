@@ -48,7 +48,9 @@ impl database::DatabaseDriver for PgDriver {
             }
         }
 
-        Err(last_error.expect("postgres connection attempts should produce an error"))
+        Err(last_error.unwrap_or_else(|| {
+            sqlx::Error::Protocol("postgres connection attempts produced no result".into())
+        }))
     }
 }
 

@@ -75,7 +75,7 @@ pub async fn execute_text_query(info: &ClickHouseFormData, sql: &str) -> Result<
 
 fn build_request(info: &ClickHouseFormData, sql: &str) -> Result<reqwest::RequestBuilder, String> {
     let base_url = normalize_base_url(info)?;
-    let client = http_client();
+    let client = http_client()?;
     let mut request = client.post(format!("{base_url}/")).body(sql.to_string());
 
     request = request.basic_auth(info.effective_username(), Some(&info.password));
@@ -108,12 +108,15 @@ fn normalize_base_url(info: &ClickHouseFormData) -> Result<String, String> {
     Ok(normalized)
 }
 
-fn http_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
+fn http_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    match CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .build()
-            .expect("failed to build ClickHouse HTTP client")
-    })
+            .map_err(|err| format!("failed to build ClickHouse HTTP client: {err}"))
+    }) {
+        Ok(client) => Ok(client),
+        Err(err) => Err(err.clone()),
+    }
 }

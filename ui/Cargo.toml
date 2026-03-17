@@ -6,8 +6,10 @@ build = "build.rs"
 
 [dependencies]
 dioxus = "0.7.3"
+rfd = "0.17.2"
 services.workspace = true
 models.workspace = true
+serde_json = "1.0.140"
 tokio = { version = "1.44.1", features = ["time"] }
 tree-sitter-highlight = "0.25.10"
 tree-sitter-sequel = "0.3.11"

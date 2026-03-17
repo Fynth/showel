@@ -1,10 +1,14 @@
 use keyring::{Entry, Error as KeyringError};
 use models::{
     ClickHouseFormData, ConnectionRequest, PostgresFormData, QueryHistoryItem, SavedConnection,
-    SqliteFormData,
+    SqliteFormData, SshTunnelConfig,
 };
 use serde::{Deserialize, Serialize};
-use std::{fs, io::ErrorKind, path::PathBuf};
+use std::{
+    fs,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 use crate::storage::{
     query_history_path, read_json_file, read_text_file, saved_connections_path, session_state_path,
@@ -34,6 +38,8 @@ struct PostgresConnectionMetadata {
     port: u16,
     username: String,
     database: String,
+    #[serde(default)]
+    ssh_tunnel: Option<SshTunnelConfig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,10 +48,19 @@ struct ClickHouseConnectionMetadata {
     port: u16,
     username: String,
     database: String,
+    #[serde(default)]
+    ssh_tunnel: Option<SshTunnelConfig>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct PersistedSessionState {
+    #[serde(default)]
+    open_connections: Vec<PersistedSavedConnection>,
+    active_connection_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct LegacySessionState {
     #[serde(default)]
     open_requests: Vec<ConnectionRequest>,
     active_connection_name: Option<String>,
@@ -111,32 +126,33 @@ pub async fn save_session_state(
     open_requests: Vec<ConnectionRequest>,
     active_connection_name: Option<String>,
 ) -> Result<(), String> {
-    let state = PersistedSessionState {
-        open_requests,
-        active_connection_name,
-    };
-    write_json_file(session_state_path(), &state).await
+    let (state, secret_errors) =
+        build_persisted_session_state(open_requests, active_connection_name);
+    write_json_file(session_state_path(), &state)
+        .await
+        .and_then(|_| finalize_secret_errors("session state", secret_errors))
 }
 
 pub async fn load_session_state() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
-    let state: PersistedSessionState = read_json_file(session_state_path()).await?;
-    Ok((state.open_requests, state.active_connection_name))
+    let state = read_session_state_async(session_state_path()).await?;
+    let open_requests = hydrate_session_requests(state.open_connections)?;
+    Ok((open_requests, state.active_connection_name))
 }
 
 pub fn save_session_state_sync(
     open_requests: Vec<ConnectionRequest>,
     active_connection_name: Option<String>,
 ) -> Result<(), String> {
-    let state = PersistedSessionState {
-        open_requests,
-        active_connection_name,
-    };
+    let (state, secret_errors) =
+        build_persisted_session_state(open_requests, active_connection_name);
     write_session_state_sync(session_state_path(), &state)
+        .and_then(|_| finalize_secret_errors("session state", secret_errors))
 }
 
 pub fn load_session_state_sync() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
     let state = read_session_state_sync(session_state_path())?;
-    Ok((state.open_requests, state.active_connection_name))
+    let open_requests = hydrate_session_requests(state.open_connections)?;
+    Ok((open_requests, state.active_connection_name))
 }
 
 async fn persist_saved_connections(
@@ -155,10 +171,9 @@ async fn persist_saved_connections(
         if !saved_connections
             .iter()
             .any(|saved| &saved.name == removed_name)
+            && let Err(err) = delete_secret(removed_name)
         {
-            if let Err(err) = delete_secret(removed_name) {
-                secret_errors.push(err);
-            }
+            secret_errors.push(err);
         }
     }
 
@@ -185,36 +200,44 @@ fn hydrate_saved_connections(
     let mut restored = Vec::with_capacity(persisted.len());
 
     for saved_connection in persisted {
-        let password = load_secret(&saved_connection.name).ok().flatten();
-        let request = match saved_connection.request {
-            PersistedConnectionRequest::Sqlite(data) => ConnectionRequest::Sqlite(data),
-            PersistedConnectionRequest::Postgres(data) => {
-                ConnectionRequest::Postgres(PostgresFormData {
-                    host: data.host,
-                    port: data.port,
-                    username: data.username,
-                    password: password.clone().unwrap_or_default(),
-                    database: data.database,
-                })
-            }
-            PersistedConnectionRequest::ClickHouse(data) => {
-                ConnectionRequest::ClickHouse(ClickHouseFormData {
-                    host: data.host,
-                    port: data.port,
-                    username: data.username,
-                    password: password.unwrap_or_default(),
-                    database: data.database,
-                })
-            }
-        };
-
-        restored.push(SavedConnection {
-            name: saved_connection.name,
-            request,
-        });
+        restored.push(hydrate_saved_connection(saved_connection)?);
     }
 
     Ok(restored)
+}
+
+fn hydrate_saved_connection(
+    saved_connection: PersistedSavedConnection,
+) -> Result<SavedConnection, String> {
+    let password = load_secret(&saved_connection.name).ok().flatten();
+    let request = match saved_connection.request {
+        PersistedConnectionRequest::Sqlite(data) => ConnectionRequest::Sqlite(data),
+        PersistedConnectionRequest::Postgres(data) => {
+            ConnectionRequest::Postgres(PostgresFormData {
+                host: data.host,
+                port: data.port,
+                username: data.username,
+                password: password.clone().unwrap_or_default(),
+                database: data.database,
+                ssh_tunnel: data.ssh_tunnel,
+            })
+        }
+        PersistedConnectionRequest::ClickHouse(data) => {
+            ConnectionRequest::ClickHouse(ClickHouseFormData {
+                host: data.host,
+                port: data.port,
+                username: data.username,
+                password: password.unwrap_or_default(),
+                database: data.database,
+                ssh_tunnel: data.ssh_tunnel,
+            })
+        }
+    };
+
+    Ok(SavedConnection {
+        name: saved_connection.name,
+        request,
+    })
 }
 
 fn to_persisted_connection(saved_connection: SavedConnection) -> PersistedSavedConnection {
@@ -226,6 +249,7 @@ fn to_persisted_connection(saved_connection: SavedConnection) -> PersistedSavedC
                 port: data.port,
                 username: data.username,
                 database: data.database,
+                ssh_tunnel: data.ssh_tunnel,
             })
         }
         ConnectionRequest::ClickHouse(data) => {
@@ -234,6 +258,7 @@ fn to_persisted_connection(saved_connection: SavedConnection) -> PersistedSavedC
                 port: data.port,
                 username: data.username,
                 database: data.database,
+                ssh_tunnel: data.ssh_tunnel,
             })
         }
     };
@@ -308,10 +333,92 @@ fn secret_key(connection_name: &str) -> String {
     format!("connection-{hash:016x}")
 }
 
+fn build_persisted_session_state(
+    open_requests: Vec<ConnectionRequest>,
+    active_connection_name: Option<String>,
+) -> (PersistedSessionState, Vec<String>) {
+    let mut secret_errors = Vec::new();
+    let open_connections = open_requests
+        .into_iter()
+        .map(|request| SavedConnection {
+            name: request.display_name(),
+            request,
+        })
+        .map(|saved_connection| {
+            if let Err(err) = sync_connection_secret(&saved_connection) {
+                secret_errors.push(err);
+            }
+            to_persisted_connection(saved_connection)
+        })
+        .collect::<Vec<_>>();
+
+    (
+        PersistedSessionState {
+            open_connections,
+            active_connection_name,
+        },
+        secret_errors,
+    )
+}
+
+fn hydrate_session_requests(
+    open_connections: Vec<PersistedSavedConnection>,
+) -> Result<Vec<ConnectionRequest>, String> {
+    hydrate_saved_connections(open_connections).map(|saved_connections| {
+        saved_connections
+            .into_iter()
+            .map(|saved_connection| saved_connection.request)
+            .collect()
+    })
+}
+
+async fn read_session_state_async(path: PathBuf) -> Result<PersistedSessionState, String> {
+    match read_text_file(&path).await? {
+        Some(content) => parse_session_state(&content, &path),
+        None => Ok(PersistedSessionState::default()),
+    }
+}
+
+fn parse_session_state(content: &str, path: &Path) -> Result<PersistedSessionState, String> {
+    if content.trim().is_empty() {
+        return Ok(PersistedSessionState::default());
+    }
+
+    if let Ok(state) = serde_json::from_str::<PersistedSessionState>(content) {
+        return Ok(state);
+    }
+
+    match serde_json::from_str::<LegacySessionState>(content) {
+        Ok(legacy) => Ok(PersistedSessionState {
+            open_connections: legacy
+                .open_requests
+                .into_iter()
+                .map(|request| SavedConnection {
+                    name: request.display_name(),
+                    request,
+                })
+                .map(to_persisted_connection)
+                .collect(),
+            active_connection_name: legacy.active_connection_name,
+        }),
+        Err(err) => Err(format!("failed to parse {}: {err}", path.display())),
+    }
+}
+
+fn finalize_secret_errors(context: &str, secret_errors: Vec<String>) -> Result<(), String> {
+    if secret_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "saved {context}, but secure storage had issues: {}",
+            secret_errors.join("; ")
+        ))
+    }
+}
+
 fn read_session_state_sync(path: PathBuf) -> Result<PersistedSessionState, String> {
     match fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str::<PersistedSessionState>(&content)
-            .map_err(|err| format!("failed to parse {}: {err}", path.display())),
+        Ok(content) => parse_session_state(&content, &path),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(PersistedSessionState::default()),
         Err(err) => Err(format!("failed to read {}: {err}", path.display())),
     }

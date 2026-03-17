@@ -785,8 +785,8 @@ fn normalize_cwd(cwd: &str) -> Result<PathBuf, String> {
 }
 
 fn resolve_workspace_path(
-    workspace_root: &PathBuf,
-    requested_path: &PathBuf,
+    workspace_root: &std::path::Path,
+    requested_path: &std::path::Path,
     allow_missing_leaf: bool,
 ) -> Result<PathBuf, String> {
     if !requested_path.is_absolute() {
@@ -814,10 +814,10 @@ fn resolve_workspace_path(
 }
 
 fn resolve_future_workspace_path(
-    canonical_root: &PathBuf,
-    requested_path: &PathBuf,
+    canonical_root: &std::path::Path,
+    requested_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    let mut existing = requested_path.as_path();
+    let mut existing = requested_path;
     while !existing.exists() {
         existing = existing
             .parent()
@@ -898,20 +898,20 @@ fn append_terminal_output(terminal: &Arc<TerminalState>, chunk: &str) -> Result<
         .map_err(|_| "ACP terminal output lock poisoned".to_string())?;
     output.push_str(chunk);
 
-    if let Some(limit) = terminal.output_limit {
-        if output.len() > limit {
-            let trim_target = output.len() - limit;
-            let trim_at = output
-                .char_indices()
-                .map(|(idx, _)| idx)
-                .find(|idx| *idx >= trim_target)
-                .unwrap_or(output.len());
-            output.drain(..trim_at);
-            *terminal
-                .truncated
-                .lock()
-                .map_err(|_| "ACP terminal truncation lock poisoned".to_string())? = true;
-        }
+    if let Some(limit) = terminal.output_limit
+        && output.len() > limit
+    {
+        let trim_target = output.len() - limit;
+        let trim_at = output
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .find(|idx| *idx >= trim_target)
+            .unwrap_or(output.len());
+        output.drain(..trim_at);
+        *terminal
+            .truncated
+            .lock()
+            .map_err(|_| "ACP terminal truncation lock poisoned".to_string())? = true;
     }
 
     Ok(())

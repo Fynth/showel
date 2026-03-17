@@ -3,18 +3,27 @@ mod components;
 
 use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, open_connection_screen};
 use dioxus::prelude::*;
-use models::{QueryHistoryItem, QueryTabState};
+use models::{QueryHistoryItem, QueryTabState, SavedQuery};
 use std::collections::HashSet;
 use std::time::Duration;
 
 use self::{
     actions::{new_query_tab, update_active_tab_sql},
     components::{
-        AcpAgentPanel, ExplorerConnectionSection, QueryHistoryPanel, SessionRail,
-        SidebarConnectionTree, TabsManager, apply_acp_events, default_acp_panel_state,
+        AcpAgentPanel, ExplorerConnectionSection, QueryHistoryPanel, SavedQueriesPanel,
+        SessionRail, SidebarConnectionTree, TabsManager, apply_acp_events, default_acp_panel_state,
         extract_sql_candidate,
     },
 };
+
+const SIDEBAR_MIN_WIDTH: f64 = 240.0;
+const SIDEBAR_MAX_WIDTH: f64 = 560.0;
+
+#[derive(Clone, Copy, PartialEq)]
+struct SidebarResizeState {
+    start_x: f64,
+    start_width: f64,
+}
 
 #[component]
 pub fn Workspace() -> Element {
@@ -30,17 +39,25 @@ pub fn Workspace() -> Element {
     let mut tree_reload = use_signal(|| 0_u64);
     let mut next_tab_id = use_signal(|| 1_u64);
     let mut next_history_id = use_signal(|| 1_u64);
+    let mut next_saved_query_id = use_signal(|| 1_u64);
     let mut active_tab_id = use_signal(|| 0_u64);
     let mut tabs = use_signal(Vec::<QueryTabState>::new);
     let mut history = use_signal(Vec::<QueryHistoryItem>::new);
+    let mut saved_queries = use_signal(Vec::<SavedQuery>::new);
     let mut show_connections = use_signal(|| false);
     let mut show_explorer = use_signal(|| true);
     let mut show_sql_editor = use_signal(|| true);
     let mut show_agent_panel = use_signal(|| false);
     let mut acp_panel_state = use_signal(default_acp_panel_state);
+    let mut sidebar_width = use_signal(|| 320.0);
+    let mut sidebar_resize = use_signal(|| None::<SidebarResizeState>);
     let persisted_history =
         use_resource(
             move || async move { services::load_query_history().await.unwrap_or_default() },
+        );
+    let persisted_saved_queries =
+        use_resource(
+            move || async move { services::load_saved_queries().await.unwrap_or_default() },
         );
 
     use_effect(move || {
@@ -165,6 +182,14 @@ pub fn Workspace() -> Element {
     });
 
     use_effect(move || {
+        if let Some(items) = persisted_saved_queries() {
+            let next_id = items.iter().map(|item| item.id).max().unwrap_or(0) + 1;
+            saved_queries.set(items);
+            next_saved_query_id.set(next_id);
+        }
+    });
+
+    use_effect(move || {
         spawn(async move {
             loop {
                 let events = services::drain_acp_events();
@@ -210,11 +235,41 @@ pub fn Workspace() -> Element {
 
     rsx! {
         div {
-            class: if show_connections() || show_explorer() || show_history {
-                "workspace"
-            } else {
-                "workspace workspace--sidebar-hidden"
+            class: {
+                let mut class_name = if show_connections() || show_explorer() || show_history {
+                    "workspace".to_string()
+                } else {
+                    "workspace workspace--sidebar-hidden".to_string()
+                };
+
+                if sidebar_resize().is_some() {
+                    class_name.push_str(" workspace--resizing");
+                }
+
+                class_name
             },
+            style: if show_connections() || show_explorer() || show_history {
+                format!("--workspace-sidebar-width: {:.0}px;", sidebar_width())
+            } else {
+                String::new()
+            },
+            onmousemove: move |event| {
+                let Some(resize) = sidebar_resize() else {
+                    return;
+                };
+
+                if event.held_buttons().is_empty() {
+                    sidebar_resize.set(None);
+                    return;
+                }
+
+                let delta_x = event.client_coordinates().x - resize.start_x;
+                let next_width =
+                    (resize.start_width + delta_x).clamp(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
+                sidebar_width.set(next_width);
+            },
+            onmouseup: move |_| sidebar_resize.set(None),
+            onmouseleave: move |_| sidebar_resize.set(None),
             if show_connections() || show_explorer() || show_history {
                 aside {
                     class: "workspace__sidebar",
@@ -242,6 +297,14 @@ pub fn Workspace() -> Element {
                                 }
                             }
                         }
+                        SavedQueriesPanel {
+                            saved_queries: saved_queries(),
+                            saved_queries_signal: saved_queries,
+                            next_saved_query_id,
+                            tabs,
+                            active_tab_id,
+                            next_tab_id,
+                        }
                         if show_history {
                             QueryHistoryPanel {
                                 history: history(),
@@ -249,6 +312,20 @@ pub fn Workspace() -> Element {
                                 active_tab_id,
                             }
                         }
+                    }
+                }
+                div {
+                    class: if sidebar_resize().is_some() {
+                        "workspace__resize-handle workspace__resize-handle--active"
+                    } else {
+                        "workspace__resize-handle"
+                    },
+                    onmousedown: move |event| {
+                        event.prevent_default();
+                        sidebar_resize.set(Some(SidebarResizeState {
+                            start_x: event.client_coordinates().x,
+                            start_width: sidebar_width(),
+                        }));
                     }
                 }
             }

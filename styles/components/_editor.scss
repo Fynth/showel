@@ -5,13 +5,52 @@
   display: flex;
   flex-direction: column;
   background: var(--color-panel);
+  overflow: hidden;
 }
 
 .editor {
-  flex: 0 1 clamp(120px, 22vh, 260px);
-  min-height: 84px;
+  flex: 0 0 var(--editor-pane-height, clamp(160px, 30vh, 260px));
+  min-height: 120px;
   padding: $spacing-sm;
   background: var(--color-panel);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor-shell__resize-handle {
+  position: relative;
+  flex: 0 0 10px;
+  min-height: 10px;
+  cursor: row-resize;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.editor-shell__resize-handle::after {
+  content: "";
+  position: absolute;
+  left: $spacing-sm;
+  right: $spacing-sm;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border-strong) 88%, transparent);
+}
+
+.editor-shell__resize-handle:hover,
+.editor-shell__resize-handle--active {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.editor-shell__resize-handle:hover::after,
+.editor-shell__resize-handle--active::after {
+  background: color-mix(in srgb, var(--color-primary) 72%, white 10%);
+}
+
+.editor-shell--resizing {
+  user-select: none;
+  cursor: row-resize;
 }
 
 .editor__toolbar {
@@ -112,8 +151,7 @@
 
 @media (max-height: 860px) {
   .editor {
-    flex-basis: clamp(96px, 18vh, 180px);
-    min-height: 72px;
+    min-height: 96px;
   }
 
   .sql-editor__highlight,
@@ -121,6 +159,12 @@
     padding: 14px 16px;
     font-size: 14px;
     line-height: 1.5;
+  }
+}
+
+@media (max-width: 760px) {
+  .editor-shell__resize-handle {
+    display: none;
   }
 }
 
@@ -146,6 +190,75 @@
 
 .sql-editor__placeholder {
   color: var(--color-text-dim);
+}
+
+.sql-editor__autocomplete {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 3;
+  max-height: min(280px, 48%);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--editor-bg) 94%, black);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.34);
+}
+
+.sql-editor__autocomplete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sql-editor__autocomplete-item:last-child {
+  border-bottom: 0;
+}
+
+.sql-editor__autocomplete-item:hover,
+.sql-editor__autocomplete-item--active {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.sql-editor__autocomplete-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sql-editor__autocomplete-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.sql-editor__autocomplete-detail {
+  color: var(--color-text-muted);
+  font-size: $font-size-sm;
+}
+
+.sql-editor__autocomplete-kind {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: $font-size-xs;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .sql-editor__token {
@@ -187,6 +300,11 @@
 
 .sql-editor__token--operator {
   color: var(--editor-token-operator);
+}
+
+.sql-editor__token--inline {
+  color: color-mix(in srgb, var(--color-text-muted) 82%, white 18%);
+  opacity: 0.9;
 }
 
 .sql-editor__token--punctuation {

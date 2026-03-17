@@ -7,10 +7,79 @@ pub struct TablePreviewSource {
     pub qualified_name: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuerySort {
+    pub column_name: String,
+    pub descending: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QueryFilterMode {
+    And,
+    Or,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryFilterOperator {
+    Contains,
+    NotContains,
+    Equals,
+    NotEquals,
+    StartsWith,
+    EndsWith,
+    IsNull,
+    IsNotNull,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueryFilterRule {
+    pub column_name: String,
+    pub operator: QueryFilterOperator,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueryFilter {
+    pub mode: QueryFilterMode,
+    pub rules: Vec<QueryFilterRule>,
+}
+
+impl QueryFilterOperator {
+    pub fn is_nullary(self) -> bool {
+        matches!(self, Self::IsNull | Self::IsNotNull)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct EditableTableContext {
     pub source: TablePreviewSource,
     pub row_locators: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PendingTableChanges {
+    pub next_insert_id: u64,
+    pub inserted_rows: Vec<PendingInsertRow>,
+    pub updated_cells: Vec<PendingCellChange>,
+}
+
+impl PendingTableChanges {
+    pub fn is_empty(&self) -> bool {
+        self.inserted_rows.is_empty() && self.updated_cells.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingInsertRow {
+    pub id: u64,
+    pub values: Vec<Option<String>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingCellChange {
+    pub locator: String,
+    pub column_name: String,
+    pub value: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,6 +111,9 @@ pub struct QueryTabState {
     pub page_size: u32,
     pub last_run_sql: Option<String>,
     pub preview_source: Option<TablePreviewSource>,
+    pub filter: Option<QueryFilter>,
+    pub sort: Option<QuerySort>,
+    pub pending_table_changes: PendingTableChanges,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

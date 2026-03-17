@@ -7,6 +7,34 @@ pub enum DatabaseKind {
     ClickHouse,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SshTunnelConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    #[serde(default)]
+    pub private_key_path: String,
+}
+
+impl SshTunnelConfig {
+    pub fn is_configured(&self) -> bool {
+        !self.host.trim().is_empty() && !self.username.trim().is_empty()
+    }
+
+    pub fn effective_port(&self) -> u16 {
+        if self.port == 0 { 22 } else { self.port }
+    }
+
+    pub fn display_name(&self) -> String {
+        format!(
+            "{}@{}:{}",
+            self.username.trim(),
+            self.host.trim(),
+            self.effective_port()
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum DatabaseConnection {
     Sqlite(sqlx::SqlitePool),
@@ -19,6 +47,7 @@ pub enum DatabaseError {
     Sqlite(sqlx::Error),
     Postgres(sqlx::Error),
     ClickHouse(String),
+    Tunnel(String),
     UnsupportedDriver(String),
 }
 
@@ -34,6 +63,8 @@ pub struct PostgresFormData {
     pub username: String,
     pub password: String,
     pub database: String,
+    #[serde(default)]
+    pub ssh_tunnel: Option<SshTunnelConfig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +74,8 @@ pub struct ClickHouseFormData {
     pub username: String,
     pub password: String,
     pub database: String,
+    #[serde(default)]
+    pub ssh_tunnel: Option<SshTunnelConfig>,
 }
 
 impl ClickHouseFormData {
@@ -88,17 +121,29 @@ impl ConnectionRequest {
     pub fn display_name(&self) -> String {
         match self {
             ConnectionRequest::Sqlite(data) => format!("SQLite · {}", data.path),
-            ConnectionRequest::Postgres(data) => format!(
-                "PostgreSQL · {}@{}:{}/{}",
-                data.username, data.host, data.port, data.database
-            ),
-            ConnectionRequest::ClickHouse(data) => format!(
-                "ClickHouse · {}@{}:{}/{}",
-                data.effective_username(),
-                data.host,
-                data.port,
-                data.effective_database()
-            ),
+            ConnectionRequest::Postgres(data) => {
+                let mut label = format!(
+                    "PostgreSQL · {}@{}:{}/{}",
+                    data.username, data.host, data.port, data.database
+                );
+                if let Some(tunnel) = data.ssh_tunnel.as_ref().filter(|cfg| cfg.is_configured()) {
+                    label.push_str(&format!(" via SSH {}", tunnel.display_name()));
+                }
+                label
+            }
+            ConnectionRequest::ClickHouse(data) => {
+                let mut label = format!(
+                    "ClickHouse · {}@{}:{}/{}",
+                    data.effective_username(),
+                    data.host,
+                    data.port,
+                    data.effective_database()
+                );
+                if let Some(tunnel) = data.ssh_tunnel.as_ref().filter(|cfg| cfg.is_configured()) {
+                    label.push_str(&format!(" via SSH {}", tunnel.display_name()));
+                }
+                label
+            }
         }
     }
 }
