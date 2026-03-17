@@ -22,7 +22,7 @@ short_description = "Fast native desktop database client built with Rust and Dio
 long_description = """
 Showel is a lightweight native desktop database client for SQLite, PostgreSQL, and ClickHouse.
 """
-resources = ["ui/assets/**", "libs/WebView2Loader.dll"]
+resources = ["ui/assets/app.css", "libs/WebView2Loader.dll"]
 
 [bundle.windows]
 digest_algorithm = "sha-256"
