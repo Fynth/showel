@@ -1,5 +1,5 @@
 use crate::{
-    app_state::{APP_STATE, APP_THEME},
+    app_state::{APP_STATE, APP_THEME, restore_connection_sessions},
     layout::{StatusBar, Toolbar},
     screens::{DbConnect, Workspace},
 };
@@ -9,6 +9,35 @@ static APP_CSS: Asset = asset!("/assets/app.css");
 
 #[component]
 pub fn App() -> Element {
+    let mut restored_once = use_signal(|| false);
+    use_effect(move || {
+        if restored_once() {
+            return;
+        }
+
+        restored_once.set(true);
+        spawn(async move {
+            let Ok((open_requests, active_connection_name)) = services::load_session_state().await
+            else {
+                return;
+            };
+            if open_requests.is_empty() {
+                return;
+            }
+
+            let mut restored = Vec::new();
+            for request in open_requests {
+                if let Ok(connection) = services::connect_to_db(request.clone()).await {
+                    restored.push((request, connection));
+                }
+            }
+
+            if !restored.is_empty() {
+                restore_connection_sessions(restored, active_connection_name);
+            }
+        });
+    });
+
     let theme_name = APP_THEME();
     let (has_sessions, should_show_connect) = {
         let app_state = APP_STATE.read();
