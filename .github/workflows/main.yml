@@ -42,6 +42,9 @@ jobs:
           New-Item -ItemType Directory -Path "app/ui/assets" -Force | Out-Null
           Copy-Item -Path "ui/assets/*" -Destination "app/ui/assets" -Recurse -Force
 
+          New-Item -ItemType Directory -Path "app/styles" -Force | Out-Null
+          Copy-Item -Path "styles/*" -Destination "app/styles" -Recurse -Force
+
           New-Item -ItemType Directory -Path "app/assets" -Force | Out-Null
           if (Test-Path "assets") {
             $assetFiles = Get-ChildItem -Path "assets" -Recurse -File -ErrorAction SilentlyContinue
