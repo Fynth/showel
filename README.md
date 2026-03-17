@@ -83,3 +83,24 @@ The repository also includes a manual workflow:
 - `.github/workflows/windows-installer.yml`
 
 Open GitHub Actions, run `windows-installer`, and choose `exe` or `msi`.
+
+## Install from source
+
+A bootstrap installer script is included for Linux/macOS environments:
+
+```bash
+./scripts/install-from-source.sh
+```
+
+It will:
+
+- clone/update `https://github.com/Fynth/showel.git`
+- checkout `main`
+- build from source (`cargo build -p app --release --features desktop`)
+- install binary to `~/.local/bin/showel`
+
+Useful options:
+
+```bash
+./scripts/install-from-source.sh --branch main --src ~/.local/src/showel --prefix ~/.local --bin-name showel
+```
