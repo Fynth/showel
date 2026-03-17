@@ -19,16 +19,16 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli
+        run: cargo install dioxus-cli --locked
 
       - name: Build and Bundle MSI
-        # Эта команда соберет проект и создаст установщик .msi
-        run: dx bundle --release --platform windows
+        run: dx bundle --release --platform desktop --package app --features bundle --package-types msi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          # Путь к собранному пакету (Dioxus кладет их в target/dx)
-          path: target/dx/*/release/windows/*.msi
+          path: |
+            dist/**/*.msi
+            target/dx/**/*.msi
           if-no-files-found: error
