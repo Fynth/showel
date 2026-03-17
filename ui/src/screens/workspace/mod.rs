@@ -5,10 +5,14 @@ use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, open_connection_screen};
 use dioxus::prelude::*;
 use models::{ExplorerNode, QueryHistoryItem, QueryTabState};
 use std::collections::HashSet;
+use std::time::Duration;
 
 use self::{
     actions::new_query_tab,
-    components::{QueryHistoryPanel, SessionRail, SidebarConnectionTree, TabsManager},
+    components::{
+        AcpAgentPanel, QueryHistoryPanel, SessionRail, SidebarConnectionTree, TabsManager,
+        apply_acp_events, default_acp_panel_state,
+    },
 };
 
 #[component]
@@ -33,6 +37,8 @@ pub fn Workspace() -> Element {
     let mut tabs = use_signal(Vec::<QueryTabState>::new);
     let mut history = use_signal(Vec::<QueryHistoryItem>::new);
     let mut show_sql_editor = use_signal(|| true);
+    let mut show_agent_panel = use_signal(|| false);
+    let mut acp_panel_state = use_signal(default_acp_panel_state);
     let persisted_history =
         use_resource(
             move || async move { services::load_query_history().await.unwrap_or_default() },
@@ -130,6 +136,19 @@ pub fn Workspace() -> Element {
         }
     });
 
+    use_effect(move || {
+        spawn(async move {
+            loop {
+                let events = services::drain_acp_events();
+                if !events.is_empty() {
+                    acp_panel_state.with_mut(|state| apply_acp_events(state, events));
+                }
+
+                tokio::time::sleep(Duration::from_millis(120)).await;
+            }
+        });
+    });
+
     rsx! {
         div {
             class: "workspace",
@@ -203,6 +222,15 @@ pub fn Workspace() -> Element {
                             if show_sql_editor() { "Hide SQL Editor" } else { "Show SQL Editor" }
                         }
                         button {
+                            class: if show_agent_panel() {
+                                "button button--ghost button--small button--active"
+                            } else {
+                                "button button--ghost button--small"
+                            },
+                            onclick: move |_| show_agent_panel.toggle(),
+                            if show_agent_panel() { "Hide Agent" } else { "Show Agent" }
+                        }
+                        button {
                             class: "button button--ghost button--small",
                             onclick: move |_| tree_reload += 1,
                             "Refresh Explorer"
@@ -214,13 +242,25 @@ pub fn Workspace() -> Element {
                         }
                     }
                 }
-                TabsManager {
-                    tabs,
-                    active_tab_id,
-                    next_tab_id,
-                    history,
-                    next_history_id,
-                    show_sql_editor,
+                div {
+                    class: if show_agent_panel() {
+                        "workspace__content workspace__content--with-agent"
+                    } else {
+                        "workspace__content"
+                    },
+                    TabsManager {
+                        tabs,
+                        active_tab_id,
+                        next_tab_id,
+                        history,
+                        next_history_id,
+                        show_sql_editor,
+                    }
+                    if show_agent_panel() {
+                        AcpAgentPanel {
+                            panel_state: acp_panel_state,
+                        }
+                    }
                 }
             }
         }

@@ -4,14 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+agent-client-protocol = "0.10.2"
+async-trait = "0.1.89"
 database.workspace = true
 drivers.workspace = true
+futures = "0.3.31"
 models.workspace = true
 dirs = "6.0.0"
+shlex = "1.3.0"
 serde = "1.0.219"
 serde_json = "1.0.140"
 sqlx = { version = "0.8.6", features = ["sqlite", "postgres", "runtime-tokio-rustls"] }
-tokio = { version = "1.44.1", features = ["fs"] }
+tokio = { version = "1.44.1", features = ["fs", "process", "rt", "sync"] }
+tokio-util = { version = "0.7.13", features = ["compat"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }

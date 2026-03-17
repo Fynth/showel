@@ -8,6 +8,7 @@ build = "build.rs"
 dioxus = "0.7.3"
 services.workspace = true
 models.workspace = true
+tokio = { version = "1.44.1", features = ["time"] }
 tree-sitter-highlight = "0.25.10"
 tree-sitter-sequel = "0.3.11"
 

@@ -65,6 +65,17 @@
   overflow: hidden;
 }
 
+.workspace__content {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace__content--with-agent {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, clamp(320px, 26vw, 420px));
+}
+
 .workspace__header {
   display: flex;
   align-items: center;
@@ -152,6 +163,11 @@
   .workspace__toolbar {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .workspace__content--with-agent {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 }
 
