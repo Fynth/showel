@@ -64,19 +64,6 @@ jobs:
             Copy-Item -Path "styles/*" -Destination "app/styles" -Recurse -Force
           }
 
-          # Prepare general assets
-          New-Item -ItemType Directory -Path "app/assets" -Force | Out-Null
-          if (Test-Path "assets") {
-            $assetFiles = Get-ChildItem -Path "assets" -Recurse -File -ErrorAction SilentlyContinue
-            if ($assetFiles.Count -gt 0) {
-              Copy-Item -Path "assets/*" -Destination "app/assets" -Recurse -Force
-            } else {
-              Set-Content -Path "app/assets/bundle-placeholder.txt" -Value "Placeholder bundle asset for CI."
-            }
-          } else {
-            Set-Content -Path "app/assets/bundle-placeholder.txt" -Value "Placeholder bundle asset for CI."
-          }
-
       - name: Build MSI Package
         if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
         run: dx bundle --release --platform desktop --package app --features bundle --package-types msi
