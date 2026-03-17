@@ -1,5 +1,5 @@
 use serde::{Serialize, de::DeserializeOwned};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 fn storage_root() -> PathBuf {
@@ -16,11 +16,15 @@ pub(crate) fn query_history_path() -> PathBuf {
     storage_root().join("query_history.json")
 }
 
+pub(crate) fn saved_queries_path() -> PathBuf {
+    storage_root().join("saved_queries.json")
+}
+
 pub(crate) fn session_state_path() -> PathBuf {
     storage_root().join("session_state.json")
 }
 
-async fn ensure_storage_dir(path: &PathBuf) -> Result<(), String> {
+async fn ensure_storage_dir(path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .await
@@ -52,7 +56,7 @@ where
         .map_err(|err| format!("failed to write {}: {err}", path.display()))
 }
 
-pub(crate) async fn read_text_file(path: &PathBuf) -> Result<Option<String>, String> {
+pub(crate) async fn read_text_file(path: &Path) -> Result<Option<String>, String> {
     match fs::read_to_string(path).await {
         Ok(content) => Ok(Some(content)),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),

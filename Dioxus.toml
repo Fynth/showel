@@ -1,21 +1,31 @@
 [application]
+name = "showel"
+default_platform = "desktop"
+out_dir = "dist"
+sub_package = "app"
 
 [web.app]
+title = "Showel"
 
-# HTML title tag content
-title = "showel"
-
-# include `assets` in web platform
 [web.resource]
-
-# Additional CSS style files
 style = []
-
-# Additional JavaScript files
 script = []
 
 [web.resource.dev]
-
-# Javascript code file
-# serve: [dev-server] only
 script = []
+
+[bundle]
+identifier = "dev.showel.app"
+publisher = "Showel"
+category = "DeveloperTool"
+short_description = "Fast native desktop database client built with Rust and Dioxus."
+long_description = """
+Showel is a lightweight native desktop database client for SQLite, PostgreSQL, and ClickHouse.
+"""
+resources = ["ui/assets/**", "assets/**"]
+
+[bundle.windows]
+digest_algorithm = "sha-256"
+
+[bundle.windows.webview_install_mode.EmbedBootstrapper]
+silent = true

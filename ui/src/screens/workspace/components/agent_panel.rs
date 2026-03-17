@@ -1,11 +1,29 @@
+#[path = "agent_panel/prompt.rs"]
+mod prompt;
+#[path = "agent_panel/registry_card.rs"]
+mod registry_card;
+#[path = "agent_panel/state.rs"]
+mod state;
+
 use dioxus::prelude::*;
-use models::{
-    AcpConnectionInfo, AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpPanelState, AcpRegistryAgent,
-    AcpUiMessage, QueryTabState,
+use models::{AcpMessageKind, AcpPanelState, QueryTabState};
+
+use self::{
+    prompt::{
+        active_editor_connection, build_chat_prompt, build_sql_generation_prompt,
+        insert_sql_into_editor,
+    },
+    registry_card::RegistryAgentCard,
+    state::{
+        apply_connected, message_kind_class, message_kind_label, permission_button_class,
+        push_message,
+    },
 };
 
-use crate::app_state::session_connection;
-use crate::screens::workspace::actions::update_active_tab_sql;
+pub(crate) use self::{
+    prompt::extract_sql_candidate,
+    state::{apply_acp_events, default_acp_panel_state},
+};
 
 #[component]
 pub fn AcpAgentPanel(
@@ -519,313 +537,4 @@ pub fn AcpAgentPanel(
             }
         }
     }
-}
-
-#[component]
-fn RegistryAgentCard(
-    agent: AcpRegistryAgent,
-    busy: bool,
-    on_connect: EventHandler<MouseEvent>,
-) -> Element {
-    rsx! {
-        article { class: "agent-panel__registry-card",
-            div { class: "agent-panel__registry-copy",
-                div { class: "agent-panel__registry-row",
-                    h5 { class: "agent-panel__registry-title", "{agent.name}" }
-                    span { class: "agent-panel__badge", "v{agent.version}" }
-                }
-                p { class: "agent-panel__hint", "{agent.description}" }
-                p {
-                    class: "agent-panel__hint",
-                    if agent.installed {
-                        "Installed locally and ready to connect."
-                    } else {
-                        "Downloads and starts the official registry build as `opencode acp`."
-                    }
-                }
-            }
-            button {
-                class: "button button--primary button--small",
-                disabled: busy,
-                onclick: move |event| on_connect.call(event),
-                if busy { "Preparing..." } else if agent.installed { "Connect OpenCode" } else { "Install & Connect OpenCode" }
-            }
-        }
-    }
-}
-
-pub fn default_acp_panel_state() -> AcpPanelState {
-    let cwd = std::env::current_dir()
-        .ok()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| ".".to_string());
-
-    AcpPanelState::new(AcpLaunchRequest {
-        command: std::env::var("SHOWEL_ACP_COMMAND").unwrap_or_default(),
-        args: std::env::var("SHOWEL_ACP_ARGS").unwrap_or_default(),
-        cwd,
-    })
-}
-
-pub fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>) {
-    for event in events {
-        match event {
-            AcpEvent::Connected(connection) => {
-                apply_connected(state, connection);
-            }
-            AcpEvent::Status(status) => {
-                state.status = status;
-            }
-            AcpEvent::Message { kind, text } => {
-                push_or_append_message(state, kind, text);
-            }
-            AcpEvent::PermissionRequested(request) => {
-                state.pending_permission = Some(request);
-                state.busy = true;
-                state.status = "ACP agent is waiting for permission.".to_string();
-            }
-            AcpEvent::PromptStarted => {
-                state.busy = true;
-                state.status = "Agent is working...".to_string();
-            }
-            AcpEvent::PromptFinished { stop_reason } => {
-                state.busy = false;
-                state.pending_permission = None;
-                state.status = format!("Prompt finished: {stop_reason}");
-                state
-                    .messages
-                    .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
-            }
-            AcpEvent::Error(error) => {
-                state.busy = false;
-                state.pending_permission = None;
-                state.pending_sql_insert = false;
-                state.status = error.clone();
-                state
-                    .messages
-                    .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
-                push_message(state, AcpMessageKind::Error, error);
-            }
-            AcpEvent::Disconnected => {
-                state.busy = false;
-                state.connected = false;
-                state.pending_sql_insert = false;
-                state.connection = None;
-                state.pending_permission = None;
-                state.status = "ACP agent disconnected.".to_string();
-                state
-                    .messages
-                    .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
-            }
-        }
-    }
-}
-
-fn apply_connected(state: &mut AcpPanelState, connection: AcpConnectionInfo) {
-    state.connected = true;
-    state.busy = false;
-    state.pending_sql_insert = false;
-    state.connection = Some(connection.clone());
-    state.pending_permission = None;
-    state.status = format!("Connected to {}", connection.agent_name);
-}
-
-fn push_or_append_message(state: &mut AcpPanelState, kind: AcpMessageKind, text: String) {
-    if text.is_empty() && !matches!(kind, AcpMessageKind::Tool | AcpMessageKind::Thought) {
-        return;
-    }
-
-    if matches!(kind, AcpMessageKind::Thought) {
-        if state
-            .messages
-            .last()
-            .is_some_and(|last| matches!(last.kind, AcpMessageKind::Thought))
-        {
-            return;
-        }
-
-        push_message(state, kind, String::new());
-        return;
-    }
-
-    if let Some(last) = state.messages.last_mut() {
-        if last.kind == kind {
-            if matches!(kind, AcpMessageKind::Tool) {
-                return;
-            }
-            last.text.push_str(&text);
-            return;
-        }
-    }
-
-    if matches!(kind, AcpMessageKind::Tool) {
-        push_message(state, kind, "🛠".to_string());
-    } else {
-        push_message(state, kind, text);
-    }
-}
-
-fn push_message(state: &mut AcpPanelState, kind: AcpMessageKind, text: String) {
-    let id = state.next_message_id;
-    state.next_message_id += 1;
-    state.messages.push(AcpUiMessage { id, kind, text });
-}
-
-fn message_kind_label(kind: &AcpMessageKind) -> &'static str {
-    match kind {
-        AcpMessageKind::User => "User",
-        AcpMessageKind::Agent => "Agent",
-        AcpMessageKind::Thought => "Thinking",
-        AcpMessageKind::Tool => "🛠",
-        AcpMessageKind::System => "System",
-        AcpMessageKind::Error => "Error",
-    }
-}
-
-fn message_kind_class(kind: &AcpMessageKind) -> &'static str {
-    match kind {
-        AcpMessageKind::User => "user",
-        AcpMessageKind::Agent => "agent",
-        AcpMessageKind::Thought => "thought",
-        AcpMessageKind::Tool => "tool",
-        AcpMessageKind::System => "system",
-        AcpMessageKind::Error => "error",
-    }
-}
-
-fn permission_button_class(kind: &str) -> &'static str {
-    if kind.contains("Allow") {
-        "button button--primary button--small"
-    } else {
-        "button button--ghost button--small"
-    }
-}
-
-pub fn extract_sql_candidate(text: &str) -> Option<String> {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if let Some(sql) = extract_fenced_block(trimmed, "sql") {
-        return Some(sql);
-    }
-    if let Some(sql) = extract_any_fenced_block(trimmed) {
-        return Some(sql);
-    }
-
-    let lowered = trimmed.to_ascii_lowercase();
-    [
-        "select", "with", "insert", "update", "delete", "create", "alter", "drop", "truncate",
-    ]
-    .iter()
-    .any(|keyword| lowered.starts_with(keyword))
-    .then(|| trimmed.to_string())
-}
-
-fn extract_fenced_block(text: &str, language: &str) -> Option<String> {
-    let needle = format!("```{language}");
-    let start = text.find(&needle)?;
-    let rest = &text[start + needle.len()..];
-    let rest = rest.strip_prefix('\n').unwrap_or(rest);
-    let end = rest.find("```")?;
-    Some(rest[..end].trim().to_string())
-}
-
-fn extract_any_fenced_block(text: &str) -> Option<String> {
-    let start = text.find("```")?;
-    let rest = &text[start + 3..];
-    let rest = match rest.find('\n') {
-        Some(newline) => &rest[newline + 1..],
-        None => rest,
-    };
-    let end = rest.find("```")?;
-    Some(rest[..end].trim().to_string())
-}
-
-fn build_sql_generation_prompt(
-    connection_label: &str,
-    request: &str,
-    db_context: Option<String>,
-) -> String {
-    let mut prompt = format!(
-        "You are generating SQL for the active database connection.\n\
-Database context: {connection_label}\n"
-    );
-    if let Some(db_context) = db_context {
-        prompt.push_str("Use this live database snapshot:\n");
-        prompt.push_str(&db_context);
-        prompt.push('\n');
-    }
-    prompt.push_str(
-        "When creating tables, always define an auto-generated primary key `id`.\n\
-For SQLite use `id INTEGER PRIMARY KEY AUTOINCREMENT`.\n\
-For PostgreSQL use `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`.\n\
-When inserting rows, omit the `id` column unless the user explicitly asks to provide it manually.\n\
-Return exactly one SQL query inside a single ```sql``` block with no explanation.\n",
-    );
-    prompt.push_str(&format!("User request: {request}"));
-    prompt
-}
-
-fn insert_sql_into_editor(
-    mut panel_state: Signal<AcpPanelState>,
-    tabs: Signal<Vec<QueryTabState>>,
-    active_tab_id: u64,
-    mut show_sql_editor: Signal<bool>,
-    sql: String,
-) {
-    if active_tab_id == 0 {
-        panel_state.with_mut(|state| {
-            state.status = "No active SQL tab to insert into.".to_string();
-            push_message(
-                state,
-                AcpMessageKind::Error,
-                "No active SQL tab to insert into.".to_string(),
-            );
-        });
-        return;
-    }
-
-    show_sql_editor.set(true);
-    update_active_tab_sql(
-        tabs,
-        active_tab_id,
-        sql,
-        "SQL inserted from ACP agent".to_string(),
-    );
-    panel_state.with_mut(|state| {
-        state.pending_sql_insert = false;
-        state.status = "Inserted agent SQL into the active editor.".to_string();
-    });
-}
-
-fn build_chat_prompt(connection_label: &str, prompt: &str, db_context: Option<String>) -> String {
-    let mut message = format!(
-        "You are helping with the active database connection.\n\
-Database context: {connection_label}\n"
-    );
-    if let Some(db_context) = db_context {
-        message.push_str("Use this live database snapshot when answering:\n");
-        message.push_str(&db_context);
-        message.push('\n');
-    }
-    message.push_str(
-        "If you propose schema creation, always use an auto-generated primary key `id`.\n\
-If you propose inserts, omit `id` unless the user explicitly asks for manual ids.\n",
-    );
-    message.push_str(&format!("User request: {prompt}"));
-    message
-}
-
-fn active_editor_connection(
-    tabs: Signal<Vec<QueryTabState>>,
-    active_tab_id: u64,
-) -> Option<models::DatabaseConnection> {
-    let session_id = tabs
-        .read()
-        .iter()
-        .find(|tab| tab.id == active_tab_id)
-        .map(|tab| tab.session_id)?;
-    session_connection(session_id)
 }

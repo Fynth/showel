@@ -1,24 +1,51 @@
+#[path = "query/build.rs"]
+mod build;
+#[path = "query/editable.rs"]
+mod editable;
+#[path = "query/rows.rs"]
+mod rows;
+
 use drivers::clickhouse::execute_json_query;
 use models::{
-    DatabaseConnection, DatabaseError, EditableTableContext, QueryOutput, QueryPage,
-    TablePreviewSource,
+    DatabaseConnection, DatabaseError, QueryFilter, QueryOutput, QuerySort, TablePreviewSource,
 };
-use sqlx::{Column, Row, TypeInfo};
+use sqlx::Row;
+
+use self::{
+    build::{
+        SqlBuildDialect, build_editable_paginated_query, build_outer_paginated_query,
+        build_paginated_query, clickhouse_filter_expression, postgres_filter_expression,
+        quote_identifier, quote_identifier_clickhouse, sql_literal, sqlite_filter_expression,
+    },
+    editable::editable_select_plan,
+    rows::{
+        clickhouse_rows_to_page, clickhouse_rows_to_paginated_page, invalid_sqlite_locator,
+        postgres_preview_rows_to_paginated_page, postgres_rows_to_paginated_page,
+        sqlite_preview_rows_to_paginated_page, sqlite_rows_to_paginated_page,
+    },
+};
 
 const LOCATOR_COLUMN: &str = "__showel_locator";
+const SQLITE_DIALECT: SqlBuildDialect = SqlBuildDialect {
+    quote_identifier,
+    filter_expression: sqlite_filter_expression,
+};
+const POSTGRES_DIALECT: SqlBuildDialect = SqlBuildDialect {
+    quote_identifier,
+    filter_expression: postgres_filter_expression,
+};
+const CLICKHOUSE_DIALECT: SqlBuildDialect = SqlBuildDialect {
+    quote_identifier: quote_identifier_clickhouse,
+    filter_expression: clickhouse_filter_expression,
+};
 
-#[derive(Clone)]
-struct EditableSelectPlan {
-    source: TablePreviewSource,
-    select_list: String,
-    tail: String,
-}
+pub(crate) use self::rows::{postgres_rows_to_page, sqlite_rows_to_page};
 
 pub async fn execute_query(
     connection: DatabaseConnection,
     sql: String,
 ) -> Result<QueryOutput, DatabaseError> {
-    execute_query_page(connection, sql, 100, 0).await
+    execute_query_page(connection, sql, 100, 0, None, None).await
 }
 
 pub async fn load_table_preview_page(
@@ -26,14 +53,21 @@ pub async fn load_table_preview_page(
     source: TablePreviewSource,
     page_size: u32,
     offset: u64,
+    filter: Option<QueryFilter>,
+    sort: Option<QuerySort>,
 ) -> Result<QueryOutput, DatabaseError> {
-    let limit = page_size as u64 + 1;
-
     match connection {
         DatabaseConnection::Sqlite(pool) => {
-            let sql = format!(
-                r#"select rowid as "{LOCATOR_COLUMN}", * from {} limit {limit} offset {offset}"#,
-                source.qualified_name
+            let sql = build_outer_paginated_query(
+                format!(
+                    r#"select rowid as "{LOCATOR_COLUMN}", * from {}"#,
+                    source.qualified_name
+                ),
+                page_size,
+                offset,
+                filter.as_ref(),
+                sort.as_ref(),
+                SQLITE_DIALECT,
             );
             let rows = sqlx::query(&sql)
                 .fetch_all(&pool)
@@ -44,9 +78,16 @@ pub async fn load_table_preview_page(
             )))
         }
         DatabaseConnection::Postgres(pool) => {
-            let sql = format!(
-                r#"select ctid::text as "{LOCATOR_COLUMN}", * from {} limit {limit} offset {offset}"#,
-                source.qualified_name
+            let sql = build_outer_paginated_query(
+                format!(
+                    r#"select ctid::text as "{LOCATOR_COLUMN}", * from {}"#,
+                    source.qualified_name
+                ),
+                page_size,
+                offset,
+                filter.as_ref(),
+                sort.as_ref(),
+                POSTGRES_DIALECT,
             );
             let rows = sqlx::query(&sql)
                 .fetch_all(&pool)
@@ -57,9 +98,13 @@ pub async fn load_table_preview_page(
             )))
         }
         DatabaseConnection::ClickHouse(config) => {
-            let sql = format!(
-                "select * from {} limit {} offset {}",
-                source.qualified_name, limit, offset
+            let sql = build_outer_paginated_query(
+                format!("select * from {}", source.qualified_name),
+                page_size,
+                offset,
+                filter.as_ref(),
+                sort.as_ref(),
+                CLICKHOUSE_DIALECT,
             );
             let response = execute_json_query(&config, &sql)
                 .await
@@ -83,9 +128,9 @@ pub async fn update_table_cell(
 
     match connection {
         DatabaseConnection::Sqlite(pool) => {
-            let rowid = locator.parse::<i64>().map_err(|_| {
-                DatabaseError::UnsupportedDriver("invalid SQLite row locator".to_string())
-            })?;
+            let rowid = locator
+                .parse::<i64>()
+                .map_err(|_| invalid_sqlite_locator())?;
             let sql = format!(
                 "update {} set {} = {} where rowid = {}",
                 source.qualified_name, column, value_literal, rowid
@@ -116,18 +161,190 @@ pub async fn update_table_cell(
     }
 }
 
+pub async fn insert_table_row(
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+) -> Result<(), DatabaseError> {
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            let sql = format!("insert into {} default values", source.qualified_name);
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+            Ok(())
+        }
+        DatabaseConnection::Postgres(pool) => {
+            let sql = format!("insert into {} default values", source.qualified_name);
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
+            "ClickHouse row inserts are not supported yet".to_string(),
+        )),
+    }
+}
+
+pub async fn insert_table_row_with_values(
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+    column_values: Vec<(String, String)>,
+) -> Result<(), DatabaseError> {
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            let sql = build_insert_row_sql(&source, &column_values);
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+            Ok(())
+        }
+        DatabaseConnection::Postgres(pool) => {
+            let sql = build_insert_row_sql(&source, &column_values);
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
+            "ClickHouse row inserts are not supported yet".to_string(),
+        )),
+    }
+}
+
+pub async fn next_table_primary_key_id(
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+) -> Result<Option<(String, i64)>, DatabaseError> {
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            let schema_name = source.schema.clone().unwrap_or_else(|| "main".to_string());
+            let Some((column_name, data_type)) =
+                sqlite_single_primary_key_column(&pool, &schema_name, &source.table_name).await?
+            else {
+                return Ok(None);
+            };
+            if !sqlite_type_supports_auto_id(&data_type) {
+                return Ok(None);
+            }
+
+            let column = quote_identifier(&column_name);
+            let sql = format!(
+                "select cast(coalesce(max({column}), 0) + 1 as text) from {}",
+                source.qualified_name
+            );
+            let row = sqlx::query(&sql)
+                .fetch_one(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+            Ok(Some((
+                column_name.clone(),
+                parse_next_numeric_id(
+                    row.try_get::<String, _>(0).map_err(DatabaseError::Sqlite)?,
+                    &column_name,
+                )?,
+            )))
+        }
+        DatabaseConnection::Postgres(pool) => {
+            let schema_name = source
+                .schema
+                .clone()
+                .unwrap_or_else(|| "public".to_string());
+            let Some((column_name, data_type)) =
+                postgres_single_primary_key_column(&pool, &schema_name, &source.table_name).await?
+            else {
+                return Ok(None);
+            };
+            if !postgres_type_supports_auto_id(&data_type) {
+                return Ok(None);
+            }
+
+            let column = quote_identifier(&column_name);
+            let sql = format!(
+                "select cast(coalesce(max({column})::bigint, 0) + 1 as text) from {}",
+                source.qualified_name
+            );
+            let row = sqlx::query(&sql)
+                .fetch_one(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+            Ok(Some((
+                column_name.clone(),
+                parse_next_numeric_id(
+                    row.try_get::<String, _>(0)
+                        .map_err(DatabaseError::Postgres)?,
+                    &column_name,
+                )?,
+            )))
+        }
+        DatabaseConnection::ClickHouse(_) => Ok(None),
+    }
+}
+
+pub async fn delete_table_row(
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+    locator: String,
+) -> Result<(), DatabaseError> {
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            let rowid = locator
+                .parse::<i64>()
+                .map_err(|_| invalid_sqlite_locator())?;
+            let sql = format!(
+                "delete from {} where rowid = {}",
+                source.qualified_name, rowid
+            );
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+            Ok(())
+        }
+        DatabaseConnection::Postgres(pool) => {
+            let sql = format!(
+                "delete from {} where ctid = {}::tid",
+                source.qualified_name,
+                sql_literal(&locator)
+            );
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
+            "ClickHouse row deletes are not supported yet".to_string(),
+        )),
+    }
+}
+
 pub async fn execute_query_page(
     connection: DatabaseConnection,
     sql: String,
     page_size: u32,
     offset: u64,
+    filter: Option<QueryFilter>,
+    sort: Option<QuerySort>,
 ) -> Result<QueryOutput, DatabaseError> {
     let normalized = sql.trim().to_lowercase();
 
     match connection {
         DatabaseConnection::Sqlite(pool) => {
             if let Some(plan) = editable_select_plan(&sql) {
-                let query = build_editable_paginated_query(&plan, page_size, offset, "rowid");
+                let query = build_editable_paginated_query(
+                    &plan,
+                    page_size,
+                    offset,
+                    "rowid",
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    SQLITE_DIALECT,
+                );
                 let rows = sqlx::query(&query)
                     .fetch_all(&pool)
                     .await
@@ -139,10 +356,17 @@ pub async fn execute_query_page(
                     offset,
                 )))
             } else if is_paginated_query(&normalized) {
-                let rows = sqlx::query(&build_paginated_query(&sql, page_size, offset))
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::Sqlite)?;
+                let rows = sqlx::query(&build_paginated_query(
+                    &sql,
+                    page_size,
+                    offset,
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    SQLITE_DIALECT,
+                ))
+                .fetch_all(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
                 Ok(QueryOutput::Table(sqlite_rows_to_paginated_page(
                     rows, page_size, offset,
                 )))
@@ -162,7 +386,15 @@ pub async fn execute_query_page(
         }
         DatabaseConnection::Postgres(pool) => {
             if let Some(plan) = editable_select_plan(&sql) {
-                let query = build_editable_paginated_query(&plan, page_size, offset, "ctid::text");
+                let query = build_editable_paginated_query(
+                    &plan,
+                    page_size,
+                    offset,
+                    "ctid::text",
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    POSTGRES_DIALECT,
+                );
                 let rows = sqlx::query(&query)
                     .fetch_all(&pool)
                     .await
@@ -174,10 +406,17 @@ pub async fn execute_query_page(
                     offset,
                 )))
             } else if is_paginated_query(&normalized) {
-                let rows = sqlx::query(&build_paginated_query(&sql, page_size, offset))
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::Postgres)?;
+                let rows = sqlx::query(&build_paginated_query(
+                    &sql,
+                    page_size,
+                    offset,
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    POSTGRES_DIALECT,
+                ))
+                .fetch_all(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
                 Ok(QueryOutput::Table(postgres_rows_to_paginated_page(
                     rows, page_size, offset,
                 )))
@@ -197,10 +436,19 @@ pub async fn execute_query_page(
         }
         DatabaseConnection::ClickHouse(config) => {
             if is_paginated_query(&normalized) {
-                let response =
-                    execute_json_query(&config, &build_paginated_query(&sql, page_size, offset))
-                        .await
-                        .map_err(DatabaseError::ClickHouse)?;
+                let response = execute_json_query(
+                    &config,
+                    &build_paginated_query(
+                        &sql,
+                        page_size,
+                        offset,
+                        filter.as_ref(),
+                        sort.as_ref(),
+                        CLICKHOUSE_DIALECT,
+                    ),
+                )
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
                 Ok(QueryOutput::Table(clickhouse_rows_to_paginated_page(
                     response, page_size, offset,
                 )))
@@ -230,689 +478,128 @@ fn is_paginated_query(sql: &str) -> bool {
     matches!(sql.split_whitespace().next(), Some("select" | "with"))
 }
 
-fn build_paginated_query(sql: &str, page_size: u32, offset: u64) -> String {
-    let base_sql = sql.trim().trim_end_matches(';');
-    let limit = page_size as u64 + 1;
-    format!("select * from ({base_sql}) as showel_page limit {limit} offset {offset}")
-}
-
-fn build_editable_paginated_query(
-    plan: &EditableSelectPlan,
-    page_size: u32,
-    offset: u64,
-    locator_expr: &str,
-) -> String {
-    let limit = page_size as u64 + 1;
-    if plan.tail.is_empty() {
-        format!(
-            r#"select {locator_expr} as "{LOCATOR_COLUMN}", {} from {} limit {limit} offset {offset}"#,
-            plan.select_list, plan.source.qualified_name
-        )
-    } else {
-        format!(
-            r#"select {locator_expr} as "{LOCATOR_COLUMN}", {} from {} {} limit {limit} offset {offset}"#,
-            plan.select_list, plan.source.qualified_name, plan.tail
-        )
+fn build_insert_row_sql(source: &TablePreviewSource, column_values: &[(String, String)]) -> String {
+    if column_values.is_empty() {
+        return format!("insert into {} default values", source.qualified_name);
     }
-}
 
-pub(crate) fn sqlite_rows_to_page(rows: Vec<sqlx::sqlite::SqliteRow>) -> QueryPage {
-    let columns = rows
-        .first()
-        .map(|row| row.columns().iter().map(|c| c.name().to_string()).collect())
-        .unwrap_or_default();
-
-    let rows: Vec<Vec<String>> = rows
-        .into_iter()
-        .map(|row| {
-            (0..row.columns().len())
-                .map(|idx| sqlite_cell_to_string(&row, idx))
-                .collect()
-        })
-        .collect();
-
-    QueryPage {
-        columns,
-        page_size: rows.len() as u32,
-        rows,
-        editable: None,
-        offset: 0,
-        has_previous: false,
-        has_next: false,
-    }
-}
-
-pub(crate) fn postgres_rows_to_page(rows: Vec<sqlx::postgres::PgRow>) -> QueryPage {
-    let columns = rows
-        .first()
-        .map(|row| row.columns().iter().map(|c| c.name().to_string()).collect())
-        .unwrap_or_default();
-
-    let rows: Vec<Vec<String>> = rows
-        .into_iter()
-        .map(|row| {
-            (0..row.columns().len())
-                .map(|idx| postgres_cell_to_string(&row, idx))
-                .collect()
-        })
-        .collect();
-
-    QueryPage {
-        columns,
-        page_size: rows.len() as u32,
-        rows,
-        editable: None,
-        offset: 0,
-        has_previous: false,
-        has_next: false,
-    }
-}
-
-fn sqlite_rows_to_paginated_page(
-    mut rows: Vec<sqlx::sqlite::SqliteRow>,
-    page_size: u32,
-    offset: u64,
-) -> QueryPage {
-    let columns = rows
-        .first()
-        .map(|row| row.columns().iter().map(|c| c.name().to_string()).collect())
-        .unwrap_or_default();
-    let has_next = rows.len() > page_size as usize;
-    if has_next {
-        rows.truncate(page_size as usize);
-    }
-    let rows: Vec<Vec<String>> = rows
-        .into_iter()
-        .map(|row| {
-            (0..row.columns().len())
-                .map(|idx| sqlite_cell_to_string(&row, idx))
-                .collect()
-        })
-        .collect();
-
-    QueryPage {
-        columns,
-        rows,
-        editable: None,
-        offset,
-        page_size,
-        has_previous: offset > 0,
-        has_next,
-    }
-}
-
-fn postgres_rows_to_paginated_page(
-    mut rows: Vec<sqlx::postgres::PgRow>,
-    page_size: u32,
-    offset: u64,
-) -> QueryPage {
-    let columns = rows
-        .first()
-        .map(|row| row.columns().iter().map(|c| c.name().to_string()).collect())
-        .unwrap_or_default();
-    let has_next = rows.len() > page_size as usize;
-    if has_next {
-        rows.truncate(page_size as usize);
-    }
-    let rows: Vec<Vec<String>> = rows
-        .into_iter()
-        .map(|row| {
-            (0..row.columns().len())
-                .map(|idx| postgres_cell_to_string(&row, idx))
-                .collect()
-        })
-        .collect();
-
-    QueryPage {
-        columns,
-        rows,
-        editable: None,
-        offset,
-        page_size,
-        has_previous: offset > 0,
-        has_next,
-    }
-}
-
-fn sqlite_preview_rows_to_paginated_page(
-    mut rows: Vec<sqlx::sqlite::SqliteRow>,
-    source: TablePreviewSource,
-    page_size: u32,
-    offset: u64,
-) -> QueryPage {
-    let columns = rows
-        .first()
-        .map(|row| {
-            row.columns()
-                .iter()
-                .skip(1)
-                .map(|c| c.name().to_string())
-                .collect()
-        })
-        .unwrap_or_default();
-    let has_next = rows.len() > page_size as usize;
-    if has_next {
-        rows.truncate(page_size as usize);
-    }
-    let row_locators = rows
+    let columns = column_values
         .iter()
-        .map(|row| {
-            row.try_get::<i64, _>(0)
-                .map(|v| v.to_string())
-                .unwrap_or_default()
-        })
-        .collect::<Vec<_>>();
-    let rows = rows
-        .into_iter()
-        .map(|row| {
-            (1..row.columns().len())
-                .map(|idx| sqlite_cell_to_string(&row, idx))
-                .collect()
-        })
-        .collect();
-
-    QueryPage {
-        columns,
-        rows,
-        editable: Some(EditableTableContext {
-            source,
-            row_locators,
-        }),
-        offset,
-        page_size,
-        has_previous: offset > 0,
-        has_next,
-    }
-}
-
-fn postgres_preview_rows_to_paginated_page(
-    mut rows: Vec<sqlx::postgres::PgRow>,
-    source: TablePreviewSource,
-    page_size: u32,
-    offset: u64,
-) -> QueryPage {
-    let columns = rows
-        .first()
-        .map(|row| {
-            row.columns()
-                .iter()
-                .skip(1)
-                .map(|c| c.name().to_string())
-                .collect()
-        })
-        .unwrap_or_default();
-    let has_next = rows.len() > page_size as usize;
-    if has_next {
-        rows.truncate(page_size as usize);
-    }
-    let row_locators = rows
+        .map(|(column_name, _)| quote_identifier(column_name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let values = column_values
         .iter()
-        .map(|row| row.try_get::<String, _>(0).unwrap_or_default())
-        .collect::<Vec<_>>();
-    let rows = rows
-        .into_iter()
-        .map(|row| {
-            (1..row.columns().len())
-                .map(|idx| postgres_cell_to_string(&row, idx))
-                .collect()
-        })
-        .collect();
+        .map(|(_, value)| sql_literal(value))
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    QueryPage {
-        columns,
-        rows,
-        editable: Some(EditableTableContext {
-            source,
-            row_locators,
-        }),
-        offset,
-        page_size,
-        has_previous: offset > 0,
-        has_next,
-    }
-}
-
-fn sqlite_cell_to_string(row: &sqlx::sqlite::SqliteRow, idx: usize) -> String {
-    if let Ok(value) = row.try_get::<Option<String>, _>(idx) {
-        return value.unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<i16>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<i32>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<i64>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<f32>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<f64>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<bool>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(idx) {
-        return value
-            .map(|bytes| format!("<{} bytes>", bytes.len()))
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-
-    format!("<unsupported:{}>", row.columns()[idx].type_info().name())
-}
-
-fn postgres_cell_to_string(row: &sqlx::postgres::PgRow, idx: usize) -> String {
-    if let Ok(value) = row.try_get::<Option<String>, _>(idx) {
-        return value.unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<i16>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<i32>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<i64>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<f32>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<f64>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<bool>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(idx) {
-        return value
-            .map(|bytes| format!("<{} bytes>", bytes.len()))
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<uuid::Uuid>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<bigdecimal::BigDecimal>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, _>(idx) {
-        return value
-            .map(|value| value.0.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<time::Date>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<time::Time>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<time::PrimitiveDateTime>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<time::OffsetDateTime>, _>(idx) {
-        return value
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<String>>, _>(idx) {
-        return value
-            .map(format_array)
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<i32>>, _>(idx) {
-        return value
-            .map(format_array)
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<i64>>, _>(idx) {
-        return value
-            .map(format_array)
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<f64>>, _>(idx) {
-        return value
-            .map(format_array)
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<bool>>, _>(idx) {
-        return value
-            .map(format_array)
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-    if let Ok(value) = row.try_get::<Option<Vec<uuid::Uuid>>, _>(idx) {
-        return value
-            .map(format_array)
-            .unwrap_or_else(|| "NULL".to_string());
-    }
-
-    format!("<unsupported:{}>", row.columns()[idx].type_info().name())
-}
-
-fn clickhouse_rows_to_page(response: drivers::clickhouse::ClickHouseJsonResponse) -> QueryPage {
-    QueryPage {
-        columns: response
-            .meta
-            .into_iter()
-            .map(|column| column.name)
-            .collect(),
-        rows: response
-            .data
-            .into_iter()
-            .map(|row| {
-                row.into_iter()
-                    .map(|value| clickhouse_json_value_to_string(&value))
-                    .collect()
-            })
-            .collect(),
-        editable: None,
-        offset: 0,
-        page_size: 0,
-        has_previous: false,
-        has_next: false,
-    }
-}
-
-fn clickhouse_rows_to_paginated_page(
-    mut response: drivers::clickhouse::ClickHouseJsonResponse,
-    page_size: u32,
-    offset: u64,
-) -> QueryPage {
-    let has_next = response.data.len() > page_size as usize;
-    if has_next {
-        response.data.truncate(page_size as usize);
-    }
-
-    QueryPage {
-        columns: response
-            .meta
-            .into_iter()
-            .map(|column| column.name)
-            .collect(),
-        rows: response
-            .data
-            .into_iter()
-            .map(|row| {
-                row.into_iter()
-                    .map(|value| clickhouse_json_value_to_string(&value))
-                    .collect()
-            })
-            .collect(),
-        editable: None,
-        offset,
-        page_size,
-        has_previous: offset > 0,
-        has_next,
-    }
-}
-
-fn clickhouse_json_value_to_string(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => "NULL".to_string(),
-        serde_json::Value::Bool(value) => value.to_string(),
-        serde_json::Value::Number(value) => value.to_string(),
-        serde_json::Value::String(value) => value.clone(),
-        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-            serde_json::to_string(value).unwrap_or_else(|_| "<unsupported>".to_string())
-        }
-    }
-}
-
-fn format_array<T: ToString>(values: Vec<T>) -> String {
     format!(
-        "[{}]",
-        values
-            .into_iter()
-            .map(|value| value.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
+        "insert into {} ({columns}) values ({values})",
+        source.qualified_name
     )
 }
 
-fn quote_identifier(identifier: &str) -> String {
-    format!("\"{}\"", identifier.replace('"', "\"\""))
-}
-
-fn sql_literal(value: &str) -> String {
-    if value.eq_ignore_ascii_case("null") {
-        "NULL".to_string()
-    } else {
-        format!("'{}'", value.replace('\'', "''"))
-    }
-}
-
-fn editable_select_plan(sql: &str) -> Option<EditableSelectPlan> {
-    let trimmed = sql.trim().trim_end_matches(';').trim();
-    let lower = trimmed.to_lowercase();
-    if !lower.starts_with("select ") || lower.starts_with("select distinct ") {
-        return None;
-    }
-
-    let from_idx = find_top_level_keyword(&lower, " from ")?;
-    let select_list = trimmed[6..from_idx].trim().to_string();
-    if !is_simple_projection(&select_list) {
-        return None;
-    }
-
-    let after_from = trimmed[from_idx + " from ".len()..].trim();
-    let (table_ref, tail) = split_table_ref(after_from)?;
-    let tail = strip_limit_offset(tail.trim());
-    let tail_lower = tail.to_lowercase();
-    if tail_lower.contains(" join ")
-        || tail_lower.contains(" union ")
-        || tail_lower.contains(" intersect ")
-        || tail_lower.contains(" except ")
-        || tail_lower.contains(" group by ")
-        || tail_lower.contains(" having ")
-    {
-        return None;
-    }
-
-    let (schema, table_name) = split_qualified_name(&table_ref);
-    Some(EditableSelectPlan {
-        source: TablePreviewSource {
-            schema,
-            table_name,
-            qualified_name: table_ref,
-        },
-        select_list,
-        tail,
+fn parse_next_numeric_id(value: String, column_name: &str) -> Result<i64, DatabaseError> {
+    value.trim().parse::<i64>().map_err(|_| {
+        DatabaseError::UnsupportedDriver(format!(
+            "Built-in auto id requires a numeric `{column_name}` column"
+        ))
     })
 }
 
-fn find_top_level_keyword(sql: &str, needle: &str) -> Option<usize> {
-    let bytes = sql.as_bytes();
-    let needle_bytes = needle.as_bytes();
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut depth = 0i32;
-    let mut idx = 0usize;
+async fn sqlite_single_primary_key_column(
+    pool: &sqlx::SqlitePool,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<Option<(String, String)>, DatabaseError> {
+    let sql = format!(
+        "PRAGMA {}.table_info({})",
+        quote_identifier(schema_name),
+        quote_identifier(table_name)
+    );
+    let rows = sqlx::query(&sql)
+        .fetch_all(pool)
+        .await
+        .map_err(DatabaseError::Sqlite)?;
 
-    while idx + needle_bytes.len() <= bytes.len() {
-        let ch = bytes[idx] as char;
-        match ch {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            '(' if !in_single && !in_double => depth += 1,
-            ')' if !in_single && !in_double && depth > 0 => depth -= 1,
-            _ => {}
+    let mut primary_key_columns = Vec::new();
+    for row in rows {
+        let pk_position = row.try_get::<i64, _>("pk").unwrap_or(0);
+        if pk_position <= 0 {
+            continue;
         }
 
-        if !in_single
-            && !in_double
-            && depth == 0
-            && &bytes[idx..idx + needle_bytes.len()] == needle_bytes
-        {
-            return Some(idx);
-        }
-        idx += 1;
+        let column_name = row
+            .try_get::<String, _>("name")
+            .map_err(DatabaseError::Sqlite)?;
+        let data_type = row
+            .try_get::<String, _>("type")
+            .unwrap_or_else(|_| String::new());
+        primary_key_columns.push((pk_position, column_name, data_type));
     }
 
-    None
+    primary_key_columns.sort_by_key(|(pk_position, _, _)| *pk_position);
+    if primary_key_columns.len() != 1 {
+        return Ok(None);
+    }
+
+    let (_, column_name, data_type) = primary_key_columns.remove(0);
+    Ok(Some((column_name, data_type)))
 }
 
-fn split_table_ref(after_from: &str) -> Option<(String, String)> {
-    let mut in_double = false;
-    let mut depth = 0i32;
+async fn postgres_single_primary_key_column(
+    pool: &sqlx::PgPool,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<Option<(String, String)>, DatabaseError> {
+    let rows = sqlx::query(
+        r#"
+        select
+          kcu.column_name,
+          cols.data_type
+        from information_schema.table_constraints tc
+        join information_schema.key_column_usage kcu
+          on tc.constraint_name = kcu.constraint_name
+         and tc.table_schema = kcu.table_schema
+         and tc.table_name = kcu.table_name
+        join information_schema.columns cols
+          on cols.table_schema = kcu.table_schema
+         and cols.table_name = kcu.table_name
+         and cols.column_name = kcu.column_name
+        where tc.constraint_type = 'PRIMARY KEY'
+          and tc.table_schema = $1
+          and tc.table_name = $2
+        order by kcu.ordinal_position
+        "#,
+    )
+    .bind(schema_name)
+    .bind(table_name)
+    .fetch_all(pool)
+    .await
+    .map_err(DatabaseError::Postgres)?;
 
-    for (idx, ch) in after_from.char_indices() {
-        match ch {
-            '"' => in_double = !in_double,
-            '(' if !in_double => depth += 1,
-            ')' if !in_double && depth > 0 => depth -= 1,
-            ' ' | '\n' | '\t' if !in_double && depth == 0 => {
-                let table = after_from[..idx].trim().to_string();
-                let tail = after_from[idx..].trim().to_string();
-                return Some((table, tail));
-            }
-            _ => {}
-        }
+    if rows.len() != 1 {
+        return Ok(None);
     }
 
-    if after_from.is_empty() {
-        None
-    } else {
-        Some((after_from.trim().to_string(), String::new()))
-    }
+    let row = &rows[0];
+    let column_name = row
+        .try_get::<String, _>("column_name")
+        .map_err(DatabaseError::Postgres)?;
+    let data_type = row
+        .try_get::<String, _>("data_type")
+        .unwrap_or_else(|_| String::new());
+    Ok(Some((column_name, data_type)))
 }
 
-fn split_qualified_name(table_ref: &str) -> (Option<String>, String) {
-    let mut parts = Vec::new();
-    let mut start = 0usize;
-    let mut in_double = false;
-
-    for (idx, ch) in table_ref.char_indices() {
-        match ch {
-            '"' => in_double = !in_double,
-            '.' if !in_double => {
-                parts.push(table_ref[start..idx].trim().to_string());
-                start = idx + 1;
-            }
-            _ => {}
-        }
-    }
-    parts.push(table_ref[start..].trim().to_string());
-
-    match parts.as_slice() {
-        [table] => (None, unquote_identifier(table)),
-        [schema, table] => (Some(unquote_identifier(schema)), unquote_identifier(table)),
-        _ => (None, table_ref.to_string()),
-    }
+fn sqlite_type_supports_auto_id(data_type: &str) -> bool {
+    data_type.to_ascii_lowercase().contains("int")
 }
 
-fn unquote_identifier(identifier: &str) -> String {
-    let trimmed = identifier.trim();
-    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
-        trimmed[1..trimmed.len() - 1].replace("\"\"", "\"")
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn is_simple_projection(select_list: &str) -> bool {
-    let trimmed = select_list.trim();
-    if trimmed == "*" || trimmed.ends_with(".*") {
-        return true;
-    }
-
-    split_projection_items(trimmed)
-        .into_iter()
-        .all(|item| is_simple_column_ref(item.trim()))
-}
-
-fn split_projection_items(select_list: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut start = 0usize;
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut depth = 0i32;
-
-    for (idx, ch) in select_list.char_indices() {
-        match ch {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            '(' if !in_single && !in_double => depth += 1,
-            ')' if !in_single && !in_double && depth > 0 => depth -= 1,
-            ',' if !in_single && !in_double && depth == 0 => {
-                parts.push(&select_list[start..idx]);
-                start = idx + 1;
-            }
-            _ => {}
-        }
-    }
-    parts.push(&select_list[start..]);
-    parts
-}
-
-fn is_simple_column_ref(item: &str) -> bool {
-    let lowered = item.to_lowercase();
-    if lowered.contains(" as ")
-        || item.contains('(')
-        || item.contains(')')
-        || item.contains('+')
-        || item.contains('-')
-        || item.contains('*')
-        || item.contains('/')
-    {
-        return false;
-    }
-
-    item.split('.').all(|part| {
-        let part = part.trim();
-        if part.is_empty() {
-            return false;
-        }
-        if part.starts_with('"') && part.ends_with('"') {
-            return true;
-        }
-        part.chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-    })
-}
-
-fn strip_limit_offset(tail: &str) -> String {
-    let lower = tail.to_lowercase();
-    let limit_pos = find_top_level_keyword(&lower, " limit ");
-    let offset_pos = find_top_level_keyword(&lower, " offset ");
-
-    match (limit_pos, offset_pos) {
-        (Some(limit), Some(offset)) => tail[..limit.min(offset)].trim().to_string(),
-        (Some(limit), None) => tail[..limit].trim().to_string(),
-        (None, Some(offset)) => tail[..offset].trim().to_string(),
-        (None, None) => tail.trim().to_string(),
-    }
+fn postgres_type_supports_auto_id(data_type: &str) -> bool {
+    matches!(
+        data_type.to_ascii_lowercase().as_str(),
+        "smallint" | "integer" | "bigint"
+    )
 }

@@ -1,3 +1,8 @@
+#![cfg_attr(
+    all(feature = "bundle", target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
 use dioxus::{
     LaunchBuilder,
     desktop::{Config, LogicalSize, WindowBuilder, tao::event_loop::EventLoopBuilder},

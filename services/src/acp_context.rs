@@ -37,6 +37,8 @@ pub async fn build_acp_database_context(
             source.clone(),
             MAX_CONTEXT_ROWS as u32,
             0,
+            None,
+            None,
         )
         .await
         {

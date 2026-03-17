@@ -1,10 +1,12 @@
 use crate::app_state::{activate_session, session_connection};
 use dioxus::prelude::*;
 use models::{
-    DatabaseConnection, QueryHistoryItem, QueryOutput, QueryTabState, TablePreviewSource,
+    DatabaseConnection, PendingTableChanges, QueryFilter, QueryFilterMode, QueryHistoryItem,
+    QueryOutput, QuerySort, QueryTabState, TablePreviewSource,
 };
 
 pub const DEFAULT_PAGE_SIZE: u32 = 100;
+type QueryHistorySignals = (Signal<Vec<QueryHistoryItem>>, Signal<u64>, String, String);
 
 pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> QueryTabState {
     QueryTabState {
@@ -18,6 +20,9 @@ pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> Qu
         page_size: DEFAULT_PAGE_SIZE,
         last_run_sql: None,
         preview_source: None,
+        filter: None,
+        sort: None,
+        pending_table_changes: PendingTableChanges::default(),
     }
 }
 
@@ -67,6 +72,9 @@ pub fn update_active_tab_sql(
             tab.current_offset = 0;
             tab.last_run_sql = None;
             tab.preview_source = None;
+            tab.filter = None;
+            tab.sort = None;
+            tab.pending_table_changes = PendingTableChanges::default();
         }
     });
 }
@@ -80,6 +88,37 @@ pub fn set_active_tab_sql(
     update_active_tab_sql(tabs, active_tab_id, sql, status);
 }
 
+pub fn append_to_tab_sql(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    tab_id: u64,
+    sql_fragment: String,
+    status: String,
+) {
+    tabs.with_mut(|all_tabs| {
+        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == tab_id) {
+            if tab.sql.trim().is_empty() {
+                tab.sql = sql_fragment;
+            } else if sql_fragment.trim().is_empty() {
+                return;
+            } else if tab.sql.ends_with('\n') {
+                tab.sql.push_str(&sql_fragment);
+            } else {
+                tab.sql.push_str("\n\n");
+                tab.sql.push_str(&sql_fragment);
+            }
+
+            tab.status = status.clone();
+            tab.result = None;
+            tab.current_offset = 0;
+            tab.last_run_sql = None;
+            tab.preview_source = None;
+            tab.filter = None;
+            tab.sort = None;
+            tab.pending_table_changes = PendingTableChanges::default();
+        }
+    });
+}
+
 pub fn set_active_tab_status(
     mut tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: u64,
@@ -88,6 +127,71 @@ pub fn set_active_tab_status(
     tabs.with_mut(|all_tabs| {
         if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) {
             tab.status = status.clone();
+        }
+    });
+}
+
+pub fn replace_active_tab_sql(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    sql: String,
+    status: String,
+) {
+    tabs.with_mut(|all_tabs| {
+        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) {
+            tab.sql = sql;
+            tab.status = status.clone();
+        }
+    });
+}
+
+pub fn open_structure_tab(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    mut active_tab_id: Signal<u64>,
+    mut next_tab_id: Signal<u64>,
+    session_id: u64,
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+) {
+    let tab_id = next_tab_id();
+    next_tab_id += 1;
+
+    let title = format!("Structure · {}", source.table_name);
+    let comment = format!("-- Structure for {}", source.qualified_name);
+
+    tabs.with_mut(|all_tabs| {
+        let mut tab = new_query_tab(tab_id, session_id, title, comment);
+        tab.status = format!("Loading structure for {}...", source.table_name);
+        all_tabs.push(tab);
+    });
+    active_tab_id.set(tab_id);
+
+    spawn(async move {
+        match services::describe_table(connection, source.schema.clone(), source.table_name.clone())
+            .await
+        {
+            Ok(output) => {
+                tabs.with_mut(|all_tabs| {
+                    if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == tab_id) {
+                        tab.result = Some(output);
+                        tab.status = format!("Loaded structure for {}", source.table_name);
+                        tab.current_offset = 0;
+                        tab.last_run_sql = None;
+                        tab.preview_source = None;
+                        tab.filter = None;
+                        tab.sort = None;
+                        tab.pending_table_changes = PendingTableChanges::default();
+                    }
+                });
+            }
+            Err(err) => {
+                tabs.with_mut(|all_tabs| {
+                    if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == tab_id) {
+                        tab.result = None;
+                        tab.status = format!("Structure error: {err:?}");
+                    }
+                });
+            }
         }
     });
 }
@@ -113,17 +217,31 @@ pub fn run_query_for_tab(
     sql: String,
     offset: u64,
     page_size: u32,
-    history: Option<(Signal<Vec<QueryHistoryItem>>, Signal<u64>, String, String)>,
+    history: Option<QueryHistorySignals>,
 ) {
+    let filter = tabs
+        .read()
+        .iter()
+        .find(|tab| tab.id == current_id)
+        .and_then(|tab| tab.filter.clone());
+    let sort = tabs
+        .read()
+        .iter()
+        .find(|tab| tab.id == current_id)
+        .and_then(|tab| tab.sort.clone());
+
     tabs.with_mut(|all_tabs| {
         if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
             tab.status = format!("Running query at offset {offset}...");
             tab.preview_source = None;
+            tab.pending_table_changes = PendingTableChanges::default();
         }
     });
 
     spawn(async move {
-        match services::execute_query_page(connection, sql.clone(), page_size, offset).await {
+        match services::execute_query_page(connection, sql.clone(), page_size, offset, filter, sort)
+            .await
+        {
             Ok(output) => {
                 let (status, current_offset) = match &output {
                     QueryOutput::Table(page) => (
@@ -145,6 +263,7 @@ pub fn run_query_for_tab(
                         tab.page_size = page_size;
                         tab.last_run_sql = Some(sql.clone());
                         tab.preview_source = None;
+                        tab.pending_table_changes = PendingTableChanges::default();
                     }
                 });
 
@@ -175,6 +294,7 @@ pub fn run_query_for_tab(
                         tab.result = None;
                         tab.status = format!("Error: {err:?}");
                         tab.preview_source = None;
+                        tab.pending_table_changes = PendingTableChanges::default();
                     }
                 });
 
@@ -211,9 +331,37 @@ pub fn run_table_preview_for_tab(
     offset: u64,
     page_size: u32,
 ) {
+    let filter = tabs
+        .read()
+        .iter()
+        .find(|tab| tab.id == current_id)
+        .and_then(|tab| {
+            if tab.preview_source.as_ref() == Some(&source) {
+                tab.filter.clone()
+            } else {
+                None
+            }
+        });
+    let sort = tabs
+        .read()
+        .iter()
+        .find(|tab| tab.id == current_id)
+        .and_then(|tab| {
+            if tab.preview_source.as_ref() == Some(&source) {
+                tab.sort.clone()
+            } else {
+                None
+            }
+        });
+
     tabs.with_mut(|all_tabs| {
         if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
             tab.status = format!("Loading rows from {}...", source.table_name);
+            if tab.preview_source.as_ref() != Some(&source) {
+                tab.filter = None;
+                tab.sort = None;
+                tab.pending_table_changes = PendingTableChanges::default();
+            }
             tab.preview_source = Some(source.clone());
         }
     });
@@ -224,7 +372,15 @@ pub fn run_table_preview_for_tab(
     );
 
     spawn(async move {
-        match services::load_table_preview_page(connection, source.clone(), page_size, offset).await
+        match services::load_table_preview_page(
+            connection,
+            source.clone(),
+            page_size,
+            offset,
+            filter,
+            sort,
+        )
+        .await
         {
             Ok(output) => {
                 let status = match &output {
@@ -317,5 +473,124 @@ pub fn refresh_tab_result(
             current_tab.current_offset,
             current_tab.page_size,
         );
+    }
+}
+
+pub fn toggle_active_tab_sort(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    column_name: String,
+) {
+    let mut tab_to_reload = None;
+
+    tabs.with_mut(|all_tabs| {
+        let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) else {
+            return;
+        };
+
+        tab.sort = next_sort_state(tab.sort.as_ref(), &column_name);
+        tab.current_offset = 0;
+        tab.status = match &tab.sort {
+            Some(sort) => format!(
+                "Sorted by {} {}",
+                sort.column_name,
+                if sort.descending { "DESC" } else { "ASC" }
+            ),
+            None => "Sorting cleared".to_string(),
+        };
+        tab_to_reload = Some(tab.clone());
+    });
+
+    if let Some(tab) = tab_to_reload
+        && (tab.last_run_sql.is_some() || tab.preview_source.is_some())
+    {
+        load_tab_page(tabs, tab, 0);
+    }
+}
+
+fn next_sort_state(current: Option<&QuerySort>, column_name: &str) -> Option<QuerySort> {
+    match current {
+        Some(sort) if sort.column_name == column_name && !sort.descending => Some(QuerySort {
+            column_name: column_name.to_string(),
+            descending: true,
+        }),
+        Some(sort) if sort.column_name == column_name && sort.descending => None,
+        _ => Some(QuerySort {
+            column_name: column_name.to_string(),
+            descending: false,
+        }),
+    }
+}
+
+pub fn apply_active_tab_filter(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    filter: QueryFilter,
+) {
+    let mut tab_to_reload = None;
+
+    tabs.with_mut(|all_tabs| {
+        let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) else {
+            return;
+        };
+
+        let applied_rules = filter
+            .rules
+            .iter()
+            .filter(|rule| {
+                !rule.column_name.trim().is_empty()
+                    && (!rule.value.trim().is_empty() || rule.operator.is_nullary())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        tab.filter = if applied_rules.is_empty() {
+            None
+        } else {
+            Some(QueryFilter {
+                mode: filter.mode,
+                rules: applied_rules,
+            })
+        };
+        tab.current_offset = 0;
+        tab.status = match &tab.filter {
+            Some(filter) => format!(
+                "Applied {} filter rule(s) with {}",
+                filter.rules.len(),
+                match filter.mode {
+                    QueryFilterMode::And => "AND",
+                    QueryFilterMode::Or => "OR",
+                }
+            ),
+            None => "Filter cleared".to_string(),
+        };
+        tab_to_reload = Some(tab.clone());
+    });
+
+    if let Some(tab) = tab_to_reload
+        && (tab.last_run_sql.is_some() || tab.preview_source.is_some())
+    {
+        load_tab_page(tabs, tab, 0);
+    }
+}
+
+pub fn clear_active_tab_filter(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: u64) {
+    let mut tab_to_reload = None;
+
+    tabs.with_mut(|all_tabs| {
+        let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) else {
+            return;
+        };
+
+        tab.filter = None;
+        tab.current_offset = 0;
+        tab.status = "Filter cleared".to_string();
+        tab_to_reload = Some(tab.clone());
+    });
+
+    if let Some(tab) = tab_to_reload
+        && (tab.last_run_sql.is_some() || tab.preview_source.is_some())
+    {
+        load_tab_page(tabs, tab, 0);
     }
 }

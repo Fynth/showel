@@ -11,3 +11,4 @@ ui.workspace = true
 default = ["desktop"]
 desktop = ["dioxus/desktop"]
 web = ["dioxus/web"]
+bundle = []

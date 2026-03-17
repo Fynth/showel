@@ -49,3 +49,37 @@ dx serve --platform desktop
 ```
 
 # showel
+
+## Windows installer
+
+This project is configured for the official Dioxus bundler.
+
+### Local build on Windows
+
+Install the Dioxus CLI:
+
+```powershell
+cargo install dioxus-cli --locked
+```
+
+Build an `.exe` installer:
+
+```powershell
+./scripts/build-windows-installer.ps1
+```
+
+Build an `.msi` installer:
+
+```powershell
+./scripts/build-windows-installer.ps1 -PackageType msi
+```
+
+The Windows installer uses the WebView2 bootstrapper, so the installer can provision WebView2 on the target machine.
+
+### GitHub Actions
+
+The repository also includes a manual workflow:
+
+- `.github/workflows/windows-installer.yml`
+
+Open GitHub Actions, run `windows-installer`, and choose `exe` or `msi`.

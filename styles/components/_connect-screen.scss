@@ -66,6 +66,26 @@
   gap: $spacing-md;
 }
 
+.connect-form__ssh {
+  display: grid;
+  gap: $spacing-md;
+  padding: $spacing-md;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--color-panel-2) 62%, transparent);
+}
+
+.connect-form__ssh-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+}
+
+.connect-form__ssh-grid {
+  gap: $spacing-md;
+}
+
 .connect-form__grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -113,6 +133,11 @@
 @media (max-width: 680px) {
   .connect-form__grid {
     grid-template-columns: 1fr;
+  }
+
+  .connect-form__ssh-header {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

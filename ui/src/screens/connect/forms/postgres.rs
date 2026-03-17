@@ -1,6 +1,8 @@
 use crate::app_state::add_connection_session;
 use dioxus::prelude::*;
-use models::{ConnectionRequest, PostgresFormData};
+use models::{ConnectionRequest, PostgresFormData, SshTunnelConfig};
+
+use super::SshTunnelFields;
 
 #[component]
 pub fn PostgresForm() -> Element {
@@ -9,6 +11,11 @@ pub fn PostgresForm() -> Element {
     let mut username = use_signal(|| "postgres".to_string());
     let mut password = use_signal(|| "".to_string());
     let mut database = use_signal(|| "postgres".to_string());
+    let ssh_enabled = use_signal(|| false);
+    let ssh_host = use_signal(String::new);
+    let ssh_port = use_signal(|| "22".to_string());
+    let ssh_username = use_signal(String::new);
+    let ssh_private_key_path = use_signal(String::new);
     let mut status = use_signal(|| "Idle".to_string());
 
     rsx! {
@@ -24,6 +31,16 @@ pub fn PostgresForm() -> Element {
                     username: username(),
                     password: password(),
                     database: database(),
+                    ssh_tunnel: if ssh_enabled() {
+                        Some(SshTunnelConfig {
+                            host: ssh_host(),
+                            port: ssh_port().parse().unwrap_or(22),
+                            username: ssh_username(),
+                            private_key_path: ssh_private_key_path(),
+                        })
+                    } else {
+                        None
+                    },
                 });
 
                 spawn(async move {
@@ -103,6 +120,14 @@ pub fn PostgresForm() -> Element {
                     placeholder: "app",
                     oninput: move |event| database.set(event.value()),
                 }
+            }
+
+            SshTunnelFields {
+                enabled: ssh_enabled,
+                host: ssh_host,
+                port: ssh_port,
+                username: ssh_username,
+                private_key_path: ssh_private_key_path,
             }
 
             button {
