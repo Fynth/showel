@@ -1,6 +1,6 @@
 use models::SavedQuery;
 
-use crate::storage::{read_json_file, saved_queries_path, write_json_file};
+use crate::fs_store::{read_json_file, saved_queries_path, write_json_file};
 
 pub async fn load_saved_queries() -> Result<Vec<SavedQuery>, String> {
     let mut items: Vec<SavedQuery> = read_json_file(saved_queries_path()).await?;

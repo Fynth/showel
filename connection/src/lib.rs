@@ -1,12 +1,12 @@
-use crate::ssh_tunnel::{open_ssh_tunnel, register_ssh_tunnel};
+use connection_ssh::{open_ssh_tunnel, register_ssh_tunnel};
 use database::DatabaseDriver;
-use drivers::{
-    clickhouse::ClickHouseDriver,
-    postgres::{PgConfig, PgDriver},
-    sqlite::SqliteDriver,
-};
+use driver_clickhouse::ClickHouseDriver;
+use driver_postgres::{PgConfig, PgDriver};
+use driver_sqlite::SqliteDriver;
 use models::{ClickHouseFormData, ConnectionRequest, DatabaseConnection, DatabaseError};
 use reqwest::Url;
+
+pub use connection_ssh::release_ssh_tunnel;
 
 pub async fn connect_to_db(
     request: ConnectionRequest,

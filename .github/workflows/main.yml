@@ -21,6 +21,23 @@ jobs:
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --locked
 
+      - name: Ensure Windows bundle icon exists
+        shell: pwsh
+        run: |
+          $iconBase64 = "AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAArV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/K1eK/ytXiv8rV4r/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          $iconBytes = [Convert]::FromBase64String($iconBase64)
+
+          foreach ($iconPath in @("icons/icon.ico", "app/icons/icon.ico")) {
+            $iconDir = Split-Path -Parent $iconPath
+            if (-not (Test-Path $iconDir)) {
+              New-Item -ItemType Directory -Path $iconDir -Force | Out-Null
+            }
+
+            if (-not (Test-Path $iconPath)) {
+              [System.IO.File]::WriteAllBytes($iconPath, $iconBytes)
+            }
+          }
+
       - name: Build and Bundle MSI
         run: dx bundle --release --platform desktop --package app --features bundle --package-types msi
 

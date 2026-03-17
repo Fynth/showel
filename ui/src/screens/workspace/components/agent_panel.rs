@@ -39,7 +39,7 @@ pub fn AcpAgentPanel(
     let mut registry_busy = use_signal(|| false);
     let mut registry_status = use_signal(String::new);
     let registry_agents =
-        use_resource(move || async move { services::load_acp_registry_agents().await });
+        use_resource(move || async move { acp::load_acp_registry_agents().await });
     let opencode_agent = registry_agents().and_then(|result| {
         result
             .ok()
@@ -77,7 +77,7 @@ pub fn AcpAgentPanel(
                             class: "button button--ghost button--small",
                             disabled: !state.busy,
                             onclick: move |_| {
-                                if let Err(err) = services::cancel_acp_prompt() {
+                                if let Err(err) = acp::cancel_acp_prompt() {
                                     panel_state.with_mut(|state| {
                                         state.status = err.clone();
                                         push_message(state, AcpMessageKind::Error, err);
@@ -93,7 +93,7 @@ pub fn AcpAgentPanel(
                         button {
                             class: "button button--ghost button--small",
                             onclick: move |_| {
-                                let _ = services::disconnect_acp_agent();
+                                let _ = acp::disconnect_acp_agent();
                                 panel_state.with_mut(|state| {
                                     state.connected = false;
                                     state.busy = false;
@@ -169,7 +169,7 @@ pub fn AcpAgentPanel(
                                         let option_id = option.option_id.clone();
                                         let label = option.label.clone();
                                         move |_| {
-                                            match services::respond_acp_permission(
+                                            match acp::respond_acp_permission(
                                                 request_id,
                                                 Some(option_id.clone()),
                                             ) {
@@ -201,7 +201,7 @@ pub fn AcpAgentPanel(
                                 onclick: {
                                     let request_id = permission_request.request_id;
                                     move |_| {
-                                        match services::respond_acp_permission(request_id, None) {
+                                        match acp::respond_acp_permission(request_id, None) {
                                             Ok(()) => {
                                                 panel_state.with_mut(|state| {
                                                     state.pending_permission = None;
@@ -259,7 +259,7 @@ pub fn AcpAgentPanel(
                                 spawn(async move {
                                     let prompt = match connection {
                                         Some(connection) => {
-                                            match services::build_acp_database_context(
+                                            match acp::build_acp_database_context(
                                                 connection,
                                                 connection_label.clone(),
                                             )
@@ -284,7 +284,7 @@ pub fn AcpAgentPanel(
                                         ),
                                     };
 
-                                    match services::send_acp_prompt(prompt) {
+                                    match acp::send_acp_prompt(prompt) {
                                         Ok(()) => {
                                             panel_state.with_mut(|state| {
                                                 push_message(
@@ -333,7 +333,7 @@ pub fn AcpAgentPanel(
                                 spawn(async move {
                                     let contextual_prompt = match connection {
                                         Some(connection) => {
-                                            match services::build_acp_database_context(
+                                            match acp::build_acp_database_context(
                                                 connection,
                                                 connection_label.clone(),
                                             )
@@ -356,7 +356,7 @@ pub fn AcpAgentPanel(
                                         }
                                     };
 
-                                    match services::send_acp_prompt(contextual_prompt) {
+                                    match acp::send_acp_prompt(contextual_prompt) {
                                         Ok(()) => {
                                             panel_state.with_mut(|state| {
                                                 push_message(state, AcpMessageKind::User, prompt);
@@ -399,14 +399,14 @@ pub fn AcpAgentPanel(
                                     registry_busy.set(true);
                                     registry_status.set("Preparing OpenCode from the ACP registry...".to_string());
                                     spawn(async move {
-                                        match services::install_acp_registry_agent("opencode".to_string(), cwd).await {
+                                        match acp::install_acp_registry_agent("opencode".to_string(), cwd).await {
                                             Ok(launch) => {
                                                 panel_state.with_mut(|state| {
                                                     state.launch = launch.clone();
                                                     state.busy = true;
                                                     state.status = "Connecting to OpenCode...".to_string();
                                                 });
-                                                match services::connect_acp_agent(launch).await {
+                                                match acp::connect_acp_agent(launch).await {
                                                     Ok(connection) => {
                                                         panel_state.with_mut(|state| {
                                                             apply_connected(state, connection.clone());
@@ -508,7 +508,7 @@ pub fn AcpAgentPanel(
                                 state.status = "Connecting to ACP agent...".to_string();
                             });
                             spawn(async move {
-                                match services::connect_acp_agent(launch).await {
+                                match acp::connect_acp_agent(launch).await {
                                     Ok(connection) => {
                                         panel_state.with_mut(|state| {
                                             apply_connected(state, connection.clone());

@@ -167,7 +167,7 @@ pub fn open_structure_tab(
     active_tab_id.set(tab_id);
 
     spawn(async move {
-        match services::describe_table(connection, source.schema.clone(), source.table_name.clone())
+        match explorer::describe_table(connection, source.schema.clone(), source.table_name.clone())
             .await
         {
             Ok(output) => {
@@ -239,7 +239,7 @@ pub fn run_query_for_tab(
     });
 
     spawn(async move {
-        match services::execute_query_page(connection, sql.clone(), page_size, offset, filter, sort)
+        match query::execute_query_page(connection, sql.clone(), page_size, offset, filter, sort)
             .await
         {
             Ok(output) => {
@@ -285,7 +285,7 @@ pub fn run_query_for_tab(
                             items.truncate(20);
                         }
                     });
-                    let _ = services::append_query_history(history_item).await;
+                    let _ = storage::append_query_history(history_item).await;
                 }
             }
             Err(err) => {
@@ -316,7 +316,7 @@ pub fn run_query_for_tab(
                             items.truncate(20);
                         }
                     });
-                    let _ = services::append_query_history(history_item).await;
+                    let _ = storage::append_query_history(history_item).await;
                 }
             }
         }
@@ -372,7 +372,7 @@ pub fn run_table_preview_for_tab(
     );
 
     spawn(async move {
-        match services::load_table_preview_page(
+        match query::load_table_preview_page(
             connection,
             source.clone(),
             page_size,

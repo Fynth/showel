@@ -60,7 +60,7 @@ pub fn SqlEditor(
             return Vec::<ExplorerNode>::new();
         };
 
-        services::load_connection_tree(connection)
+        explorer::load_connection_tree(connection)
             .await
             .unwrap_or_default()
     });
@@ -167,7 +167,7 @@ pub fn SqlEditor(
             let table = relation.name.clone();
             let connection = connection.clone();
             spawn(async move {
-                if let Ok(columns) = services::load_table_columns(connection, schema, table).await {
+                if let Ok(columns) = explorer::load_table_columns(connection, schema, table).await {
                     column_cache.with_mut(|cache| {
                         cache.insert(relation_key, columns);
                     });

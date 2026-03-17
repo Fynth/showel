@@ -1,4 +1,4 @@
-use drivers::clickhouse::{execute_json_query, execute_text_query};
+use driver_clickhouse::{execute_json_query, execute_text_query};
 use models::{DatabaseConnection, DatabaseError, ExplorerNode, ExplorerNodeKind, QueryOutput};
 use sqlx::Row;
 

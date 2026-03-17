@@ -444,9 +444,9 @@ fn export_active_page(
         );
 
         let export_result = match format {
-            ExportFormat::Csv => services::export_query_page_csv(page, path.clone()).await,
-            ExportFormat::Json => services::export_query_page_json(page, path.clone()).await,
-            ExportFormat::Xlsx => services::export_query_page_xlsx(page, path.clone()).await,
+            ExportFormat::Csv => query::export_query_page_csv(page, path.clone()).await,
+            ExportFormat::Json => query::export_query_page_json(page, path.clone()).await,
+            ExportFormat::Xlsx => query::export_query_page_xlsx(page, path.clone()).await,
         };
 
         match export_result {
@@ -509,7 +509,7 @@ fn import_csv_into_active_table(tabs: Signal<Vec<QueryTabState>>, current_tab: Q
             format!("Importing {}...", path.to_string_lossy()),
         );
 
-        match services::import_csv_into_table(connection, source.clone(), path).await {
+        match query::import_csv_into_table(connection, source.clone(), path).await {
             Ok(rows) => {
                 set_active_tab_status(
                     tabs,
@@ -582,7 +582,7 @@ fn format_active_sql(tabs: Signal<Vec<QueryTabState>>, current_tab: QueryTabStat
         .read()
         .session(current_tab.session_id)
         .map(|session| session.kind);
-    let formatted = services::format_sql(session_kind, sql);
+    let formatted = query::format_sql(session_kind, sql);
     replace_active_tab_sql(tabs, current_tab.id, formatted, "SQL formatted".to_string());
 }
 

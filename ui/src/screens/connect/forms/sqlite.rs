@@ -25,10 +25,10 @@ pub fn SqliteForm() -> Element {
                 });
 
                 spawn(async move {
-                    match services::connect_to_db(request.clone()).await {
+                    match connection::connect_to_db(request.clone()).await {
                         Ok(connection) => {
                             add_connection_session(request.clone(), connection);
-                            match services::save_connection_request(request).await {
+                            match storage::save_connection_request(request).await {
                                 Ok(()) => status.set("Connected".to_string()),
                                 Err(err) => status.set(format!(
                                     "Connected, but failed to save connection: {err}"

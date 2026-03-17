@@ -93,7 +93,7 @@ pub fn remove_session(session_id: u64) {
         }
 
         for name in removed_names {
-            services::release_ssh_tunnel(&name);
+            connection::release_ssh_tunnel(&name);
         }
     });
     persist_session_state();
@@ -110,7 +110,7 @@ pub fn restore_connection_sessions(
             .map(|session| session.name.clone())
             .collect::<Vec<_>>();
         for name in existing_names {
-            services::release_ssh_tunnel(&name);
+            connection::release_ssh_tunnel(&name);
         }
 
         state.sessions.clear();
@@ -154,5 +154,5 @@ fn persist_session_state() {
         (requests, active)
     };
 
-    let _ = services::save_session_state_sync(open_requests, active_connection_name);
+    let _ = storage::save_session_state_sync(open_requests, active_connection_name);
 }

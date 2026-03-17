@@ -5,11 +5,15 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
+acp.workspace = true
+connection.workspace = true
 dioxus = "0.7.3"
-rfd = "0.17.2"
-services.workspace = true
+explorer.workspace = true
 models.workspace = true
+query.workspace = true
+rfd = "0.17.2"
 serde_json = "1.0.140"
+storage.workspace = true
 tokio = { version = "1.44.1", features = ["time"] }
 tree-sitter-highlight = "0.25.10"
 tree-sitter-sequel = "0.3.11"

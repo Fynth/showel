@@ -1,0 +1,15 @@
+[package]
+name = "acp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+agent-client-protocol = "0.10.2"
+acp-registry.workspace = true
+async-trait = "0.1.89"
+explorer.workspace = true
+models.workspace = true
+query.workspace = true
+shlex = "1.3.0"
+tokio = { version = "1.44.1", features = ["fs", "process", "rt", "sync"] }
+tokio-util = { version = "0.7.13", features = ["compat"] }

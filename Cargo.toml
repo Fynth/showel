@@ -1,5 +1,25 @@
 [workspace]
-members = ["app", "database", "drivers", "ui", "models", "services"]
+members = [
+    "acp",
+    "acp-registry",
+    "app",
+    "connection",
+    "connection-ssh",
+    "database",
+    "driver-clickhouse",
+    "driver-postgres",
+    "driver-sqlite",
+    "drivers",
+    "explorer",
+    "models",
+    "query",
+    "query-core",
+    "query-format",
+    "query-io",
+    "services",
+    "storage",
+    "ui",
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -7,6 +27,19 @@ ui = { path = "ui" }
 models = { path = "models" }
 drivers = { path = "drivers" }
 database = { path = "database" }
-services = {path = "services"}
+services = { path = "services" }
+acp = { path = "acp" }
+acp-registry = { path = "acp-registry" }
+connection = { path = "connection" }
+connection-ssh = { path = "connection-ssh" }
+driver-clickhouse = { path = "driver-clickhouse" }
+driver-postgres = { path = "driver-postgres" }
+driver-sqlite = { path = "driver-sqlite" }
+explorer = { path = "explorer" }
+query = { path = "query" }
+query-core = { path = "query-core" }
+query-format = { path = "query-format" }
+query-io = { path = "query-io" }
+storage = { path = "storage" }
 
 dioxus = "0.7.3"

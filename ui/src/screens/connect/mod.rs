@@ -17,7 +17,7 @@ pub fn DbConnect() -> Element {
     let selected_kind = use_signal(|| DatabaseKind::Sqlite);
     let has_sessions = APP_STATE.read().has_sessions();
     let saved_connections = use_resource(move || async move {
-        services::load_saved_connections().await.unwrap_or_default()
+        storage::load_saved_connections().await.unwrap_or_default()
     });
 
     rsx! {

@@ -204,7 +204,7 @@ pub fn SavedQueriesPanel(
                                                             });
                                                             panel_status.set(format!("Deleted {item_title}."));
                                                             spawn(async move {
-                                                                let _ = services::delete_saved_query(item_id).await;
+                                                                let _ = storage::delete_saved_query(item_id).await;
                                                             });
                                                         }
                                                     },
@@ -275,7 +275,7 @@ fn save_current_sql(
     panel_status.set(format!("Saved {}.", title));
 
     spawn(async move {
-        let _ = services::save_saved_query(item).await;
+        let _ = storage::save_saved_query(item).await;
     });
 }
 

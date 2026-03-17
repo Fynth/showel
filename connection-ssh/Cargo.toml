@@ -1,0 +1,8 @@
+[package]
+name = "connection-ssh"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+models.workspace = true
+tokio = { version = "1.44.1", features = ["net", "process", "rt", "time"] }

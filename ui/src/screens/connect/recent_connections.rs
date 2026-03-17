@@ -31,10 +31,10 @@ pub fn RecentConnections(saved_connections: Option<Vec<SavedConnection>>) -> Ele
                                         let request_to_save = request.clone();
                                         let request_to_register = request.clone();
                                         spawn(async move {
-                                            match services::connect_to_db(request_to_connect).await {
+                                            match connection::connect_to_db(request_to_connect).await {
                                                 Ok(connection) => {
                                                     let save_result =
-                                                        services::save_connection_request(request_to_save).await;
+                                                        storage::save_connection_request(request_to_save).await;
                                                     add_connection_session(request_to_register, connection);
                                                     match save_result {
                                                         Ok(()) => status.set("Connected".to_string()),

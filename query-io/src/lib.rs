@@ -1,4 +1,4 @@
-use drivers::clickhouse::execute_text_query;
+use driver_clickhouse::execute_text_query;
 use models::{DatabaseConnection, QueryPage, TablePreviewSource};
 use rust_xlsxwriter::Workbook;
 use serde_json::{Map, Value};

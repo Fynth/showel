@@ -1,0 +1,13 @@
+[package]
+name = "connection"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+connection-ssh.workspace = true
+database.workspace = true
+driver-clickhouse.workspace = true
+driver-postgres.workspace = true
+driver-sqlite.workspace = true
+models.workspace = true
+reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls"] }

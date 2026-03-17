@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::storage::{
+use crate::fs_store::{
     query_history_path, read_json_file, read_text_file, saved_connections_path, session_state_path,
     write_json_file,
 };

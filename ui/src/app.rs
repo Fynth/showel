@@ -17,7 +17,7 @@ pub fn App() -> Element {
 
         restored_once.set(true);
         spawn(async move {
-            let Ok((open_requests, active_connection_name)) = services::load_session_state().await
+            let Ok((open_requests, active_connection_name)) = storage::load_session_state().await
             else {
                 return;
             };
@@ -27,7 +27,7 @@ pub fn App() -> Element {
 
             let mut restored = Vec::new();
             for request in open_requests {
-                if let Ok(connection) = services::connect_to_db(request.clone()).await {
+                if let Ok(connection) = connection::connect_to_db(request.clone()).await {
                     restored.push((request, connection));
                 }
             }

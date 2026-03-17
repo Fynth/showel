@@ -1,0 +1,9 @@
+[package]
+name = "query"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+query-core.workspace = true
+query-format.workspace = true
+query-io.workspace = true

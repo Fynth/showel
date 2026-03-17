@@ -1,11 +1,8 @@
-#[path = "query/build.rs"]
 mod build;
-#[path = "query/editable.rs"]
 mod editable;
-#[path = "query/rows.rs"]
 mod rows;
 
-use drivers::clickhouse::execute_json_query;
+use driver_clickhouse::execute_json_query;
 use models::{
     DatabaseConnection, DatabaseError, QueryFilter, QueryOutput, QuerySort, TablePreviewSource,
 };
@@ -458,7 +455,7 @@ pub async fn execute_query_page(
                     .map_err(DatabaseError::ClickHouse)?;
                 Ok(QueryOutput::Table(clickhouse_rows_to_page(response)))
             } else {
-                drivers::clickhouse::execute_text_query(&config, &sql)
+                driver_clickhouse::execute_text_query(&config, &sql)
                     .await
                     .map_err(DatabaseError::ClickHouse)?;
                 Ok(QueryOutput::AffectedRows(0))

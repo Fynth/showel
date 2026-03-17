@@ -3,7 +3,8 @@ use models::{
     TablePreviewSource,
 };
 
-use crate::{explorer::load_connection_tree, query::load_table_preview_page};
+use explorer::load_connection_tree;
+use query::load_table_preview_page;
 
 const MAX_CONTEXT_TABLES: usize = 4;
 const MAX_CONTEXT_ROWS: usize = 3;

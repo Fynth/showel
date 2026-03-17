@@ -369,7 +369,7 @@ fn postgres_cell_to_string(row: &sqlx::postgres::PgRow, idx: usize) -> String {
 }
 
 pub(super) fn clickhouse_rows_to_page(
-    response: drivers::clickhouse::ClickHouseJsonResponse,
+    response: driver_clickhouse::ClickHouseJsonResponse,
 ) -> QueryPage {
     QueryPage {
         columns: response
@@ -395,7 +395,7 @@ pub(super) fn clickhouse_rows_to_page(
 }
 
 pub(super) fn clickhouse_rows_to_paginated_page(
-    mut response: drivers::clickhouse::ClickHouseJsonResponse,
+    mut response: driver_clickhouse::ClickHouseJsonResponse,
     page_size: u32,
     offset: u64,
 ) -> QueryPage {

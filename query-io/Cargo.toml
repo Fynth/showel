@@ -1,0 +1,13 @@
+[package]
+name = "query-io"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+csv = "1.4.0"
+driver-clickhouse.workspace = true
+models.workspace = true
+rust_xlsxwriter = "0.94.0"
+serde_json = "1.0.140"
+sqlx = { version = "0.8.6", features = ["sqlite", "postgres", "runtime-tokio-rustls"] }
+tokio = { version = "1.44.1", features = ["fs", "rt"] }

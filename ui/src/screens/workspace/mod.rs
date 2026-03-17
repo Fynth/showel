@@ -53,11 +53,11 @@ pub fn Workspace() -> Element {
     let mut sidebar_resize = use_signal(|| None::<SidebarResizeState>);
     let persisted_history =
         use_resource(
-            move || async move { services::load_query_history().await.unwrap_or_default() },
+            move || async move { storage::load_query_history().await.unwrap_or_default() },
         );
     let persisted_saved_queries =
         use_resource(
-            move || async move { services::load_saved_queries().await.unwrap_or_default() },
+            move || async move { storage::load_saved_queries().await.unwrap_or_default() },
         );
 
     use_effect(move || {
@@ -80,7 +80,7 @@ pub fn Workspace() -> Element {
             let mut failed_count = 0usize;
 
             for session in sessions {
-                match services::load_connection_tree(session.connection.clone()).await {
+                match explorer::load_connection_tree(session.connection.clone()).await {
                     Ok(nodes) => sections.push(ExplorerConnectionSection {
                         session_id: session.id,
                         name: session.name,
@@ -192,7 +192,7 @@ pub fn Workspace() -> Element {
     use_effect(move || {
         spawn(async move {
             loop {
-                let events = services::drain_acp_events();
+                let events = acp::drain_acp_events();
                 if !events.is_empty() {
                     acp_panel_state.with_mut(|state| apply_acp_events(state, events));
 
