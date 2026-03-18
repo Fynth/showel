@@ -134,7 +134,7 @@ pub enum QueryOutput {
     AffectedRows(u64),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct QueryTabState {
     pub id: u64,
     pub session_id: u64,

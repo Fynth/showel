@@ -8,6 +8,7 @@ acp.workspace = true
 connection.workspace = true
 dioxus = "0.7.3"
 explorer.workspace = true
+futures-util = "0.3.31"
 models.workspace = true
 query.workspace = true
 rfd = "0.17.2"

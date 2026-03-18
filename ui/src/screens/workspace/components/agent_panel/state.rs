@@ -1,5 +1,6 @@
 use models::{
-    AcpConnectionInfo, AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpPanelState, AcpUiMessage,
+    AcpConnectionInfo, AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpOllamaConfig, AcpPanelState,
+    AcpUiMessage,
 };
 
 pub(crate) fn default_acp_panel_state() -> AcpPanelState {
@@ -8,11 +9,19 @@ pub(crate) fn default_acp_panel_state() -> AcpPanelState {
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| ".".to_string());
 
-    AcpPanelState::new(AcpLaunchRequest {
-        command: std::env::var("SHOWEL_ACP_COMMAND").unwrap_or_default(),
-        args: std::env::var("SHOWEL_ACP_ARGS").unwrap_or_default(),
-        cwd,
-    })
+    AcpPanelState::new(
+        AcpLaunchRequest {
+            command: std::env::var("SHOWEL_ACP_COMMAND").unwrap_or_default(),
+            args: std::env::var("SHOWEL_ACP_ARGS").unwrap_or_default(),
+            cwd,
+        },
+        AcpOllamaConfig {
+            base_url: std::env::var("SHOWEL_OLLAMA_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:11434/api".to_string()),
+            model: std::env::var("SHOWEL_OLLAMA_MODEL").unwrap_or_default(),
+            api_key: std::env::var("OLLAMA_API_KEY").unwrap_or_default(),
+        },
+    )
 }
 
 pub(crate) fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>) {

@@ -1,18 +1,19 @@
 use crate::{
     app_state::{APP_STATE, open_connection_screen},
-    screens::workspace::{
-        actions::{
-            load_tab_page, new_query_tab, open_structure_tab, refresh_tab_result,
-            replace_active_tab_sql, run_query_for_tab, set_active_tab_status,
-            tab_connection_or_error, update_active_tab_sql,
-        },
-        components::SqlFormatSettingsPanel,
-        components::{ActionIcon, IconButton, ResultTable, SqlEditor},
+    screens::workspace::actions::{
+        load_tab_page, new_query_tab, open_structure_tab, refresh_tab_result,
+        replace_active_tab_sql, run_query_for_tab, set_active_tab_status, tab_connection_or_error,
+        update_active_tab_sql,
     },
 };
 use dioxus::prelude::*;
 use models::{QueryHistoryItem, QueryOutput, QueryTabState, SqlFormatSettings};
 use rfd::AsyncFileDialog;
+
+use super::{
+    ActionIcon, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor,
+    SqlFormatSettingsPanel,
+};
 
 const EDITOR_MIN_HEIGHT: f64 = 160.0;
 const EDITOR_MAX_HEIGHT: f64 = 720.0;
@@ -56,12 +57,14 @@ pub fn TabsManager(
     history: Signal<Vec<QueryHistoryItem>>,
     next_history_id: Signal<u64>,
     show_sql_editor: Signal<bool>,
+    explorer_sections: Signal<Vec<ExplorerConnectionSection>>,
 ) -> Element {
     let mut editor_height = use_signal(|| 260.0);
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
     let mut show_format_settings = use_signal(|| false);
     let mut format_settings = use_signal(SqlFormatSettings::default);
     let mut format_settings_loaded = use_signal(|| false);
+    let mut last_saved_format_settings = use_signal(|| None::<SqlFormatSettings>);
     let persisted_format_settings = use_resource(move || async move {
         storage::load_sql_format_settings()
             .await
@@ -72,6 +75,15 @@ pub fn TabsManager(
         .iter()
         .find(|tab| tab.id == active_tab_id())
         .cloned();
+    let active_explorer_nodes = active_tab
+        .as_ref()
+        .and_then(|tab| {
+            explorer_sections()
+                .into_iter()
+                .find(|section| section.session_id == tab.session_id)
+                .map(|section| section.nodes)
+        })
+        .unwrap_or_default();
 
     let session_labels = {
         let app_state = APP_STATE.read();
@@ -91,7 +103,8 @@ pub fn TabsManager(
             return;
         };
 
-        format_settings.set(loaded_settings);
+        format_settings.set(loaded_settings.clone());
+        last_saved_format_settings.set(Some(loaded_settings));
         format_settings_loaded.set(true);
     });
 
@@ -101,6 +114,11 @@ pub fn TabsManager(
         }
 
         let settings = format_settings();
+        if last_saved_format_settings().as_ref() == Some(&settings) {
+            return;
+        }
+
+        last_saved_format_settings.set(Some(settings.clone()));
         spawn(async move {
             let _ = storage::save_sql_format_settings(settings).await;
         });
@@ -222,6 +240,8 @@ pub fn TabsManager(
                         class: "editor",
                         SqlEditor {
                             sql: active_tab.sql.clone(),
+                            active_tab: active_tab.clone(),
+                            explorer_nodes: active_explorer_nodes,
                             tabs,
                             active_tab_id,
                         }

@@ -385,6 +385,121 @@ pub fn AcpAgentPanel(
                 div { class: "agent-panel__connect",
                     div { class: "agent-panel__section",
                         div { class: "agent-panel__section-header",
+                            h4 { class: "agent-panel__section-title", "Built-in Ollama ACP" }
+                            span { class: "agent-panel__badge", "Embedded" }
+                        }
+                        p {
+                            class: "agent-panel__hint",
+                            "Showel can spawn its own ACP-compatible Ollama bridge and connect to it over stdio."
+                        }
+                        div { class: "agent-panel__field-grid",
+                            div { class: "field",
+                                label { class: "field__label", "Base URL" }
+                                input {
+                                    class: "input",
+                                    value: "{state.ollama.base_url}",
+                                    placeholder: "http://localhost:11434/api",
+                                    oninput: move |event| {
+                                        let value = event.value();
+                                        panel_state.with_mut(|state| state.ollama.base_url = value);
+                                    }
+                                }
+                            }
+                            div { class: "field",
+                                label { class: "field__label", "Model" }
+                                input {
+                                    class: "input",
+                                    value: "{state.ollama.model}",
+                                    placeholder: "qwen3:latest",
+                                    oninput: move |event| {
+                                        let value = event.value();
+                                        panel_state.with_mut(|state| state.ollama.model = value);
+                                    }
+                                }
+                            }
+                        }
+                        div { class: "field",
+                            label { class: "field__label", "API key" }
+                            input {
+                                class: "input",
+                                r#type: "password",
+                                value: "{state.ollama.api_key}",
+                                placeholder: "Optional bearer token",
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    panel_state.with_mut(|state| state.ollama.api_key = value);
+                                }
+                            }
+                        }
+                        p {
+                            class: "agent-panel__hint",
+                            "Works with local Ollama, a remote private deployment, or Ollama Cloud if the endpoint exposes the standard `/api` routes."
+                        }
+                        button {
+                            class: "button button--primary button--small",
+                            disabled: state.busy || state.ollama.model.trim().is_empty(),
+                            onclick: move |_| {
+                                let cwd = panel_state().launch.cwd.clone();
+                                let ollama = panel_state().ollama.clone();
+                                panel_state.with_mut(|state| {
+                                    state.busy = true;
+                                    state.status = format!(
+                                        "Connecting to Ollama model {}...",
+                                        ollama.model.trim()
+                                    );
+                                });
+                                spawn(async move {
+                                    match acp::build_embedded_ollama_launch(cwd, ollama.clone()) {
+                                        Ok(launch) => {
+                                            panel_state.with_mut(|state| {
+                                                state.launch = launch.clone();
+                                                state.status = format!(
+                                                    "Launching embedded Ollama ACP bridge for {}...",
+                                                    ollama.model.trim()
+                                                );
+                                            });
+
+                                            match acp::connect_acp_agent(launch).await {
+                                                Ok(connection) => {
+                                                    panel_state.with_mut(|state| {
+                                                        apply_connected(state, connection.clone());
+                                                        push_message(
+                                                            state,
+                                                            AcpMessageKind::System,
+                                                            format!(
+                                                                "Connected to {} using Showel's embedded Ollama ACP bridge.",
+                                                                connection.agent_name
+                                                            ),
+                                                        );
+                                                    });
+                                                }
+                                                Err(err) => {
+                                                    panel_state.with_mut(|state| {
+                                                        state.busy = false;
+                                                        state.connected = false;
+                                                        state.connection = None;
+                                                        state.status = err.clone();
+                                                        push_message(state, AcpMessageKind::Error, err);
+                                                    });
+                                                }
+                                            }
+                                        }
+                                        Err(err) => {
+                                            panel_state.with_mut(|state| {
+                                                state.busy = false;
+                                                state.status = err.clone();
+                                                push_message(state, AcpMessageKind::Error, err);
+                                            });
+                                        }
+                                    }
+                                });
+                            },
+                            "Connect Ollama"
+                        }
+                    }
+
+                    div { class: "agent-panel__section",
+                        div { class: "agent-panel__section-header",
                             h4 { class: "agent-panel__section-title", "ACP Registry" }
                             if !registry_status().trim().is_empty() {
                                 p { class: "agent-panel__hint", "{registry_status}" }
@@ -459,79 +574,85 @@ pub fn AcpAgentPanel(
                         }
                     }
 
-                    div { class: "field",
-                        label { class: "field__label", "ACP command" }
-                        input {
-                            class: "input",
-                            value: "{state.launch.command}",
-                            placeholder: "path/to/acp-agent",
-                            oninput: move |event| {
-                                let value = event.value();
-                                panel_state.with_mut(|state| state.launch.command = value);
-                            }
+                    div { class: "agent-panel__section",
+                        div { class: "agent-panel__section-header",
+                            h4 { class: "agent-panel__section-title", "Custom ACP agent" }
+                            span { class: "agent-panel__badge", "stdio" }
                         }
-                    }
-                    div { class: "field",
-                        label { class: "field__label", "Arguments" }
-                        input {
-                            class: "input",
-                            value: "{state.launch.args}",
-                            placeholder: "--arg value",
-                            oninput: move |event| {
-                                let value = event.value();
-                                panel_state.with_mut(|state| state.launch.args = value);
-                            }
-                        }
-                    }
-                    div { class: "field",
-                        label { class: "field__label", "Working directory" }
-                        input {
-                            class: "input",
-                            value: "{state.launch.cwd}",
-                            oninput: move |event| {
-                                let value = event.value();
-                                panel_state.with_mut(|state| state.launch.cwd = value);
-                            }
-                        }
-                    }
-                    p {
-                        class: "agent-panel__hint",
-                        "Use any ACP-compatible agent binary. Showel connects over stdio."
-                    }
-                    button {
-                        class: "button button--primary",
-                        disabled: state.busy || state.launch.command.trim().is_empty(),
-                        onclick: move |_| {
-                            let launch = panel_state().launch.clone();
-                            panel_state.with_mut(|state| {
-                                state.busy = true;
-                                state.status = "Connecting to ACP agent...".to_string();
-                            });
-                            spawn(async move {
-                                match acp::connect_acp_agent(launch).await {
-                                    Ok(connection) => {
-                                        panel_state.with_mut(|state| {
-                                            apply_connected(state, connection.clone());
-                                            push_message(
-                                                state,
-                                                AcpMessageKind::System,
-                                                format!("Connected to {} using ACP.", connection.agent_name),
-                                            );
-                                        });
-                                    }
-                                    Err(err) => {
-                                        panel_state.with_mut(|state| {
-                                            state.busy = false;
-                                            state.connected = false;
-                                            state.connection = None;
-                                            state.status = err.clone();
-                                            push_message(state, AcpMessageKind::Error, err);
-                                        });
-                                    }
+                        div { class: "field",
+                            label { class: "field__label", "ACP command" }
+                            input {
+                                class: "input",
+                                value: "{state.launch.command}",
+                                placeholder: "path/to/acp-agent",
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    panel_state.with_mut(|state| state.launch.command = value);
                                 }
-                            });
-                        },
-                        "Connect Agent"
+                            }
+                        }
+                        div { class: "field",
+                            label { class: "field__label", "Arguments" }
+                            input {
+                                class: "input",
+                                value: "{state.launch.args}",
+                                placeholder: "--arg value",
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    panel_state.with_mut(|state| state.launch.args = value);
+                                }
+                            }
+                        }
+                        div { class: "field",
+                            label { class: "field__label", "Working directory" }
+                            input {
+                                class: "input",
+                                value: "{state.launch.cwd}",
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    panel_state.with_mut(|state| state.launch.cwd = value);
+                                }
+                            }
+                        }
+                        p {
+                            class: "agent-panel__hint",
+                            "Use any ACP-compatible agent binary. Showel connects over stdio."
+                        }
+                        button {
+                            class: "button button--primary",
+                            disabled: state.busy || state.launch.command.trim().is_empty(),
+                            onclick: move |_| {
+                                let launch = panel_state().launch.clone();
+                                panel_state.with_mut(|state| {
+                                    state.busy = true;
+                                    state.status = "Connecting to ACP agent...".to_string();
+                                });
+                                spawn(async move {
+                                    match acp::connect_acp_agent(launch).await {
+                                        Ok(connection) => {
+                                            panel_state.with_mut(|state| {
+                                                apply_connected(state, connection.clone());
+                                                push_message(
+                                                    state,
+                                                    AcpMessageKind::System,
+                                                    format!("Connected to {} using ACP.", connection.agent_name),
+                                                );
+                                            });
+                                        }
+                                        Err(err) => {
+                                            panel_state.with_mut(|state| {
+                                                state.busy = false;
+                                                state.connected = false;
+                                                state.connection = None;
+                                                state.status = err.clone();
+                                                push_message(state, AcpMessageKind::Error, err);
+                                            });
+                                        }
+                                    }
+                                });
+                            },
+                            "Connect Agent"
+                        }
                     }
                 }
             }

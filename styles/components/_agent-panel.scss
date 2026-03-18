@@ -28,6 +28,7 @@
 .agent-panel__session-label {
   color: var(--color-text-muted);
   font-size: $font-size-sm;
+  line-height: 1.45;
 }
 
 .agent-panel__badge {
@@ -47,6 +48,12 @@
   gap: $spacing-sm;
 }
 
+.agent-panel__connect {
+  min-height: 0;
+  overflow: auto;
+  padding-right: $spacing-2xs;
+}
+
 .agent-panel__section,
 .agent-panel__registry-card {
   display: flex;
@@ -61,8 +68,15 @@
 .agent-panel__section-header,
 .agent-panel__registry-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.agent-panel__field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: $spacing-sm;
 }
 
@@ -78,6 +92,12 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
+}
+
+.agent-panel__section > .button,
+.agent-panel__registry-card > .button {
+  width: 100%;
+  justify-content: center;
 }
 
 .agent-panel__permission {
@@ -239,6 +259,12 @@
   resize: vertical;
   font-family: $font-family-mono;
   line-height: 1.5;
+}
+
+@media (min-width: 1500px) {
+  .agent-panel__field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1180px) {

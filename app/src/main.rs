@@ -3,6 +3,7 @@
     windows_subsystem = "windows"
 )]
 
+use acp::{EmbeddedOllamaAgentConfig, run_embedded_ollama_agent};
 use dioxus::{
     LaunchBuilder,
     desktop::{Config, LogicalSize, WindowBuilder, tao::event_loop::EventLoopBuilder},
@@ -30,6 +31,14 @@ use dioxus::desktop::tao::platform::unix::EventLoopBuilderExtUnix;
 const APP_CSS: &str = include_str!("../assets/app.css");
 
 fn main() {
+    if let Some(result) = try_run_embedded_acp_agent() {
+        if let Err(err) = result {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     install_crash_reporter();
 
     if panic::catch_unwind(launch_app).is_err() {
@@ -147,4 +156,55 @@ fn show_error_dialog(title: &str, description: &str) {
         .set_level(MessageLevel::Error)
         .set_buttons(MessageButtons::Ok)
         .show();
+}
+
+fn try_run_embedded_acp_agent() -> Option<Result<(), String>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    if args.is_empty() {
+        return None;
+    }
+
+    if args.first().map(String::as_str) != Some("acp-agent") {
+        return None;
+    }
+
+    Some(match args.get(1).map(String::as_str) {
+        Some("ollama") => parse_ollama_agent_args(&args[2..]).and_then(run_embedded_ollama_agent),
+        Some(other) => Err(format!("Unsupported embedded ACP agent `{other}`")),
+        None => Err("Missing embedded ACP agent name".to_string()),
+    })
+}
+
+fn parse_ollama_agent_args(args: &[String]) -> Result<EmbeddedOllamaAgentConfig, String> {
+    let mut base_url = None;
+    let mut model = None;
+    let mut api_key = None;
+    let mut index = 0;
+
+    while index < args.len() {
+        let flag = &args[index];
+        let value = args
+            .get(index + 1)
+            .ok_or_else(|| format!("Missing value for `{flag}`"))?;
+
+        match flag.as_str() {
+            "--base-url" => base_url = Some(value.clone()),
+            "--model" => model = Some(value.clone()),
+            "--api-key" => api_key = Some(value.clone()),
+            other => return Err(format!("Unknown embedded ACP Ollama flag `{other}`")),
+        }
+
+        index += 2;
+    }
+
+    let model = model
+        .map(|model| model.trim().to_string())
+        .filter(|model| !model.is_empty())
+        .ok_or_else(|| "Missing `--model` for embedded ACP Ollama agent".to_string())?;
+
+    Ok(EmbeddedOllamaAgentConfig {
+        base_url: base_url.unwrap_or_else(|| "http://localhost:11434/api".to_string()),
+        model,
+        api_key: api_key.filter(|value| !value.trim().is_empty()),
+    })
 }

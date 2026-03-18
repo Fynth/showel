@@ -26,6 +26,8 @@ const SQL_EDITOR_TEXTAREA_ID: &str = "workspace-sql-editor";
 #[component]
 pub fn SqlEditor(
     sql: String,
+    active_tab: QueryTabState,
+    explorer_nodes: Vec<ExplorerNode>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
 ) -> Element {
@@ -45,34 +47,12 @@ pub fn SqlEditor(
         scroll_top()
     );
 
-    let active_tab = tabs
-        .read()
-        .iter()
-        .find(|tab| tab.id == active_tab_id())
-        .cloned();
-    let tree = use_resource(move || async move {
-        let current_id = active_tab_id();
-        let current_tab = tabs.read().iter().find(|tab| tab.id == current_id).cloned();
-        let Some(session_id) = current_tab.as_ref().map(|tab| tab.session_id) else {
-            return Vec::<ExplorerNode>::new();
-        };
-        let Some(connection) = session_connection(session_id) else {
-            return Vec::<ExplorerNode>::new();
-        };
-
-        explorer::load_connection_tree(connection)
-            .await
-            .unwrap_or_default()
-    });
-
-    let catalog = tree()
-        .map(|nodes| flatten_catalog(&nodes))
-        .unwrap_or_default();
+    let catalog = flatten_catalog(&explorer_nodes);
     let selection = editor_selection().clamped(&sql);
     let completion_context = completion_context(&sql, selection);
     let relation_bindings = extract_relation_bindings(&sql, &catalog);
     let relations_to_prefetch = relations_to_prefetch(
-        active_tab.as_ref(),
+        Some(&active_tab),
         &catalog,
         &relation_bindings,
         &completion_context,
@@ -81,7 +61,7 @@ pub fn SqlEditor(
     let suggestions = build_suggestions(
         &sql,
         selection,
-        active_tab.as_ref(),
+        Some(&active_tab),
         &catalog,
         &relation_bindings,
         &cache_snapshot,
@@ -148,9 +128,7 @@ pub fn SqlEditor(
     });
 
     use_effect(move || {
-        let Some(current_tab) = active_tab.clone() else {
-            return;
-        };
+        let current_tab = active_tab.clone();
         let Some(connection) = session_connection(current_tab.session_id) else {
             return;
         };

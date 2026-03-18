@@ -5,6 +5,7 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
+acp.workspace = true
 dioxus.workspace = true
 ui.workspace = true
 rfd = "0.17.2"

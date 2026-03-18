@@ -6,6 +6,13 @@ pub struct AcpLaunchRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcpOllamaConfig {
+    pub base_url: String,
+    pub model: String,
+    pub api_key: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AcpConnectionInfo {
     pub agent_name: String,
     pub session_id: String,
@@ -67,6 +74,7 @@ pub enum AcpEvent {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AcpPanelState {
     pub launch: AcpLaunchRequest,
+    pub ollama: AcpOllamaConfig,
     pub prompt: String,
     pub status: String,
     pub connected: bool,
@@ -80,9 +88,10 @@ pub struct AcpPanelState {
 
 impl AcpPanelState {
     #[must_use]
-    pub fn new(launch: AcpLaunchRequest) -> Self {
+    pub fn new(launch: AcpLaunchRequest, ollama: AcpOllamaConfig) -> Self {
         Self {
             launch,
+            ollama,
             prompt: String::new(),
             status: "ACP agent is disconnected.".to_string(),
             connected: false,

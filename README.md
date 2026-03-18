@@ -1,106 +1,174 @@
-# Development
+<p align="center">
+  <img src="app/assets/icon.svg" alt="Showel logo" width="96" height="96" />
+</p>
 
-Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
+<h1 align="center">Showel</h1>
 
-```
-project/
-├─ assets/ # Any assets that are used by the app should be placed here
-├─ src/
-│  ├─ main.rs # main.rs is the entry point to your application and currently contains all components for the app
-├─ Cargo.toml # The Cargo.toml file defines the dependencies and feature flags for your project
-```
+<p align="center">
+  A native desktop database client built with Rust and Dioxus.
+  <br />
+  Fast query workflows, editable table results, and AI-assisted SQL through ACP.
+</p>
 
-### Automatic Tailwind (Dioxus 0.7+)
+<p align="center">
+  SQLite • PostgreSQL • ClickHouse • Rust • Dioxus • ACP • Ollama
+</p>
 
-As of Dioxus 0.7, there no longer is a need to manually install tailwind. Simply `dx serve` and you're good to go!
+<p align="center">
+  If Showel saves you time, give the repo a star.
+</p>
 
-Automatic tailwind is supported by checking for a file called `tailwind.css` in your app's manifest directory (next to Cargo.toml). To customize the file, use the dioxus.toml:
+---
 
-```toml
-[application]
-tailwind_input = "my.css"
-tailwind_output = "assets/out.css" # also customize the location of the out file!
-```
+## Why Showel
 
-### Tailwind Manual Install
+Most database clients are either heavy, web-first, or overloaded with enterprise UI noise.
 
-To use tailwind plugins or manually customize tailwind, you can can install the Tailwind CLI and use it directly.
+Showel is trying to be the opposite:
 
-### Tailwind
-1. Install npm: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
-2. Install the Tailwind CSS CLI: https://tailwindcss.com/docs/installation/tailwind-cli
-3. Run the following command in the root of the project to start the Tailwind CSS compiler:
+- native desktop app, not a browser tab pretending to be one
+- fast for daily SQL work
+- clear workspace with explorer, editor, results, history, and saved queries
+- direct support for local AI agents through ACP
+- modular Rust workspace instead of a monolith
 
-```bash
-npx @tailwindcss/cli -i ./input.css -o ./assets/tailwind.css --watch
-```
+It is built for people who want a responsive database tool that feels closer to an editor than to a dashboard.
 
-### Serving Your App
+## What It Can Do
 
-Run the following command in the root of your project to start developing with the default platform:
+| Area | What you get |
+| --- | --- |
+| Querying | Multi-tab SQL editor, query history, structure tabs, formatting, pagination |
+| Data exploration | Connection explorer, schemas, tables, views, column loading |
+| Result workflows | Sort, filter, inspect rows, JSON view, row details |
+| Editing | Draft inserts, cell edits, deletes, apply/discard changes for editable table views |
+| Import / export | CSV import, CSV/JSON/XLSX export |
+| AI workflows | ACP agent panel, OpenCode via ACP registry, embedded Ollama ACP bridge |
+| UX | Compact desktop layout, dark/light theme, saved queries/snippets |
 
-```bash
-dx serve
-```
+## Database Support
 
-To run for a different platform, use the `--platform platform` flag. E.g.
-```bash
-dx serve --platform desktop
-```
+| Database | Connect | Explore | Query | Export | Edit table rows |
+| --- | --- | --- | --- | --- | --- |
+| SQLite | Yes | Yes | Yes | Yes | Yes |
+| PostgreSQL | Yes | Yes | Yes | Yes | Yes |
+| ClickHouse | Yes | Yes | Yes | Yes | Not yet |
 
-# showel
+## AI / ACP Support
 
-## Windows installer
+Showel includes an ACP client layer and an embedded Ollama ACP bridge.
 
-This project is configured for the official Dioxus bundler.
+That means you can:
 
-### Local build on Windows
+- connect an external ACP-compatible coding/database agent over `stdio`
+- install and connect supported ACP registry agents such as OpenCode
+- spawn an embedded Ollama-backed ACP agent directly from the UI
+- generate SQL against the active connection context
+- send general database prompts and insert generated SQL into the editor
 
-Install the Dioxus CLI:
+This is opt-in. If you do not care about AI features, Showel still works as a regular database client.
 
-```powershell
-cargo install dioxus-cli --locked
-```
+## Quick Start
 
-Build an `.exe` installer:
+### Requirements
 
-```powershell
-./scripts/build-windows-installer.ps1
-```
+- Rust stable
+- for desktop builds: system dependencies required by Dioxus Desktop/WebView on your platform
+- on Windows for raw `.exe`: Microsoft Edge WebView2 Runtime
 
-Build an `.msi` installer:
-
-```powershell
-./scripts/build-windows-installer.ps1 -PackageType msi
-```
-
-The Windows installer uses the WebView2 bootstrapper, so the installer can provision WebView2 on the target machine.
-
-### GitHub Actions
-
-The repository also includes a manual workflow:
-
-- `.github/workflows/windows-installer.yml`
-
-Open GitHub Actions, run `windows-installer`, and choose `exe` or `msi`.
-
-## Install from source
-
-A bootstrap installer script is included for Linux/macOS environments:
+### Run the desktop app
 
 ```bash
-./scripts/install-from-source.sh
+cargo run -p app --features desktop
 ```
 
-It will:
-
-- clone/update `https://github.com/Fynth/showel.git`
-- checkout `main`
-- build from source (`cargo build -p app --release --features desktop`)
-- install binary to `~/.local/bin/showel`
-
-Useful options:
+### Build a release binary
 
 ```bash
-./scripts/install-from-source.sh --branch main --src ~/.local/src/showel --prefix ~/.local --bin-name showel
+cargo build -p app --release --features desktop
 ```
+
+### Build a Windows bundle
+
+```bash
+dx bundle --release --platform desktop --package app --features bundle --package-types msi
+```
+
+## Windows CI
+
+GitHub Actions includes a Windows packaging workflow:
+
+- `.github/workflows/main.yml`
+
+It can build:
+
+- raw Windows `.exe` artifact
+- `.msi` installer artifact
+
+Notes:
+
+- the raw `.exe` build is the fastest path for testing
+- the `.msi` bundle uses Dioxus bundling and is the better option for end-user distribution
+
+## Project Layout
+
+Showel is organized as a Rust workspace with focused crates instead of one large application crate.
+
+| Crate | Responsibility |
+| --- | --- |
+| `app` | desktop launcher, build pipeline, embedded ACP agent entrypoint |
+| `ui` | Dioxus desktop frontend |
+| `models` | shared domain models and contracts |
+| `connection` / `connection-ssh` | connection orchestration and SSH support |
+| `explorer` | schema and object discovery |
+| `query-core` | query execution, pagination, editable rows |
+| `query-format` | SQL formatting |
+| `query-io` | CSV/JSON/XLSX import-export |
+| `acp` / `acp-registry` | ACP runtime, registry integration, Ollama bridge |
+| `driver-*` | database-specific implementations |
+| `storage` | local persistence for settings, sessions, history, saved queries |
+
+## What Makes It Different
+
+- Native UI with Rust and Dioxus instead of Electron
+- AI integration built around ACP instead of a one-off prompt box
+- Editable result grid for real table workflows, not just read-only browsing
+- Workspace split into independent crates, which makes the codebase easier to evolve
+
+## Current Status
+
+Showel is actively evolving.
+
+Today it is already useful for:
+
+- running queries quickly
+- exploring local and remote databases
+- editing SQLite/PostgreSQL table data
+- exporting/importing common formats
+- using ACP-powered assistants for SQL generation
+
+Areas that still need expansion:
+
+- deeper ClickHouse edit workflows
+- broader packaging polish across platforms
+- more agent presets and richer ACP UX
+
+## Contributing
+
+Issues, UX feedback, database-specific bugs, and performance reports are useful.
+
+If you open a bug report, include:
+
+- database type and version
+- the query or workflow that failed
+- expected behavior
+- actual behavior
+- platform (`Linux`, `macOS`, `Windows`)
+
+## Vision
+
+The long-term goal is straightforward:
+
+> make a database client that feels fast, local, hackable, and AI-native without turning into a bloated IDE.
+
+If that direction matches what you want from a desktop database tool, star the repo and follow the project.

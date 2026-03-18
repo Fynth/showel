@@ -1,6 +1,8 @@
 use crate::app_state::{APP_STATE, APP_THEME, open_connection_screen, show_workspace};
 use dioxus::prelude::*;
 
+const APP_ICON: &str = include_str!("../../../app/assets/icon.svg");
+
 #[component]
 pub fn Toolbar() -> Element {
     let (connection_label, has_sessions, show_connect_screen) = {
@@ -26,7 +28,10 @@ pub fn Toolbar() -> Element {
             class: "toolbar",
             div {
                 class: "toolbar__brand",
-                div { class: "toolbar__logo", "S" }
+                div {
+                    class: "toolbar__logo",
+                    dangerous_inner_html: APP_ICON,
+                }
                 div {
                     class: "toolbar__brand-copy",
                     span { class: "toolbar__eyebrow", "Database Client" }

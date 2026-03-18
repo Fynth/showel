@@ -3,6 +3,7 @@ mod components;
 
 use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, open_connection_screen};
 use dioxus::prelude::*;
+use futures_util::future::join_all;
 use models::{QueryHistoryItem, QueryTabState, SavedQuery};
 use std::collections::HashSet;
 use std::time::Duration;
@@ -23,6 +24,36 @@ const SIDEBAR_MAX_WIDTH: f64 = 560.0;
 struct SidebarResizeState {
     start_x: f64,
     start_width: f64,
+}
+
+async fn load_explorer_section(
+    session: models::ConnectionSession,
+    active_session_id: Option<u64>,
+) -> ExplorerConnectionSection {
+    let kind_label = match session.kind {
+        models::DatabaseKind::Sqlite => "SQLite".to_string(),
+        models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+        models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
+    };
+
+    match explorer::load_connection_tree(session.connection.clone()).await {
+        Ok(nodes) => ExplorerConnectionSection {
+            session_id: session.id,
+            name: session.name,
+            kind_label,
+            status: "Ready".to_string(),
+            is_active: Some(session.id) == active_session_id,
+            nodes,
+        },
+        Err(err) => ExplorerConnectionSection {
+            session_id: session.id,
+            name: session.name,
+            kind_label,
+            status: format!("Error: {err:?}"),
+            is_active: Some(session.id) == active_session_id,
+            nodes: Vec::new(),
+        },
+    }
 }
 
 #[component]
@@ -76,40 +107,16 @@ pub fn Workspace() -> Element {
             }
 
             tree_status.set("Loading explorer...".to_string());
-            let mut sections = Vec::new();
-            let mut failed_count = 0usize;
-
-            for session in sessions {
-                match explorer::load_connection_tree(session.connection.clone()).await {
-                    Ok(nodes) => sections.push(ExplorerConnectionSection {
-                        session_id: session.id,
-                        name: session.name,
-                        kind_label: match session.kind {
-                            models::DatabaseKind::Sqlite => "SQLite".to_string(),
-                            models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
-                            models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
-                        },
-                        status: "Ready".to_string(),
-                        is_active: Some(session.id) == active_session_id,
-                        nodes,
-                    }),
-                    Err(err) => {
-                        failed_count += 1;
-                        sections.push(ExplorerConnectionSection {
-                            session_id: session.id,
-                            name: session.name,
-                            kind_label: match session.kind {
-                                models::DatabaseKind::Sqlite => "SQLite".to_string(),
-                                models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
-                                models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
-                            },
-                            status: format!("Error: {err:?}"),
-                            is_active: Some(session.id) == active_session_id,
-                            nodes: Vec::new(),
-                        });
-                    }
-                }
-            }
+            let sections = join_all(
+                sessions
+                    .into_iter()
+                    .map(|session| load_explorer_section(session, active_session_id)),
+            )
+            .await;
+            let failed_count = sections
+                .iter()
+                .filter(|section| section.status.starts_with("Error:"))
+                .count();
 
             tree_sections.set(sections);
             if failed_count == 0 {
@@ -418,6 +425,7 @@ pub fn Workspace() -> Element {
                         history,
                         next_history_id,
                         show_sql_editor,
+                        explorer_sections: tree_sections,
                     }
                     if show_agent_panel() {
                         AcpAgentPanel {
