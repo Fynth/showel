@@ -6,6 +6,7 @@
 use dioxus::{
     LaunchBuilder,
     desktop::{Config, LogicalSize, WindowBuilder, tao::event_loop::EventLoopBuilder},
+    prelude::*,
 };
 use rfd::{MessageButtons, MessageDialog, MessageLevel};
 use std::{
@@ -15,7 +16,7 @@ use std::{
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
-use ui::App;
+use ui::App as UiApp;
 
 #[cfg(any(
     target_os = "linux",
@@ -25,6 +26,8 @@ use ui::App;
     target_os = "openbsd"
 ))]
 use dioxus::desktop::tao::platform::unix::EventLoopBuilderExtUnix;
+
+static APP_CSS: Asset = asset!("/assets/app.css");
 
 fn main() {
     install_crash_reporter();
@@ -62,7 +65,17 @@ fn launch_app() {
                         .with_resizable(true),
                 ),
         )
-        .launch(App);
+        .launch(Root);
+}
+
+#[component]
+fn Root() -> Element {
+    rsx! {
+        document::Stylesheet {
+            href: APP_CSS,
+        }
+        UiApp {}
+    }
 }
 
 fn install_crash_reporter() {

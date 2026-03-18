@@ -58,10 +58,10 @@ jobs:
             }
           }
 
-          # Prepare UI assets
-          if (Test-Path "ui/assets") {
+          # Prepare bundled assets
+          if (Test-Path "assets") {
             New-Item -ItemType Directory -Path "app/assets" -Force | Out-Null
-            Copy-Item -Path "ui/assets/*" -Destination "app/assets" -Recurse -Force
+            Copy-Item -Path "assets/*" -Destination "app/assets" -Recurse -Force
           }
 
       - name: Build MSI Package

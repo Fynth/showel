@@ -8,12 +8,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
     let workspace_root = manifest_dir
         .parent()
-        .ok_or("ui crate is expected to live inside the workspace root")?
+        .ok_or("app crate is expected to live inside the workspace root")?
         .to_path_buf();
     let styles_root = workspace_root.join("styles");
     let scss_entry = styles_root.join("app.scss");
     let output_css = manifest_dir.join("assets").join("app.css");
-    let bundled_output_css = workspace_root.join("app").join("assets").join("app.css");
 
     emit_rerun_if_changed(&styles_root)?;
     println!(
@@ -27,7 +26,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
 
     write_generated_css(&output_css, &css)?;
-    write_generated_css(&bundled_output_css, &css)?;
 
     Ok(())
 }

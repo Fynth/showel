@@ -5,8 +5,6 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-static APP_CSS: Asset = asset!("/assets/app.css");
-
 #[component]
 pub fn App() -> Element {
     let mut restored_once = use_signal(|| false);
@@ -48,10 +46,6 @@ pub fn App() -> Element {
     };
 
     rsx! {
-        document::Stylesheet {
-            href: APP_CSS,
-        }
-
         div {
             class: "app {theme_name}",
             Toolbar {}

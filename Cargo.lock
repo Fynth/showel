@@ -168,6 +168,7 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "grass",
  "rfd",
  "ui",
 ]
@@ -6436,7 +6437,6 @@ dependencies = [
  "connection",
  "dioxus",
  "explorer",
- "grass",
  "models",
  "query",
  "rfd",

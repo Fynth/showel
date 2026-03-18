@@ -2,7 +2,6 @@
 name = "ui"
 version = "0.1.0"
 edition = "2024"
-build = "build.rs"
 
 [dependencies]
 acp.workspace = true
@@ -17,6 +16,3 @@ storage.workspace = true
 tokio = { version = "1.44.1", features = ["time"] }
 tree-sitter-highlight = "0.25.10"
 tree-sitter-sequel = "0.3.11"
-
-[build-dependencies]
-grass = "0.13.4"
