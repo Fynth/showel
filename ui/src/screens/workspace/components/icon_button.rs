@@ -113,8 +113,8 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "M10 15h4" }
                 },
                 ActionIcon::Refresh => rsx! {
-                    path { d: "M20 11a8 8 0 1 0 2 5.5" }
-                    path { d: "M20 4v7h-7" }
+                    path { d: "M19 11a7 7 0 1 1-2.1-5" }
+                    path { d: "M19 6v5h-5" }
                 },
                 ActionIcon::NewConnection => rsx! {
                     path { d: "M9 8V5h6v3" }

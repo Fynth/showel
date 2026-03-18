@@ -120,13 +120,13 @@ pub fn ResultTable(
                         div {
                             class: "results",
                             div {
-                                class: "results__layout",
+                                class: if details_visible {
+                                    "results__layout results__layout--with-details"
+                                } else {
+                                    "results__layout"
+                                },
                                 div {
-                                    class: if details_visible {
-                                        "results__main results__main--with-details"
-                                    } else {
-                                        "results__main"
-                                    },
+                                    class: "results__main",
                                     div {
                                         class: "results__toolbar",
                                         p {

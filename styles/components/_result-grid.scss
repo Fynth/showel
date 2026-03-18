@@ -21,7 +21,11 @@
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, clamp(300px, 22vw, 360px));
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.results__layout--with-details {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, clamp(260px, 18vw, 320px));
 }
 
 .results__main {
@@ -116,11 +120,18 @@
   overflow: auto;
   padding: 0 $spacing-xs $spacing-xs;
   scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-panel) 70%, transparent),
+      transparent 28px
+    );
 }
 
 .results__table {
-  width: 100%;
-  min-width: max-content;
+  width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   font-size: $font-size-sm;
@@ -128,6 +139,7 @@
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: $radius-md;
   overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .results__head {
@@ -147,6 +159,8 @@
 }
 
 .results__head-label {
+  display: block;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -224,7 +238,7 @@
 
 .results__cell-content {
   display: block;
-  max-width: min(44vw, 420px);
+  max-width: clamp(96px, 18vw, 260px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -271,6 +285,7 @@
       transparent 140px
     ),
     color-mix(in srgb, var(--color-panel-2) 74%, transparent);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.02);
 }
 
 .results__details-header {
