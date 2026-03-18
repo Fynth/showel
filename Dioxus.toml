@@ -27,5 +27,5 @@ resources = []
 [bundle.windows]
 digest_algorithm = "sha-256"
 
-[bundle.windows.webview_install_mode.EmbedBootstrapper]
+[bundle.windows.webview_install_mode.OfflineInstaller]
 silent = true

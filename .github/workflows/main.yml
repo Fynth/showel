@@ -8,11 +8,11 @@ on:
       package_type:
         description: 'Package type to build'
         required: true
-        default: 'msi'
+        default: 'exe'
         type: choice
         options:
-          - msi
           - exe
+          - msi
           - both
 
 jobs:
@@ -59,15 +59,15 @@ jobs:
           }
 
       - name: Build MSI Package
-        if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
+        if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both'
         run: dx bundle --release --platform desktop --package app --features bundle --package-types msi
 
       - name: Build EXE Package
-        if: github.event.inputs.package_type == 'exe' || github.event.inputs.package_type == 'both'
+        if: github.event.inputs.package_type == 'exe' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
         run: dx bundle --release --platform desktop --package app --features bundle --package-types exe
 
       - name: Upload MSI Artifact
-        if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
+        if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both'
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer-msi
@@ -78,7 +78,7 @@ jobs:
           retention-days: 30
 
       - name: Upload EXE Artifact
-        if: github.event.inputs.package_type == 'exe' || github.event.inputs.package_type == 'both'
+        if: github.event.inputs.package_type == 'exe' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer-exe
