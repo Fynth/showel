@@ -35,9 +35,11 @@ jobs:
           arch: x64
 
       - name: Install Dioxus CLI
+        if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both'
         run: cargo install dioxus-cli --locked
 
       - name: Prepare bundle resources
+        if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -62,9 +64,9 @@ jobs:
         if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both'
         run: dx bundle --release --platform desktop --package app --features bundle --package-types msi
 
-      - name: Build EXE Package
+      - name: Build EXE Binary
         if: github.event.inputs.package_type == 'exe' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
-        run: dx bundle --release --platform desktop --package app --features bundle --package-types exe
+        run: cargo build --release -p app --features bundle
 
       - name: Upload MSI Artifact
         if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both'
@@ -81,9 +83,9 @@ jobs:
         if: github.event.inputs.package_type == 'exe' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer-exe
+          name: windows-app-exe
           path: |
-            dist/**/*.exe
-            target/dx/**/*.exe
+            target/release/app.exe
+            target/release/app.pdb
           if-no-files-found: error
           retention-days: 30
