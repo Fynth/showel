@@ -27,7 +27,7 @@ use ui::App as UiApp;
 ))]
 use dioxus::desktop::tao::platform::unix::EventLoopBuilderExtUnix;
 
-static APP_CSS: Asset = asset!("/assets/app.css");
+const APP_CSS: &str = include_str!("../assets/app.css");
 
 fn main() {
     install_crash_reporter();
@@ -71,8 +71,8 @@ fn launch_app() {
 #[component]
 fn Root() -> Element {
     rsx! {
-        document::Stylesheet {
-            href: APP_CSS,
+        style {
+            {APP_CSS}
         }
         UiApp {}
     }
