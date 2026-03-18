@@ -6,11 +6,12 @@ use crate::{
             replace_active_tab_sql, run_query_for_tab, set_active_tab_status,
             tab_connection_or_error, update_active_tab_sql,
         },
+        components::SqlFormatSettingsPanel,
         components::{ActionIcon, IconButton, ResultTable, SqlEditor},
     },
 };
 use dioxus::prelude::*;
-use models::{QueryHistoryItem, QueryOutput, QueryTabState};
+use models::{QueryHistoryItem, QueryOutput, QueryTabState, SqlFormatSettings};
 use rfd::AsyncFileDialog;
 
 const EDITOR_MIN_HEIGHT: f64 = 160.0;
@@ -58,6 +59,14 @@ pub fn TabsManager(
 ) -> Element {
     let mut editor_height = use_signal(|| 260.0);
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
+    let mut show_format_settings = use_signal(|| false);
+    let mut format_settings = use_signal(SqlFormatSettings::default);
+    let mut format_settings_loaded = use_signal(|| false);
+    let persisted_format_settings = use_resource(move || async move {
+        storage::load_sql_format_settings()
+            .await
+            .unwrap_or_default()
+    });
     let active_tab = tabs
         .read()
         .iter()
@@ -72,6 +81,30 @@ pub fn TabsManager(
             .map(|session| (session.id, session.name.clone()))
             .collect::<std::collections::HashMap<_, _>>()
     };
+
+    use_effect(move || {
+        if format_settings_loaded() {
+            return;
+        }
+
+        let Some(loaded_settings) = persisted_format_settings() else {
+            return;
+        };
+
+        format_settings.set(loaded_settings);
+        format_settings_loaded.set(true);
+    });
+
+    use_effect(move || {
+        if !format_settings_loaded() {
+            return;
+        }
+
+        let settings = format_settings();
+        spawn(async move {
+            let _ = storage::save_sql_format_settings(settings).await;
+        });
+    });
 
     rsx! {
         div {
@@ -280,8 +313,15 @@ pub fn TabsManager(
                         label: "Format SQL".to_string(),
                         onclick: {
                             let current_tab = active_tab.clone();
-                            move |_| format_active_sql(tabs, current_tab.clone())
+                            let format_settings = format_settings();
+                            move |_| format_active_sql(tabs, current_tab.clone(), format_settings.clone())
                         },
+                    }
+                    IconButton {
+                        icon: ActionIcon::Settings,
+                        label: "SQL format settings".to_string(),
+                        active: show_format_settings(),
+                        onclick: move |_| show_format_settings.toggle(),
                     }
                     IconButton {
                         icon: ActionIcon::Structure,
@@ -391,6 +431,20 @@ pub fn TabsManager(
                         result: active_tab.result.clone(),
                         tabs,
                         active_tab_id,
+                    }
+                }
+                if show_format_settings() {
+                    div {
+                        class: "editor__modal-backdrop",
+                        onclick: move |_| show_format_settings.set(false),
+                        div {
+                            class: "editor__modal",
+                            onclick: move |event| event.stop_propagation(),
+                            SqlFormatSettingsPanel {
+                                settings: format_settings,
+                                on_close: move |_| show_format_settings.set(false),
+                            }
+                        }
                     }
                 }
             } else {
@@ -570,7 +624,11 @@ fn has_tabular_result(tab: &QueryTabState) -> bool {
     matches!(tab.result.as_ref(), Some(QueryOutput::Table(_)))
 }
 
-fn format_active_sql(tabs: Signal<Vec<QueryTabState>>, current_tab: QueryTabState) {
+fn format_active_sql(
+    tabs: Signal<Vec<QueryTabState>>,
+    current_tab: QueryTabState,
+    format_settings: SqlFormatSettings,
+) {
     let sql = current_tab.sql.trim();
     if sql.is_empty() {
         set_active_tab_status(
@@ -585,7 +643,7 @@ fn format_active_sql(tabs: Signal<Vec<QueryTabState>>, current_tab: QueryTabStat
         .read()
         .session(current_tab.session_id)
         .map(|session| session.kind);
-    let formatted = query::format_sql(session_kind, sql);
+    let formatted = query::format_sql(session_kind, sql, &format_settings);
     replace_active_tab_sql(tabs, current_tab.id, formatted, "SQL formatted".to_string());
 }
 

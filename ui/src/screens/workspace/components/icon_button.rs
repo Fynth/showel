@@ -7,6 +7,7 @@ pub enum ActionIcon {
     History,
     SqlEditor,
     Agent,
+    Settings,
     Refresh,
     NewConnection,
     Run,
@@ -111,6 +112,14 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     circle { cx: "10", cy: "12", r: "1", fill: "currentColor", stroke: "none" }
                     circle { cx: "14", cy: "12", r: "1", fill: "currentColor", stroke: "none" }
                     path { d: "M10 15h4" }
+                },
+                ActionIcon::Settings => rsx! {
+                    path { d: "M6 6h12" }
+                    path { d: "M6 12h12" }
+                    path { d: "M6 18h12" }
+                    circle { cx: "9", cy: "6", r: "1.6", fill: "currentColor", stroke: "none" }
+                    circle { cx: "15", cy: "12", r: "1.6", fill: "currentColor", stroke: "none" }
+                    circle { cx: "11", cy: "18", r: "1.6", fill: "currentColor", stroke: "none" }
                 },
                 ActionIcon::Refresh => rsx! {
                     path { d: "M19 11a7 7 0 1 1-2.1-5" }

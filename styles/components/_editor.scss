@@ -1,6 +1,7 @@
 @use "../base/tokens" as *;
 
 .editor-shell {
+  position: relative;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -103,6 +104,72 @@
   margin-right: auto;
   color: var(--color-text-muted);
   font-size: $font-size-sm;
+}
+
+.editor__format-settings {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-lg;
+  background: var(--color-panel);
+  box-shadow: $shadow-md;
+}
+
+.editor__format-settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.editor__format-settings-copy {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.editor__format-settings-title {
+  font-size: $font-size-md;
+  font-weight: 600;
+}
+
+.editor__format-settings-hint {
+  color: var(--color-text-muted);
+  font-size: $font-size-sm;
+}
+
+.editor__format-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: $spacing-sm;
+}
+
+.editor__format-settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-sm;
+  color: var(--color-text);
+  font-size: $font-size-sm;
+}
+
+.editor__modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: clamp($spacing-md, 3vw, $spacing-xl);
+  background: var(--color-backdrop);
+  backdrop-filter: blur(10px);
+}
+
+.editor__modal {
+  width: min(760px, 100%);
+  max-height: min(84vh, 100%);
+  overflow: auto;
 }
 
 .sql-editor {

@@ -1,5 +1,40 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SqlKeywordCase {
+    Preserve,
+    Uppercase,
+    Lowercase,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SqlFormatSettings {
+    pub keyword_case: SqlKeywordCase,
+    pub indent_width: u8,
+    pub lines_between_queries: u8,
+    pub inline: bool,
+    pub joins_as_top_level: bool,
+    pub max_inline_block: u8,
+    pub max_inline_arguments: Option<u8>,
+    pub max_inline_top_level: Option<u8>,
+}
+
+impl Default for SqlFormatSettings {
+    fn default() -> Self {
+        Self {
+            keyword_case: SqlKeywordCase::Uppercase,
+            indent_width: 2,
+            lines_between_queries: 1,
+            inline: false,
+            joins_as_top_level: true,
+            max_inline_block: 40,
+            max_inline_arguments: Some(4),
+            max_inline_top_level: Some(40),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TablePreviewSource {
     pub schema: Option<String>,
