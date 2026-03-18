@@ -27,6 +27,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+          default-host: x86_64-pc-windows-msvc
+
+      - name: Initialize MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --locked
@@ -54,8 +60,8 @@ jobs:
 
           # Prepare UI assets
           if (Test-Path "ui/assets") {
-            New-Item -ItemType Directory -Path "app/ui/assets" -Force | Out-Null
-            Copy-Item -Path "ui/assets/*" -Destination "app/ui/assets" -Recurse -Force
+            New-Item -ItemType Directory -Path "app/assets" -Force | Out-Null
+            Copy-Item -Path "ui/assets/*" -Destination "app/assets" -Recurse -Force
           }
 
       - name: Build MSI Package

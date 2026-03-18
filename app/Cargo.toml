@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 dioxus.workspace = true
 ui.workspace = true
+rfd = "0.17.2"
 
 [features]
 default = ["desktop"]

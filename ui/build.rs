@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let styles_root = workspace_root.join("styles");
     let scss_entry = styles_root.join("app.scss");
     let output_css = manifest_dir.join("assets").join("app.css");
+    let bundled_output_css = workspace_root.join("app").join("assets").join("app.css");
 
     emit_rerun_if_changed(&styles_root)?;
     println!(
@@ -26,6 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
 
     write_generated_css(&output_css, &css)?;
+    write_generated_css(&bundled_output_css, &css)?;
 
     Ok(())
 }
