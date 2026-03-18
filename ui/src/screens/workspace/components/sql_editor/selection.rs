@@ -17,10 +17,18 @@ impl EditorSelection {
     pub(super) fn clamped(self, sql: &str) -> Self {
         let len = sql.len();
         Self {
-            start: self.start.min(len),
-            end: self.end.min(len),
+            start: clamp_to_char_boundary(sql, self.start.min(len)),
+            end: clamp_to_char_boundary(sql, self.end.min(len)),
         }
     }
+}
+
+fn clamp_to_char_boundary(sql: &str, index: usize) -> usize {
+    let mut index = index.min(sql.len());
+    while index > 0 && !sql.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
 }
 
 pub(super) fn current_token_range(sql: &str, selection: EditorSelection) -> std::ops::Range<usize> {
@@ -128,9 +136,14 @@ fn selection_query_script(editor_id: &str) -> String {
             if (!editor) {{
                 return [0, 0];
             }}
+            const toByteIndex = (value, utf16Offset) =>
+                new TextEncoder().encode(value.slice(0, utf16Offset)).length;
+            const value = editor.value ?? "";
+            const start = editor.selectionStart ?? value.length ?? 0;
+            const end = editor.selectionEnd ?? start;
             return [
-                editor.selectionStart ?? editor.value.length ?? 0,
-                editor.selectionEnd ?? editor.selectionStart ?? editor.value.length ?? 0
+                toByteIndex(value, start),
+                toByteIndex(value, end)
             ];
         }})()
         "#
@@ -145,10 +158,49 @@ pub(super) fn set_editor_selection_script(editor_id: &str, position: usize) -> S
             if (!editor) {{
                 return false;
             }}
+            const encoder = new TextEncoder();
+            const value = editor.value ?? "";
+            let utf16Position = 0;
+            let byteOffset = 0;
+            for (const ch of value) {{
+                const nextByteOffset = byteOffset + encoder.encode(ch).length;
+                if (nextByteOffset > {position}) {{
+                    break;
+                }}
+                byteOffset = nextByteOffset;
+                utf16Position += ch.length;
+            }}
             editor.focus();
-            editor.setSelectionRange({position}, {position});
+            editor.setSelectionRange(utf16Position, utf16Position);
             return true;
         }})()
         "#
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EditorSelection, current_token_range};
+
+    #[test]
+    fn selection_clamps_invalid_utf8_offsets_to_char_boundaries() {
+        let sql = "select * from пользователи";
+        let selection = EditorSelection { start: 15, end: 15 }.clamped(sql);
+        assert!(sql.is_char_boundary(selection.start));
+        assert_eq!(selection.start, selection.end);
+    }
+
+    #[test]
+    fn current_token_range_handles_multibyte_identifiers() {
+        let sql = "select * from пользователи";
+        let cursor = sql.find("ль").unwrap() + 1;
+        let range = current_token_range(
+            sql,
+            EditorSelection {
+                start: cursor,
+                end: cursor,
+            },
+        );
+        assert_eq!(&sql[range], "пользователи");
+    }
 }

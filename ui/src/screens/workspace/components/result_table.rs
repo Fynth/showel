@@ -1,6 +1,6 @@
 use crate::screens::workspace::actions::{
-    apply_active_tab_filter, clear_active_tab_filter, load_tab_page, refresh_tab_result,
-    set_active_tab_status, tab_connection_or_error, toggle_active_tab_sort,
+    append_next_tab_page, apply_active_tab_filter, clear_active_tab_filter, load_tab_page,
+    refresh_tab_result, set_active_tab_status, tab_connection_or_error, toggle_active_tab_sort,
 };
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
@@ -65,6 +65,7 @@ pub fn ResultTable(
         .map(|tab| tab.pending_table_changes.clone())
         .unwrap_or_default();
     let has_pending_changes = !pending_changes.is_empty();
+    let is_loading_more = active_tab.as_ref().is_some_and(|tab| tab.is_loading_more);
     let sort_enabled = active_tab.as_ref().is_some_and(can_sort_tab);
     let filter_enabled = active_tab.as_ref().is_some_and(can_filter_tab);
     let current_columns = result_columns(result.as_ref());
@@ -112,6 +113,15 @@ pub fn ResultTable(
                     .as_ref()
                     .map(|(_, row)| format_row_json(&page.columns, &row.values))
                     .unwrap_or_default();
+                let status_text = active_tab
+                    .as_ref()
+                    .map(|tab| tab.status.clone())
+                    .unwrap_or_else(|| "Ready".to_string());
+                let can_paginate = active_tab
+                    .as_ref()
+                    .is_some_and(|tab| tab.last_run_sql.is_some() || tab.preview_source.is_some());
+                let has_previous_page = page.has_previous && can_paginate && !is_loading_more && !has_pending_changes;
+                let has_next_page = page.has_next && can_paginate && !is_loading_more && !has_pending_changes;
 
                 rsx! {
                     if page.columns.is_empty() && display_rows.is_empty() {
@@ -129,18 +139,63 @@ pub fn ResultTable(
                                     class: "results__main",
                                     div {
                                         class: "results__toolbar",
-                                        p {
-                                            class: "results__toolbar-meta",
-                                            if let Some(row_label) = selected_row_label.as_ref() {
-                                                "{row_label} selected"
-                                            } else if has_pending_changes {
-                                                "{pending_changes_summary(&pending_changes)}"
-                                            } else {
-                                                "Select a row to inspect full values and JSON."
+                                        div {
+                                            class: "results__toolbar-copy",
+                                            span {
+                                                class: "results__toolbar-chip",
+                                                "Rows {page.offset + 1}-{page.offset + page.rows.len() as u64} · page size {page.page_size}"
+                                            }
+                                            span {
+                                                class: "results__toolbar-chip",
+                                                "Status: {status_text}"
+                                            }
+                                            p {
+                                                class: "results__toolbar-meta",
+                                                if let Some(row_label) = selected_row_label.as_ref() {
+                                                    "{row_label} selected"
+                                                } else if has_pending_changes {
+                                                    "{pending_changes_summary(&pending_changes)}"
+                                                } else {
+                                                    "Select a row to inspect full values and JSON."
+                                                }
                                             }
                                         }
-                                    div {
+                                        div {
                                         class: "results__toolbar-actions",
+                                        IconButton {
+                                            icon: ActionIcon::Previous,
+                                            label: "Previous page".to_string(),
+                                            small: true,
+                                            disabled: !has_previous_page,
+                                            onclick: {
+                                                let current_tab = active_tab.clone();
+                                                move |_| {
+                                                    let Some(current_tab) = current_tab.clone() else {
+                                                        return;
+                                                    };
+                                                    load_tab_page(
+                                                        tabs,
+                                                        current_tab.clone(),
+                                                        page.offset.saturating_sub(current_tab.page_size as u64),
+                                                    );
+                                                }
+                                            },
+                                        }
+                                        IconButton {
+                                            icon: ActionIcon::Next,
+                                            label: "Next page".to_string(),
+                                            small: true,
+                                            disabled: !has_next_page,
+                                            onclick: {
+                                                let current_tab = active_tab.clone();
+                                                move |_| {
+                                                    let Some(current_tab) = current_tab.clone() else {
+                                                        return;
+                                                    };
+                                                    append_next_tab_page(tabs, current_tab);
+                                                }
+                                            },
+                                        }
                                         if page.editable.is_some() {
                                             IconButton {
                                                 icon: ActionIcon::InsertRow,
@@ -314,6 +369,28 @@ pub fn ResultTable(
 
                                     div {
                                         class: "results__table-wrap",
+                                        onscroll: move |event| {
+                                            let scroll_state = event.data();
+                                            let remaining_scroll = scroll_state.scroll_height() as f64
+                                                - (scroll_state.scroll_top()
+                                                    + scroll_state.client_height() as f64);
+
+                                            if remaining_scroll > 96.0 {
+                                                return;
+                                            }
+
+                                            let current_tab = tabs
+                                                .read()
+                                                .iter()
+                                                .find(|tab| tab.id == active_tab_id())
+                                                .cloned();
+
+                                            let Some(current_tab) = current_tab else {
+                                                return;
+                                            };
+
+                                            append_next_tab_page(tabs, current_tab);
+                                        },
                                         table {
                                             class: "results__table",
                                             thead {
@@ -435,6 +512,13 @@ pub fn ResultTable(
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+
+                                    if is_loading_more {
+                                        div {
+                                            class: "results__load-more",
+                                            "Loading more rows..."
                                         }
                                     }
 

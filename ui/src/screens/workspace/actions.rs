@@ -2,7 +2,7 @@ use crate::app_state::{activate_session, session_connection};
 use dioxus::prelude::*;
 use models::{
     DatabaseConnection, PendingTableChanges, QueryFilter, QueryFilterMode, QueryHistoryItem,
-    QueryOutput, QuerySort, QueryTabState, TablePreviewSource,
+    QueryOutput, QuerySort, QueryTabState, TablePreviewSource, WorkspaceTabKind,
 };
 
 pub const DEFAULT_PAGE_SIZE: u32 = 100;
@@ -22,6 +22,8 @@ pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> Qu
         preview_source: None,
         filter: None,
         sort: None,
+        tab_kind: WorkspaceTabKind::Query,
+        is_loading_more: false,
         pending_table_changes: PendingTableChanges::default(),
     }
 }
@@ -37,7 +39,7 @@ pub fn ensure_tab_for_session(
     if let Some(existing_tab_id) = tabs
         .read()
         .iter()
-        .find(|tab| tab.session_id == session_id)
+        .find(|tab| tab.session_id == session_id && tab.tab_kind == WorkspaceTabKind::Query)
         .map(|tab| tab.id)
     {
         active_tab_id.set(existing_tab_id);
@@ -74,6 +76,8 @@ pub fn update_active_tab_sql(
             tab.preview_source = None;
             tab.filter = None;
             tab.sort = None;
+            tab.tab_kind = WorkspaceTabKind::Query;
+            tab.is_loading_more = false;
             tab.pending_table_changes = PendingTableChanges::default();
         }
     });
@@ -114,6 +118,8 @@ pub fn append_to_tab_sql(
             tab.preview_source = None;
             tab.filter = None;
             tab.sort = None;
+            tab.tab_kind = WorkspaceTabKind::Query;
+            tab.is_loading_more = false;
             tab.pending_table_changes = PendingTableChanges::default();
         }
     });
@@ -161,6 +167,7 @@ pub fn open_structure_tab(
 
     tabs.with_mut(|all_tabs| {
         let mut tab = new_query_tab(tab_id, session_id, title, comment);
+        tab.tab_kind = WorkspaceTabKind::Structure;
         tab.status = format!("Loading structure for {}...", source.table_name);
         all_tabs.push(tab);
     });
@@ -180,6 +187,7 @@ pub fn open_structure_tab(
                         tab.preview_source = None;
                         tab.filter = None;
                         tab.sort = None;
+                        tab.is_loading_more = false;
                         tab.pending_table_changes = PendingTableChanges::default();
                     }
                 });
@@ -234,6 +242,7 @@ pub fn run_query_for_tab(
         if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
             tab.status = format!("Running query at offset {offset}...");
             tab.preview_source = None;
+            tab.is_loading_more = false;
             tab.pending_table_changes = PendingTableChanges::default();
         }
     });
@@ -263,6 +272,7 @@ pub fn run_query_for_tab(
                         tab.page_size = page_size;
                         tab.last_run_sql = Some(sql.clone());
                         tab.preview_source = None;
+                        tab.is_loading_more = false;
                         tab.pending_table_changes = PendingTableChanges::default();
                     }
                 });
@@ -294,6 +304,7 @@ pub fn run_query_for_tab(
                         tab.result = None;
                         tab.status = format!("Error: {err:?}");
                         tab.preview_source = None;
+                        tab.is_loading_more = false;
                         tab.pending_table_changes = PendingTableChanges::default();
                     }
                 });
@@ -360,6 +371,7 @@ pub fn run_table_preview_for_tab(
             if tab.preview_source.as_ref() != Some(&source) {
                 tab.filter = None;
                 tab.sort = None;
+                tab.is_loading_more = false;
                 tab.pending_table_changes = PendingTableChanges::default();
             }
             tab.preview_source = Some(source.clone());
@@ -402,6 +414,7 @@ pub fn run_table_preview_for_tab(
                         tab.page_size = page_size;
                         tab.last_run_sql = Some(preview_sql.clone());
                         tab.preview_source = Some(source.clone());
+                        tab.is_loading_more = false;
                     }
                 });
             }
@@ -411,6 +424,141 @@ pub fn run_table_preview_for_tab(
                         tab.result = None;
                         tab.status = format!("Preview error: {err:?}");
                         tab.preview_source = Some(source.clone());
+                        tab.is_loading_more = false;
+                    }
+                });
+            }
+        }
+    });
+}
+
+fn append_query_page(existing_page: &mut models::QueryPage, next_page: models::QueryPage) {
+    existing_page.rows.extend(next_page.rows);
+    existing_page.has_next = next_page.has_next;
+    existing_page.has_previous = existing_page.has_previous || next_page.has_previous;
+
+    match (existing_page.editable.as_mut(), next_page.editable) {
+        (Some(existing_editable), Some(next_editable)) => {
+            existing_editable
+                .row_locators
+                .extend(next_editable.row_locators);
+        }
+        (None, Some(next_editable)) => {
+            existing_page.editable = Some(next_editable);
+        }
+        _ => {}
+    }
+}
+
+pub fn append_next_tab_page(mut tabs: Signal<Vec<QueryTabState>>, current_tab: QueryTabState) {
+    let Some(QueryOutput::Table(current_page)) = current_tab.result.clone() else {
+        return;
+    };
+
+    if current_tab.is_loading_more || !current_tab.pending_table_changes.is_empty() {
+        return;
+    }
+
+    if !current_page.has_next {
+        return;
+    }
+
+    let next_offset = current_page.offset + current_page.rows.len() as u64;
+    let expected_sql = current_tab.last_run_sql.clone();
+    let expected_preview_source = current_tab.preview_source.clone();
+    let expected_filter = current_tab.filter.clone();
+    let expected_sort = current_tab.sort.clone();
+
+    let Some(connection) = tab_connection_or_error(tabs, current_tab.id, current_tab.session_id)
+    else {
+        return;
+    };
+
+    tabs.with_mut(|all_tabs| {
+        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_tab.id) {
+            tab.is_loading_more = true;
+            tab.status = format!("Loading more rows from {}...", next_offset + 1);
+        }
+    });
+
+    spawn(async move {
+        let next_page_result = if let Some(source) = expected_preview_source.clone() {
+            query::load_table_preview_page(
+                connection,
+                source,
+                current_tab.page_size,
+                next_offset,
+                expected_filter.clone(),
+                expected_sort.clone(),
+            )
+            .await
+        } else if let Some(sql) = expected_sql.clone() {
+            query::execute_query_page(
+                connection,
+                sql,
+                current_tab.page_size,
+                next_offset,
+                expected_filter.clone(),
+                expected_sort.clone(),
+            )
+            .await
+        } else {
+            tabs.with_mut(|all_tabs| {
+                if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_tab.id) {
+                    tab.is_loading_more = false;
+                }
+            });
+            return;
+        };
+
+        match next_page_result {
+            Ok(QueryOutput::Table(next_page)) => {
+                tabs.with_mut(|all_tabs| {
+                    let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_tab.id) else {
+                        return;
+                    };
+
+                    let same_request = tab.last_run_sql == expected_sql
+                        && tab.preview_source == expected_preview_source
+                        && tab.filter == expected_filter
+                        && tab.sort == expected_sort;
+
+                    if !same_request {
+                        tab.is_loading_more = false;
+                        return;
+                    }
+
+                    let mut loaded_range = None;
+                    if let Some(QueryOutput::Table(existing_page)) = tab.result.as_mut() {
+                        append_query_page(existing_page, next_page);
+                        loaded_range = Some((
+                            existing_page.offset,
+                            existing_page.offset + existing_page.rows.len() as u64,
+                        ));
+                    }
+
+                    if let Some((offset, last_row)) = loaded_range {
+                        tab.current_offset = offset;
+                        tab.status = format!("Loaded rows {}-{}", offset + 1, last_row);
+                    }
+
+                    tab.is_loading_more = false;
+                });
+            }
+            Ok(other_output) => {
+                tabs.with_mut(|all_tabs| {
+                    if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_tab.id) {
+                        tab.result = Some(other_output);
+                        tab.is_loading_more = false;
+                        tab.status = "Loaded additional result".to_string();
+                    }
+                });
+            }
+            Err(err) => {
+                tabs.with_mut(|all_tabs| {
+                    if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_tab.id) {
+                        tab.is_loading_more = false;
+                        tab.status = format!("Load more error: {err:?}");
                     }
                 });
             }

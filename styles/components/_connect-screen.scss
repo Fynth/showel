@@ -66,6 +66,17 @@
   gap: $spacing-md;
 }
 
+.connect-form__path-row {
+  display: flex;
+  align-items: stretch;
+  gap: $spacing-sm;
+}
+
+.connect-form__path-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .connect-form__ssh {
   display: grid;
   gap: $spacing-md;
@@ -133,6 +144,10 @@
 @media (max-width: 680px) {
   .connect-form__grid {
     grid-template-columns: 1fr;
+  }
+
+  .connect-form__path-row {
+    flex-direction: column;
   }
 
   .connect-form__ssh-header {

@@ -39,7 +39,7 @@ async fn load_explorer_section(
     match explorer::load_connection_tree(session.connection.clone()).await {
         Ok(nodes) => ExplorerConnectionSection {
             session_id: session.id,
-            name: session.name,
+            name: connection_target_label(&session.request),
             kind_label,
             status: "Ready".to_string(),
             is_active: Some(session.id) == active_session_id,
@@ -47,13 +47,17 @@ async fn load_explorer_section(
         },
         Err(err) => ExplorerConnectionSection {
             session_id: session.id,
-            name: session.name,
+            name: connection_target_label(&session.request),
             kind_label,
             status: format!("Error: {err:?}"),
             is_active: Some(session.id) == active_session_id,
             nodes: Vec::new(),
         },
     }
+}
+
+fn connection_target_label(request: &models::ConnectionRequest) -> String {
+    request.short_name()
 }
 
 #[component]

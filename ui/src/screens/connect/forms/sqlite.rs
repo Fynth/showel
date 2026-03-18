@@ -1,6 +1,7 @@
 use crate::app_state::add_connection_session;
 use dioxus::prelude::*;
 use models::{ConnectionRequest, SqliteFormData};
+use rfd::AsyncFileDialog;
 
 #[component]
 pub fn SqliteForm() -> Element {
@@ -48,13 +49,34 @@ pub fn SqliteForm() -> Element {
                     r#for: "sqlite-path",
                     "SQLite file path"
                 }
-                input {
-                    class: "input",
-                    id: "sqlite-path",
-                    value: "{path}",
-                    placeholder: "/path/to/app.db",
-                    oninput: move |event| {
-                        path.set(event.value());
+                div {
+                    class: "connect-form__path-row",
+                    input {
+                        class: "input connect-form__path-input",
+                        id: "sqlite-path",
+                        value: "{path}",
+                        placeholder: "/path/to/app.db",
+                        oninput: move |event| {
+                            path.set(event.value());
+                        }
+                    }
+                    button {
+                        class: "button button--ghost",
+                        r#type: "button",
+                        onclick: move |_| {
+                            spawn(async move {
+                                let file = AsyncFileDialog::new()
+                                    .add_filter("SQLite database", &["db", "sqlite", "sqlite3", "db3"])
+                                    .add_filter("All files", &["*"])
+                                    .pick_file()
+                                    .await;
+
+                                if let Some(file) = file {
+                                    path.set(file.path().display().to_string());
+                                }
+                            });
+                        },
+                        "Browse"
                     }
                 }
             }

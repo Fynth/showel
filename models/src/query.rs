@@ -134,6 +134,13 @@ pub enum QueryOutput {
     AffectedRows(u64),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspaceTabKind {
+    Query,
+    TablePreview,
+    Structure,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryTabState {
     pub id: u64,
@@ -148,6 +155,8 @@ pub struct QueryTabState {
     pub preview_source: Option<TablePreviewSource>,
     pub filter: Option<QueryFilter>,
     pub sort: Option<QuerySort>,
+    pub tab_kind: WorkspaceTabKind,
+    pub is_loading_more: bool,
     pub pending_table_changes: PendingTableChanges,
 }
 

@@ -1,7 +1,8 @@
-use crate::app_state::activate_session;
+use crate::app_state::{activate_session, remove_session};
 use crate::screens::workspace::actions::{
     ensure_tab_for_session, run_table_preview_for_tab, set_active_tab_sql, tab_connection_or_error,
 };
+use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
 use models::{ExplorerNode, ExplorerNodeKind, QueryTabState, TablePreviewSource};
 
@@ -23,20 +24,49 @@ pub fn SidebarConnectionTree(
     next_tab_id: Signal<u64>,
 ) -> Element {
     let selected_node = use_signal(String::new);
+    let mut filter_query = use_signal(String::new);
+    let query = filter_query();
+    let filtered_sections = filter_connection_sections(&sections, &query);
+    let entity_count = filtered_sections
+        .iter()
+        .map(|section| count_objects(&section.nodes))
+        .sum::<usize>();
 
     rsx! {
-        if sections.is_empty() {
-            p { class: "empty-state", "No active connections." }
-        } else {
-            div { class: "tree",
-                div { class: "tree__header", "Connections" }
-                for section in sections {
-                    ExplorerConnectionView {
-                        section,
-                        tabs,
-                        active_tab_id,
-                        next_tab_id,
-                        selected_node,
+        div { class: "tree",
+            div {
+                class: "tree__header",
+                div {
+                    class: "tree__header-copy",
+                    span { class: "tree__header-label", "Entities" }
+                    span { class: "tree__header-count", "{entity_count}" }
+                }
+            }
+
+            if sections.is_empty() {
+                p { class: "empty-state", "No active connections." }
+            } else {
+                div {
+                    class: "tree__filter",
+                    input {
+                        class: "input tree__filter-input",
+                        value: "{query}",
+                        placeholder: "Filter entities",
+                        oninput: move |event| filter_query.set(event.value()),
+                    }
+                }
+
+                if filtered_sections.is_empty() {
+                    p { class: "empty-state", "No matching tables or views." }
+                } else {
+                    for section in filtered_sections {
+                        ExplorerConnectionView {
+                            section,
+                            tabs,
+                            active_tab_id,
+                            next_tab_id,
+                            selected_node,
+                        }
                     }
                 }
             }
@@ -61,33 +91,48 @@ fn ExplorerConnectionView(
             } else {
                 "tree__connection"
             },
-            button {
-                class: "tree__connection-toggle",
-                onclick: {
-                    let session_id = section.session_id;
-                    move |_| {
-                        activate_session(session_id);
-                        expanded.toggle();
-                    }
-                },
-                span {
-                    class: if expanded() {
-                        "tree__chevron tree__chevron--open"
-                    } else {
-                        "tree__chevron"
+            div {
+                class: "tree__connection-header",
+                button {
+                    class: "tree__connection-toggle",
+                    onclick: {
+                        let session_id = section.session_id;
+                        move |_| {
+                            activate_session(session_id);
+                            expanded.toggle();
+                        }
                     },
-                    ">"
+                    span {
+                        class: if expanded() {
+                            "tree__chevron tree__chevron--open"
+                        } else {
+                            "tree__chevron"
+                        },
+                        ">"
+                    }
+                    div {
+                        class: "tree__connection-copy",
+                        div {
+                            class: "tree__connection-topline",
+                            span { class: "tree__connection-kind", "{section.kind_label}" }
+                            span { class: "tree__connection-title", "{section.name}" }
+                        }
+                        span {
+                            class: "tree__connection-meta",
+                            "{section.status} · {object_count} objects"
+                        }
+                    }
                 }
                 div {
-                    class: "tree__connection-copy",
-                    div {
-                        class: "tree__connection-topline",
-                        span { class: "tree__connection-kind", "{section.kind_label}" }
-                        span { class: "tree__connection-title", "{section.name}" }
-                    }
-                    span {
-                        class: "tree__connection-meta",
-                        "{section.status} · {object_count} objects"
+                    class: "tree__connection-actions",
+                    IconButton {
+                        icon: ActionIcon::Close,
+                        label: "Disconnect".to_string(),
+                        small: true,
+                        onclick: {
+                            let session_id = section.session_id;
+                            move |_| disconnect_session(tabs, active_tab_id, session_id)
+                        },
                     }
                 }
             }
@@ -297,11 +342,85 @@ fn ExplorerObjectRow(
             }
             div {
                 class: "tree__object-copy",
-                div { class: "tree__object-name", "{node.name}" }
+                div {
+                    class: "tree__object-name",
+                    title: "{node.qualified_name}",
+                    "{node.name}"
+                }
                 div { class: "tree__object-kind", "{kind_label}" }
             }
         }
     }
+}
+
+fn filter_connection_sections(
+    sections: &[ExplorerConnectionSection],
+    query: &str,
+) -> Vec<ExplorerConnectionSection> {
+    let query = query.trim();
+    if query.is_empty() {
+        return sections.to_vec();
+    }
+
+    let normalized = query.to_ascii_lowercase();
+    sections
+        .iter()
+        .filter_map(|section| {
+            let section_matches = matches_query(&section.name, &normalized)
+                || matches_query(&section.kind_label, &normalized);
+            let nodes = if section_matches {
+                section.nodes.clone()
+            } else {
+                filter_nodes(&section.nodes, &normalized)
+            };
+
+            if section_matches || !nodes.is_empty() {
+                let mut section = section.clone();
+                section.nodes = nodes;
+                Some(section)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn filter_nodes(nodes: &[ExplorerNode], query: &str) -> Vec<ExplorerNode> {
+    nodes
+        .iter()
+        .filter_map(|node| filter_node(node, query))
+        .collect()
+}
+
+fn filter_node(node: &ExplorerNode, query: &str) -> Option<ExplorerNode> {
+    match node.kind {
+        ExplorerNodeKind::Schema => {
+            let schema_matches = matches_query(&node.name, query);
+            let mut filtered = node.clone();
+            filtered.children = if schema_matches {
+                node.children.clone()
+            } else {
+                filter_nodes(&node.children, query)
+            };
+
+            if schema_matches || !filtered.children.is_empty() {
+                Some(filtered)
+            } else {
+                None
+            }
+        }
+        ExplorerNodeKind::Table | ExplorerNodeKind::View => {
+            if matches_query(&node.name, query) || matches_query(&node.qualified_name, query) {
+                Some(node.clone())
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn matches_query(value: &str, query: &str) -> bool {
+    value.to_ascii_lowercase().contains(query)
 }
 
 fn split_children(children: &[ExplorerNode]) -> (Vec<ExplorerNode>, Vec<ExplorerNode>) {
@@ -320,6 +439,21 @@ fn split_children(children: &[ExplorerNode]) -> (Vec<ExplorerNode>, Vec<Explorer
     views.sort_by(|left, right| left.name.cmp(&right.name));
 
     (tables, views)
+}
+
+fn disconnect_session(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    mut active_tab_id: Signal<u64>,
+    session_id: u64,
+) {
+    tabs.with_mut(|all_tabs| all_tabs.retain(|tab| tab.session_id != session_id));
+    if let Some(first_tab) = tabs.read().first() {
+        active_tab_id.set(first_tab.id);
+        activate_session(first_tab.session_id);
+    } else {
+        active_tab_id.set(0);
+    }
+    remove_session(session_id);
 }
 
 fn count_objects(nodes: &[ExplorerNode]) -> usize {

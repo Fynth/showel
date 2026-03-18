@@ -1,9 +1,8 @@
 use crate::{
     app_state::{APP_STATE, open_connection_screen},
     screens::workspace::actions::{
-        load_tab_page, new_query_tab, open_structure_tab, refresh_tab_result,
-        replace_active_tab_sql, run_query_for_tab, set_active_tab_status, tab_connection_or_error,
-        update_active_tab_sql,
+        new_query_tab, open_structure_tab, refresh_tab_result, replace_active_tab_sql,
+        run_query_for_tab, set_active_tab_status, tab_connection_or_error, update_active_tab_sql,
     },
 };
 use dioxus::prelude::*;
@@ -161,76 +160,74 @@ pub fn TabsManager(
             },
             onmouseup: move |_| editor_resize.set(None),
             onmouseleave: move |_| editor_resize.set(None),
-            if show_sql_editor() {
-                div {
-                    class: "tabbar",
-                    for tab in tabs() {
-                        div {
-                            class: if tab.id == active_tab_id() {
-                                "tabbar__tab tabbar__tab--active"
-                            } else {
-                                "tabbar__tab"
-                            },
-                            onclick: {
-                                let tab_id = tab.id;
-                                let session_id = tab.session_id;
-                                move |_| {
-                                    active_tab_id.set(tab_id);
-                                    crate::app_state::activate_session(session_id);
-                                }
-                            },
-                            div {
-                                class: "tabbar__copy",
-                                span { class: "tabbar__label", "{tab.title}" }
-                                if let Some(session_name) = session_labels.get(&tab.session_id) {
-                                    span { class: "tabbar__context", "{session_name}" }
-                                }
+            div {
+                class: "tabbar",
+                for tab in tabs() {
+                    div {
+                        class: if tab.id == active_tab_id() {
+                            "tabbar__tab tabbar__tab--active"
+                        } else {
+                            "tabbar__tab"
+                        },
+                        onclick: {
+                            let tab_id = tab.id;
+                            let session_id = tab.session_id;
+                            move |_| {
+                                active_tab_id.set(tab_id);
+                                crate::app_state::activate_session(session_id);
                             }
-                            button {
-                                class: "tabbar__close",
-                                onclick: {
-                                    let tab_id = tab.id;
-                                    move |event| {
-                                        event.stop_propagation();
-                                        if tabs.read().len() == 1 {
-                                            return;
-                                        }
-
-                                        tabs.with_mut(|all_tabs| all_tabs.retain(|tab| tab.id != tab_id));
-                                        if active_tab_id() == tab_id
-                                            && let Some(first_tab) = tabs.read().first()
-                                        {
-                                            active_tab_id.set(first_tab.id);
-                                            crate::app_state::activate_session(first_tab.session_id);
-                                        }
-                                    }
-                                },
-                                "x"
+                        },
+                        div {
+                            class: "tabbar__copy",
+                            span { class: "tabbar__label", "{tab.title}" }
+                            if let Some(session_name) = session_labels.get(&tab.session_id) {
+                                span { class: "tabbar__context", "{session_name}" }
                             }
                         }
-                    }
-                    button {
-                        class: "tabbar__add",
-                        onclick: move |_| {
-                            let Some(session_id) = APP_STATE.read().active_session_id else {
-                                open_connection_screen();
-                                return;
-                            };
+                        button {
+                            class: "tabbar__close",
+                            onclick: {
+                                let tab_id = tab.id;
+                                move |event| {
+                                    event.stop_propagation();
+                                    if tabs.read().len() == 1 {
+                                        return;
+                                    }
 
-                            let new_id = next_tab_id();
-                            next_tab_id += 1;
-                            tabs.with_mut(|all_tabs| {
-                                all_tabs.push(new_query_tab(
-                                    new_id,
-                                    session_id,
-                                    format!("Query {new_id}"),
-                                    String::new(),
-                                ));
-                            });
-                            active_tab_id.set(new_id);
-                        },
-                        "+ Tab"
+                                    tabs.with_mut(|all_tabs| all_tabs.retain(|tab| tab.id != tab_id));
+                                    if active_tab_id() == tab_id
+                                        && let Some(first_tab) = tabs.read().first()
+                                    {
+                                        active_tab_id.set(first_tab.id);
+                                        crate::app_state::activate_session(first_tab.session_id);
+                                    }
+                                }
+                            },
+                            "x"
+                        }
                     }
+                }
+                button {
+                    class: "tabbar__add",
+                    onclick: move |_| {
+                        let Some(session_id) = APP_STATE.read().active_session_id else {
+                            open_connection_screen();
+                            return;
+                        };
+
+                        let new_id = next_tab_id();
+                        next_tab_id += 1;
+                        tabs.with_mut(|all_tabs| {
+                            all_tabs.push(new_query_tab(
+                                new_id,
+                                session_id,
+                                format!("Query {new_id}"),
+                                String::new(),
+                            ));
+                        });
+                        active_tab_id.set(new_id);
+                    },
+                    "+ Tab"
                 }
             }
 
@@ -394,59 +391,8 @@ pub fn TabsManager(
                         },
                     }
                 }
-                if let Some(QueryOutput::Table(page)) = active_tab.result.clone() {
-                    div {
-                        class: "editor__pagination",
-                        p { class: "editor__pagination-meta",
-                            "Rows {page.offset + 1}-{page.offset + page.rows.len() as u64} · page size {page.page_size}"
-                        }
-                        IconButton {
-                            icon: ActionIcon::Previous,
-                            label: "Previous page".to_string(),
-                            small: true,
-                            disabled: !page.has_previous || active_tab.last_run_sql.is_none(),
-                            onclick: {
-                                let current_tab = active_tab.clone();
-                                move |_| {
-                                    if current_tab.last_run_sql.is_none()
-                                        && current_tab.preview_source.is_none()
-                                    {
-                                        return;
-                                    };
-                                    load_tab_page(
-                                        tabs,
-                                        current_tab.clone(),
-                                        page.offset.saturating_sub(current_tab.page_size as u64),
-                                    );
-                                }
-                            },
-                        }
-                        IconButton {
-                            icon: ActionIcon::Next,
-                            label: "Next page".to_string(),
-                            small: true,
-                            disabled: !page.has_next || active_tab.last_run_sql.is_none(),
-                            onclick: {
-                                let current_tab = active_tab.clone();
-                                move |_| {
-                                    if current_tab.last_run_sql.is_none()
-                                        && current_tab.preview_source.is_none()
-                                    {
-                                        return;
-                                    };
-                                    load_tab_page(
-                                        tabs,
-                                        current_tab.clone(),
-                                        page.offset + current_tab.page_size as u64,
-                                    );
-                                }
-                            },
-                        }
-                    }
-                }
                 div {
                     class: "workspace__results",
-                    p { class: "workspace__status", "Status: {active_tab.status}" }
                     ResultTable {
                         result: active_tab.result.clone(),
                         tabs,

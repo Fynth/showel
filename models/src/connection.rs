@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DatabaseKind {
@@ -144,6 +145,26 @@ impl ConnectionRequest {
                 }
                 label
             }
+        }
+    }
+
+    pub fn short_name(&self) -> String {
+        match self {
+            ConnectionRequest::Sqlite(data) => Path::new(data.path.trim())
+                .file_stem()
+                .or_else(|| Path::new(data.path.trim()).file_name())
+                .map(|value| value.to_string_lossy().into_owned())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| data.path.clone()),
+            ConnectionRequest::Postgres(data) => {
+                let database = data.database.trim();
+                if database.is_empty() {
+                    "postgres".to_string()
+                } else {
+                    database.to_string()
+                }
+            }
+            ConnectionRequest::ClickHouse(data) => data.effective_database().to_string(),
         }
     }
 }
