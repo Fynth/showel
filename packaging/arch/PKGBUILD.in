@@ -18,7 +18,7 @@ makedepends=(
   'rustup'
 )
 source=(
-  "${pkgname}::git+${url}.git#tag=v${pkgver}"
+  "${pkgname}::git+${url}.git#__SOURCE_SELECTOR__"
   "showel.desktop"
 )
 sha256sums=(

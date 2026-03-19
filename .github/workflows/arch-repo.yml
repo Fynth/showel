@@ -10,6 +10,10 @@ on:
         description: 'Release version without leading v'
         required: true
         type: string
+      git_ref:
+        description: 'Git ref or commit to package; defaults to the current workflow commit'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -32,7 +36,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve release version
+      - name: Resolve release metadata
         id: meta
         shell: bash
         run: |
@@ -40,11 +44,19 @@ jobs:
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             version="${{ github.event.inputs.version }}"
+            git_ref="${{ github.event.inputs.git_ref }}"
+            if [[ -n "${git_ref}" ]]; then
+              source_selector="commit=${git_ref}"
+            else
+              source_selector="commit=${GITHUB_SHA}"
+            fi
           else
             version="${GITHUB_REF_NAME#v}"
+            source_selector="tag=v${version}"
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "source_selector=${source_selector}" >> "${GITHUB_OUTPUT}"
 
       - name: Install Arch build dependencies
         shell: bash
@@ -70,7 +82,8 @@ jobs:
             "${{ steps.meta.outputs.version }}" \
             "${{ github.repository_owner }}" \
             "${{ github.event.repository.name }}" \
-            "${GITHUB_WORKSPACE}/packaging/arch/generated"
+            "${GITHUB_WORKSPACE}/packaging/arch/generated" \
+            "${{ steps.meta.outputs.source_selector }}"
 
       - name: Build Arch package
         shell: bash
