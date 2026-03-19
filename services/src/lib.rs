@@ -1,19 +1,19 @@
+pub use acp::{build_acp_database_context, install_acp_registry_agent, load_acp_registry_agents};
 pub use acp::{
     cancel_acp_prompt, connect_acp_agent, disconnect_acp_agent, drain_acp_events,
     respond_acp_permission, send_acp_prompt,
 };
-pub use acp::{build_acp_database_context, install_acp_registry_agent, load_acp_registry_agents};
 pub use connection::connect_to_db;
+pub use connection::release_ssh_tunnel;
 pub use explorer::{describe_table, load_connection_tree, load_table_columns};
 pub use query::{
-    export_query_page_csv, export_query_page_json, export_query_page_xlsx, import_csv_into_table,
-    delete_table_row, execute_query, execute_query_page, insert_table_row,
-    insert_table_row_with_values, load_table_preview_page, next_table_primary_key_id, format_sql,
-    update_table_cell,
+    delete_table_row, execute_query, execute_query_page, export_query_page_csv,
+    export_query_page_json, export_query_page_xlsx, format_sql, import_csv_into_table,
+    insert_table_row, insert_table_row_with_values, load_table_preview_page,
+    next_table_primary_key_id, update_table_cell,
 };
 pub use storage::{
     append_query_history, delete_saved_query, load_query_history, load_saved_connections,
     load_saved_queries, load_session_state, load_session_state_sync, save_connection_request,
     save_saved_query, save_session_state, save_session_state_sync,
 };
-pub use connection::release_ssh_tunnel;

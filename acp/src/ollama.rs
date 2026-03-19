@@ -177,12 +177,13 @@ impl acp::Agent for OllamaAgent {
             session.history.clone()
         };
 
-        let mut cancel_flags = self.cancel_flags.lock().map_err(|_| {
-            acp::Error::internal_error().data("Ollama cancel registry lock poisoned")
-        })?;
         let cancel_flag = Arc::new(AtomicBool::new(false));
-        cancel_flags.insert(session_id.clone(), Arc::clone(&cancel_flag));
-        drop(cancel_flags);
+        {
+            let mut cancel_flags = self.cancel_flags.lock().map_err(|_| {
+                acp::Error::internal_error().data("Ollama cancel registry lock poisoned")
+            })?;
+            cancel_flags.insert(session_id.clone(), Arc::clone(&cancel_flag));
+        }
 
         let user_message = OllamaChatMessage {
             role: "user".to_string(),

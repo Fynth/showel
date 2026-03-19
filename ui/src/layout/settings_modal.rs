@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use models::AppThemePreference;
 
 #[component]
+#[allow(clippy::redundant_closure)]
 pub fn SettingsModal() -> Element {
     if !APP_SHOW_SETTINGS_MODAL() {
         return VNode::empty();

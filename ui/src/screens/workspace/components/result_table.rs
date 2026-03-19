@@ -1076,10 +1076,9 @@ fn commit_cell_edit(
                     .inserted_rows
                     .iter_mut()
                     .find(|row| row.id == insert_id)
+                    && let Some(value) = row.values.get_mut(editing.col_index)
                 {
-                    if let Some(value) = row.values.get_mut(editing.col_index) {
-                        *value = Some(editing.value);
-                    }
+                    *value = Some(editing.value);
                 }
             }
             EditableRowRef::Existing(locator) => {

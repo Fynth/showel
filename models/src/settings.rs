@@ -91,8 +91,9 @@ impl Default for WorkspaceToolLayout {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppThemePreference {
+    #[default]
     Dark,
     Light,
 }
@@ -110,12 +111,6 @@ impl AppThemePreference {
             Self::Dark => "Dark",
             Self::Light => "Light",
         }
-    }
-}
-
-impl Default for AppThemePreference {
-    fn default() -> Self {
-        Self::Dark
     }
 }
 
