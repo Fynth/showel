@@ -2,7 +2,7 @@ mod build;
 mod editable;
 mod rows;
 
-use driver_clickhouse::execute_json_query;
+use driver_clickhouse::{execute_json_query, execute_text_query};
 use models::{
     DatabaseConnection, DatabaseError, QueryFilter, QueryOutput, QuerySort, TablePreviewSource,
 };
@@ -95,20 +95,103 @@ pub async fn load_table_preview_page(
             )))
         }
         DatabaseConnection::ClickHouse(config) => {
-            let sql = build_outer_paginated_query(
-                format!("select * from {}", source.qualified_name),
-                page_size,
+            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
+            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+
+            let (response, row_locators) = if let Some((ref pk_columns, _)) = pk_result {
+                let pk_select = pk_columns
+                    .iter()
+                    .map(|c| quote_identifier_clickhouse(c))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let sql = build_outer_paginated_query(
+                    format!("select {pk_select}, * from {}", source.qualified_name),
+                    page_size,
+                    offset,
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    CLICKHOUSE_DIALECT,
+                );
+                let response = execute_json_query(&config, &sql)
+                    .await
+                    .map_err(DatabaseError::ClickHouse)?;
+
+                let pk_count = pk_columns.len();
+                let row_locators: Vec<String> = response
+                    .data
+                    .iter()
+                    .map(|row| {
+                        build_clickhouse_locator(pk_columns, &row[..pk_count])
+                    })
+                    .collect();
+                (response, row_locators)
+            } else {
+                let sql = build_outer_paginated_query(
+                    format!("select * from {}", source.qualified_name),
+                    page_size,
+                    offset,
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    CLICKHOUSE_DIALECT,
+                );
+                let response = execute_json_query(&config, &sql)
+                    .await
+                    .map_err(DatabaseError::ClickHouse)?;
+                (response, vec![])
+            };
+
+            let editable = if !row_locators.is_empty() {
+                Some(models::EditableTableContext {
+                    source,
+                    row_locators,
+                })
+            } else {
+                None
+            };
+
+            let (columns, rows) = if let Some((ref pk_columns, _)) = pk_result {
+                let pk_count = pk_columns.len();
+                let columns: Vec<String> = response.meta[pk_count..]
+                    .iter()
+                    .map(|m| m.name.clone())
+                    .collect();
+                let rows: Vec<Vec<String>> = response
+                    .data
+                    .iter()
+                    .map(|row| {
+                        row[pk_count..]
+                            .iter()
+                            .map(clickhouse_json_value_to_string)
+                            .collect()
+                    })
+                    .collect();
+                (columns, rows)
+            } else {
+                let columns: Vec<String> = response
+                    .meta
+                    .iter()
+                    .map(|m| m.name.clone())
+                    .collect();
+                let rows: Vec<Vec<String>> = response
+                    .data
+                    .iter()
+                    .map(|row| {
+                        row.iter().map(clickhouse_json_value_to_string).collect()
+                    })
+                    .collect();
+                (columns, rows)
+            };
+
+            let has_next = response.data.len() > page_size as usize;
+            Ok(QueryOutput::Table(models::QueryPage {
+                columns,
+                rows,
+                editable,
                 offset,
-                filter.as_ref(),
-                sort.as_ref(),
-                CLICKHOUSE_DIALECT,
-            );
-            let response = execute_json_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
-            Ok(QueryOutput::Table(clickhouse_rows_to_paginated_page(
-                response, page_size, offset,
-            )))
+                page_size,
+                has_previous: offset > 0,
+                has_next,
+            }))
         }
     }
 }
@@ -152,9 +235,42 @@ pub async fn update_table_cell(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
-        DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
-            "ClickHouse cell updates are not supported".to_string(),
-        )),
+        DatabaseConnection::ClickHouse(config) => {
+            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
+            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+
+            let Some((pk_columns, _)) = pk_result else {
+                return Err(DatabaseError::UnsupportedDriver(
+                    "ClickHouse table must have a primary key for updates".to_string(),
+                ));
+            };
+
+            let conditions = parse_clickhouse_locator(&locator, &pk_columns);
+            if conditions.is_empty() {
+                return Err(DatabaseError::UnsupportedDriver(
+                    "Invalid row locator".to_string(),
+                ));
+            }
+
+            let where_clause = conditions
+                .iter()
+                .map(|(col, val)| format!("{} = {}", quote_identifier_clickhouse(col), val))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+
+            let column = quote_identifier_clickhouse(&column_name);
+            let value_literal = sql_literal(&value);
+
+            let sql = format!(
+                "ALTER TABLE {} UPDATE {} = {} WHERE {}",
+                source.qualified_name, column, value_literal, where_clause
+            );
+
+            execute_text_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(())
+        }
     }
 }
 
@@ -207,9 +323,15 @@ pub async fn insert_table_row_with_values(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
-        DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
-            "ClickHouse row inserts are not supported yet".to_string(),
-        )),
+        DatabaseConnection::ClickHouse(config) => {
+            let sql = build_insert_row_sql(&source, &column_values);
+            let sql = sql.replace('"', "`");
+
+            execute_text_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(())
+        }
     }
 }
 
@@ -278,7 +400,41 @@ pub async fn next_table_primary_key_id(
                 )?,
             )))
         }
-        DatabaseConnection::ClickHouse(_) => Ok(None),
+        DatabaseConnection::ClickHouse(config) => {
+            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
+            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+
+            let Some((pk_columns, data_type)) = pk_result else {
+                return Ok(None);
+            };
+
+            if !clickhouse_type_supports_auto_id(&data_type) {
+                return Ok(None);
+            }
+
+            let column = quote_identifier_clickhouse(&pk_columns[0]);
+            let sql = format!(
+                "SELECT toString(COALESCE(MAX({}), 0) + 1) AS next_id FROM {}",
+                column,
+                source.qualified_name
+            );
+            let response = execute_json_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+
+            if let Some(row) = response.data.first()
+                && let Some(val) = row.first()
+            {
+                let next_id = match val {
+                    serde_json::Value::String(s) => s.parse::<i64>().unwrap_or(1),
+                    serde_json::Value::Number(n) => n.as_i64().unwrap_or(1),
+                    _ => 1,
+                };
+                Ok(Some((pk_columns[0].clone(), next_id)))
+            } else {
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -314,9 +470,39 @@ pub async fn delete_table_row(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
-        DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
-            "ClickHouse row deletes are not supported yet".to_string(),
-        )),
+        DatabaseConnection::ClickHouse(config) => {
+            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
+            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+
+            let Some((pk_columns, _)) = pk_result else {
+                return Err(DatabaseError::UnsupportedDriver(
+                    "ClickHouse table must have a primary key for deletes".to_string(),
+                ));
+            };
+
+            let conditions = parse_clickhouse_locator(&locator, &pk_columns);
+            if conditions.is_empty() {
+                return Err(DatabaseError::UnsupportedDriver(
+                    "Invalid row locator".to_string(),
+                ));
+            }
+
+            let where_clause = conditions
+                .iter()
+                .map(|(col, val)| format!("{} = {}", quote_identifier_clickhouse(col), val))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+
+            let sql = format!(
+                "ALTER TABLE {} DELETE WHERE {}",
+                source.qualified_name, where_clause
+            );
+
+            execute_text_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(())
+        }
     }
 }
 
@@ -599,4 +785,93 @@ fn postgres_type_supports_auto_id(data_type: &str) -> bool {
         data_type.to_ascii_lowercase().as_str(),
         "smallint" | "integer" | "bigint"
     )
+}
+
+fn clickhouse_type_supports_auto_id(data_type: &str) -> bool {
+    matches!(
+        data_type.to_ascii_lowercase().as_str(),
+        "int8" | "int16" | "int32" | "int64" | "uint8" | "uint16" | "uint32" | "uint64"
+    )
+}
+
+async fn clickhouse_get_primary_key_columns(
+    config: &models::ClickHouseFormData,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<Option<(Vec<String>, String)>, DatabaseError> {
+    let sql = format!(
+        "SELECT name, type FROM system.columns \
+         WHERE database = {} AND table = {} AND is_in_primary_key = 1 \
+         ORDER BY position_in_primary_key",
+        sql_literal(schema_name),
+        sql_literal(table_name)
+    );
+    let response = execute_json_query(config, &sql)
+        .await
+        .map_err(DatabaseError::ClickHouse)?;
+
+    if response.data.is_empty() {
+        return Ok(None);
+    }
+
+    let mut pk_columns = Vec::new();
+    let mut first_type = String::new();
+    for (idx, row) in response.data.into_iter().enumerate() {
+        if row.len() >= 2 {
+            let col_name = clickhouse_json_value_to_string(&row[0]);
+            let col_type = clickhouse_json_value_to_string(&row[1]);
+            pk_columns.push(col_name);
+            if idx == 0 {
+                first_type = col_type;
+            }
+        }
+    }
+
+    if pk_columns.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some((pk_columns, first_type)))
+}
+
+fn clickhouse_json_value_to_string_for_pk(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(v) => v.to_string(),
+        serde_json::Value::Number(v) => v.to_string(),
+        serde_json::Value::String(v) => format!("'{}'", v.replace('\'', "''")),
+        _ => serde_json::to_string(value).unwrap_or_else(|_| "NULL".to_string()),
+    }
+}
+
+fn build_clickhouse_locator(pk_columns: &[String], row_values: &[serde_json::Value]) -> String {
+    let mut parts = Vec::new();
+    for (col, val) in pk_columns.iter().zip(row_values.iter()) {
+        let encoded_col = col.replace('`', "``");
+        let encoded_val = clickhouse_json_value_to_string_for_pk(val);
+        parts.push(format!("{}={}", encoded_col, encoded_val));
+    }
+    parts.join("|")
+}
+
+fn parse_clickhouse_locator(locator: &str, _pk_columns: &[String]) -> Vec<(String, String)> {
+    let parts: Vec<&str> = locator.split('|').collect();
+    let mut result = Vec::new();
+    for part in parts {
+        if let Some((col, val)) = part.split_once('=') {
+            let col_decoded = col.replace("``", "`");
+            result.push((col_decoded, val.to_string()));
+        }
+    }
+    result
+}
+
+fn clickhouse_json_value_to_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::String(value) => value.clone(),
+        _ => serde_json::to_string(value).unwrap_or_else(|_| "<unsupported>".to_string()),
+    }
 }
