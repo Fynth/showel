@@ -5,10 +5,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: $spacing-md;
-  padding: clamp($spacing-sm, 1.2vw, $spacing-md);
-  border-left: 1px solid var(--color-border);
+  gap: $spacing-sm;
+  padding: clamp($spacing-xs, 1vw, $spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: $radius-lg;
   background: var(--color-panel);
+  overflow: hidden;
 }
 
 .agent-panel__header {
@@ -18,14 +20,33 @@
   gap: $spacing-sm;
 }
 
+.agent-panel__header-copy,
+.agent-panel__header-actions {
+  display: flex;
+  min-width: 0;
+}
+
+.agent-panel__header-copy {
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: $spacing-2xs;
+}
+
+.agent-panel__header-actions {
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+}
+
 .agent-panel__title {
   font-size: $font-size-lg;
   font-weight: 600;
 }
 
 .agent-panel__meta,
-.agent-panel__hint,
-.agent-panel__session-label {
+.agent-panel__hint {
   color: var(--color-text-muted);
   font-size: $font-size-sm;
   line-height: 1.45;
@@ -41,7 +62,6 @@
 }
 
 .agent-panel__connect,
-.agent-panel__session,
 .agent-panel__composer {
   display: flex;
   flex-direction: column;
@@ -122,40 +142,20 @@
   gap: $spacing-sm;
 }
 
-.agent-panel__session {
-  padding: $spacing-sm;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-md;
-  background: var(--color-panel-2);
-}
-
-.agent-panel__session-line {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-2xs;
-}
-
-.agent-panel__session-value {
-  font-family: $font-family-mono;
-  font-size: $font-size-sm;
-  overflow-wrap: anywhere;
-}
-
-.agent-panel__session-actions,
 .agent-panel__composer-actions {
   display: flex;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
   flex-wrap: wrap;
 }
 
 .agent-panel__messages {
   flex: 1 1 auto;
-  min-height: 220px;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
-  padding-right: $spacing-xs;
+  gap: $spacing-xs;
+  padding-right: $spacing-2xs;
 }
 
 .agent-panel__message {
@@ -254,8 +254,8 @@
 }
 
 .agent-panel__prompt {
-  min-height: 120px;
-  padding: $spacing-sm $spacing-md;
+  min-height: 88px;
+  padding: $spacing-sm;
   resize: vertical;
   font-family: $font-family-mono;
   line-height: 1.5;

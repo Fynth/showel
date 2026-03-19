@@ -55,160 +55,166 @@ pub fn SavedQueriesPanel(
     rsx! {
         section {
             class: "workspace__panel saved-queries",
-            h2 { class: "workspace__section-title", "Saved Queries" }
-            p {
-                class: "workspace__hint",
-                if panel_status().trim().is_empty() {
-                    "Reusable queries and snippets grouped by folder."
-                } else {
-                    "{panel_status}"
+            div {
+                class: "saved-queries__header",
+                h2 { class: "workspace__section-title", "Saved Queries" }
+                p {
+                    class: "workspace__hint",
+                    if panel_status().trim().is_empty() {
+                        "Reusable queries and snippets grouped by folder."
+                    } else {
+                        "{panel_status}"
+                    }
                 }
-            }
 
-            div { class: "saved-queries__form",
-                div { class: "field",
-                    label { class: "field__label", "Title" }
-                    input {
-                        class: "input",
-                        value: "{save_title}",
-                        placeholder: active_tab
-                            .as_ref()
-                            .map(|tab| tab.title.clone())
-                            .unwrap_or_else(|| "Saved Query".to_string()),
-                        oninput: move |event| save_title.set(event.value()),
-                    }
-                }
-                div { class: "field",
-                    label { class: "field__label", "Folder" }
-                    input {
-                        class: "input",
-                        value: "{save_folder}",
-                        placeholder: "General",
-                        oninput: move |event| save_folder.set(event.value()),
-                    }
-                }
-                div { class: "saved-queries__form-actions",
-                    button {
-                        class: "button button--ghost button--small",
-                        disabled: !can_save,
-                        onclick: {
-                            let active_tab = active_tab.clone();
-                            move |_| {
-                                save_current_sql(
-                                    SavedQueryKind::Snippet,
-                                    active_tab.clone(),
-                                    save_title,
-                                    save_folder,
-                                    next_saved_query_id,
-                                    saved_queries_signal,
-                                    panel_status,
-                                );
-                            }
-                        },
-                        "Save Snippet"
-                    }
-                    button {
-                        class: "button button--primary button--small",
-                        disabled: !can_save,
-                        onclick: {
-                            let active_tab = active_tab.clone();
-                            move |_| {
-                                save_current_sql(
-                                    SavedQueryKind::Query,
-                                    active_tab.clone(),
-                                    save_title,
-                                    save_folder,
-                                    next_saved_query_id,
-                                    saved_queries_signal,
-                                    panel_status,
-                                );
-                            }
-                        },
-                        "Save Query"
-                    }
-                }
-            }
-
-            if grouped.is_empty() {
-                p { class: "empty-state", "No saved queries or snippets yet." }
-            } else {
-                for (folder_name, items) in grouped {
-                    div {
-                        class: "saved-queries__folder",
-                        div {
-                            class: "saved-queries__folder-header",
-                            h3 { class: "saved-queries__folder-title", "{folder_name}" }
-                            span { class: "saved-queries__folder-count", "{items.len()}" }
+                div { class: "saved-queries__form",
+                    div { class: "field",
+                        label { class: "field__label", "Title" }
+                        input {
+                            class: "input",
+                            value: "{save_title}",
+                            placeholder: active_tab
+                                .as_ref()
+                                .map(|tab| tab.title.clone())
+                                .unwrap_or_else(|| "Saved Query".to_string()),
+                            oninput: move |event| save_title.set(event.value()),
                         }
-                        div { class: "saved-queries__folder-body",
-                            for item in items {
-                                {
-                                    let source_session_id = item
-                                        .connection_name
-                                        .as_ref()
-                                        .and_then(|name| sessions_by_name.get(name))
-                                        .copied();
-                                    let load_label = if item.kind == SavedQueryKind::Snippet {
-                                        "Insert in tab"
-                                    } else {
-                                        "Load in tab"
-                                    };
+                    }
+                    div { class: "field",
+                        label { class: "field__label", "Folder" }
+                        input {
+                            class: "input",
+                            value: "{save_folder}",
+                            placeholder: "General",
+                            oninput: move |event| save_folder.set(event.value()),
+                        }
+                    }
+                    div { class: "saved-queries__form-actions",
+                        button {
+                            class: "button button--ghost button--small",
+                            disabled: !can_save,
+                            onclick: {
+                                let active_tab = active_tab.clone();
+                                move |_| {
+                                    save_current_sql(
+                                        SavedQueryKind::Snippet,
+                                        active_tab.clone(),
+                                        save_title,
+                                        save_folder,
+                                        next_saved_query_id,
+                                        saved_queries_signal,
+                                        panel_status,
+                                    );
+                                }
+                            },
+                            "Save Snippet"
+                        }
+                        button {
+                            class: "button button--primary button--small",
+                            disabled: !can_save,
+                            onclick: {
+                                let active_tab = active_tab.clone();
+                                move |_| {
+                                    save_current_sql(
+                                        SavedQueryKind::Query,
+                                        active_tab.clone(),
+                                        save_title,
+                                        save_folder,
+                                        next_saved_query_id,
+                                        saved_queries_signal,
+                                        panel_status,
+                                    );
+                                }
+                            },
+                            "Save Query"
+                        }
+                    }
+                }
+            }
 
-                                    rsx! {
-                                        article { class: "saved-queries__item",
-                                            div { class: "saved-queries__item-top",
-                                                p { class: "saved-queries__title", "{item.title}" }
-                                                span { class: "saved-queries__kind", "{item.kind_label()}" }
-                                            }
-                                            if let Some(connection_name) = item.connection_name.clone() {
-                                                p {
-                                                    class: "saved-queries__connection",
-                                                    title: "{connection_name}",
-                                                    "{connection_name}"
+            div {
+                class: "saved-queries__body",
+                if grouped.is_empty() {
+                    p { class: "empty-state", "No saved queries or snippets yet." }
+                } else {
+                    for (folder_name, items) in grouped {
+                        div {
+                            class: "saved-queries__folder",
+                            div {
+                                class: "saved-queries__folder-header",
+                                h3 { class: "saved-queries__folder-title", "{folder_name}" }
+                                span { class: "saved-queries__folder-count", "{items.len()}" }
+                            }
+                            div { class: "saved-queries__folder-body",
+                                for item in items {
+                                    {
+                                        let source_session_id = item
+                                            .connection_name
+                                            .as_ref()
+                                            .and_then(|name| sessions_by_name.get(name))
+                                            .copied();
+                                        let load_label = if item.kind == SavedQueryKind::Snippet {
+                                            "Insert in tab"
+                                        } else {
+                                            "Load in tab"
+                                        };
+
+                                        rsx! {
+                                            article { class: "saved-queries__item",
+                                                div { class: "saved-queries__item-top",
+                                                    p { class: "saved-queries__title", "{item.title}" }
+                                                    span { class: "saved-queries__kind", "{item.kind_label()}" }
                                                 }
-                                            }
-                                            pre {
-                                                class: "saved-queries__sql",
-                                                title: "{item.sql}",
-                                                "{item.sql}"
-                                            }
-                                            div { class: "saved-queries__actions",
-                                                button {
-                                                    class: "button button--ghost button--small",
-                                                    onclick: {
-                                                        let item = item.clone();
-                                                        move |_| {
-                                                            load_saved_query_into_workspace(
-                                                                item.clone(),
-                                                                source_session_id,
-                                                                tabs,
-                                                                active_tab_id,
-                                                                next_tab_id,
-                                                            );
-                                                            panel_status.set(format!(
-                                                                "{} loaded into workspace.",
-                                                                item.title
-                                                            ));
-                                                        }
-                                                    },
-                                                    "{load_label}"
+                                                if let Some(connection_name) = item.connection_name.clone() {
+                                                    p {
+                                                        class: "saved-queries__connection",
+                                                        title: "{connection_name}",
+                                                        "{connection_name}"
+                                                    }
                                                 }
-                                                button {
-                                                    class: "button button--ghost button--small",
-                                                    onclick: {
-                                                        let item_id = item.id;
-                                                        let item_title = item.title.clone();
-                                                        move |_| {
-                                                            saved_queries_signal.with_mut(|items| {
-                                                                items.retain(|existing| existing.id != item_id);
-                                                            });
-                                                            panel_status.set(format!("Deleted {item_title}."));
-                                                            spawn(async move {
-                                                                let _ = storage::delete_saved_query(item_id).await;
-                                                            });
-                                                        }
-                                                    },
-                                                    "Delete"
+                                                pre {
+                                                    class: "saved-queries__sql",
+                                                    title: "{item.sql}",
+                                                    "{item.sql}"
+                                                }
+                                                div { class: "saved-queries__actions",
+                                                    button {
+                                                        class: "button button--ghost button--small",
+                                                        onclick: {
+                                                            let item = item.clone();
+                                                            move |_| {
+                                                                load_saved_query_into_workspace(
+                                                                    item.clone(),
+                                                                    source_session_id,
+                                                                    tabs,
+                                                                    active_tab_id,
+                                                                    next_tab_id,
+                                                                );
+                                                                panel_status.set(format!(
+                                                                    "{} loaded into workspace.",
+                                                                    item.title
+                                                                ));
+                                                            }
+                                                        },
+                                                        "{load_label}"
+                                                    }
+                                                    button {
+                                                        class: "button button--ghost button--small",
+                                                        onclick: {
+                                                            let item_id = item.id;
+                                                            let item_title = item.title.clone();
+                                                            move |_| {
+                                                                saved_queries_signal.with_mut(|items| {
+                                                                    items.retain(|existing| existing.id != item_id);
+                                                                });
+                                                                panel_status.set(format!("Deleted {item_title}."));
+                                                                spawn(async move {
+                                                                    let _ = storage::delete_saved_query(item_id).await;
+                                                                });
+                                                            }
+                                                        },
+                                                        "Delete"
+                                                    }
                                                 }
                                             }
                                         }

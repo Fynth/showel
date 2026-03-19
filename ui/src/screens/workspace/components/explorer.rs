@@ -44,7 +44,10 @@ pub fn SidebarConnectionTree(
             }
 
             if sections.is_empty() {
-                p { class: "empty-state", "No active connections." }
+                div {
+                    class: "tree__body",
+                    p { class: "empty-state", "No active connections." }
+                }
             } else {
                 div {
                     class: "tree__filter",
@@ -56,16 +59,19 @@ pub fn SidebarConnectionTree(
                     }
                 }
 
-                if filtered_sections.is_empty() {
-                    p { class: "empty-state", "No matching tables or views." }
-                } else {
-                    for section in filtered_sections {
-                        ExplorerConnectionView {
-                            section,
-                            tabs,
-                            active_tab_id,
-                            next_tab_id,
-                            selected_node,
+                div {
+                    class: "tree__body",
+                    if filtered_sections.is_empty() {
+                        p { class: "empty-state", "No matching tables or views." }
+                    } else {
+                        for section in filtered_sections {
+                            ExplorerConnectionView {
+                                section,
+                                tabs,
+                                active_tab_id,
+                                next_tab_id,
+                                selected_node,
+                            }
                         }
                     }
                 }
@@ -115,11 +121,16 @@ fn ExplorerConnectionView(
                         div {
                             class: "tree__connection-topline",
                             span { class: "tree__connection-kind", "{section.kind_label}" }
-                            span { class: "tree__connection-title", "{section.name}" }
-                        }
-                        span {
-                            class: "tree__connection-meta",
-                            "{section.status} · {object_count} objects"
+                            span {
+                                class: "tree__connection-title",
+                                title: "{section.name}",
+                                "{section.name}"
+                            }
+                            span {
+                                class: "tree__connection-meta",
+                                title: "{section.status} · {object_count} objects",
+                                "{section.status} · {object_count} objects"
+                            }
                         }
                     }
                 }

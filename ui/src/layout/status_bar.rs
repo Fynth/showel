@@ -1,4 +1,4 @@
-use crate::app_state::{APP_STATE, APP_THEME};
+use crate::app_state::{APP_STATE, APP_UI_SETTINGS};
 use dioxus::prelude::*;
 
 #[component]
@@ -11,7 +11,7 @@ pub fn StatusBar() -> Element {
         };
         (label, app_state.sessions.len())
     };
-    let theme_name = APP_THEME();
+    let theme_name = APP_UI_SETTINGS().theme.label().to_string();
 
     rsx! {
         footer {

@@ -8,6 +8,8 @@ mod state;
 use dioxus::prelude::*;
 use models::{AcpMessageKind, AcpPanelState, QueryTabState};
 
+use super::{ActionIcon, IconButton};
+
 use self::{
     prompt::{
         active_editor_connection, build_chat_prompt, build_sql_generation_prompt,
@@ -25,6 +27,62 @@ pub(crate) use self::{
     state::{apply_acp_events, default_acp_panel_state},
 };
 
+fn send_chat_prompt_request(
+    mut panel_state: Signal<AcpPanelState>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    connection_label: String,
+) {
+    let prompt = panel_state().prompt.trim().to_string();
+    if prompt.is_empty() || panel_state().busy {
+        return;
+    }
+
+    let connection = active_editor_connection(tabs, active_tab_id);
+    panel_state.with_mut(|state| {
+        state.busy = true;
+        state.pending_sql_insert = false;
+        state.status = "Preparing connected database context for the agent...".to_string();
+    });
+
+    spawn(async move {
+        let contextual_prompt = match connection {
+            Some(connection) => {
+                match acp::build_acp_database_context(connection, connection_label.clone()).await {
+                    Ok(db_context) => {
+                        build_chat_prompt(&connection_label, &prompt, Some(db_context))
+                    }
+                    Err(_) => build_chat_prompt(&connection_label, &prompt, None),
+                }
+            }
+            None => build_chat_prompt(&connection_label, &prompt, None),
+        };
+
+        match acp::send_acp_prompt(contextual_prompt) {
+            Ok(()) => {
+                panel_state.with_mut(|state| {
+                    push_message(state, AcpMessageKind::User, prompt.clone());
+                    state.prompt.clear();
+                    state.busy = true;
+                    state.pending_sql_insert = false;
+                    state.status = "Waiting for agent response...".to_string();
+                });
+            }
+            Err(err) => {
+                panel_state.with_mut(|state| {
+                    state.status = err.clone();
+                    state.busy = false;
+                    push_message(state, AcpMessageKind::Error, err);
+                });
+            }
+        }
+    });
+}
+
+fn is_connection_notice(kind: &AcpMessageKind, text: &str) -> bool {
+    matches!(kind, AcpMessageKind::System) && text.starts_with("Connected to ")
+}
+
 #[component]
 pub fn AcpAgentPanel(
     mut panel_state: Signal<AcpPanelState>,
@@ -36,10 +94,17 @@ pub fn AcpAgentPanel(
     let state = panel_state();
     let sql_generation_label = sql_connection_label.clone();
     let chat_label = sql_connection_label.clone();
+    let enter_chat_label = chat_label.clone();
     let mut registry_busy = use_signal(|| false);
     let mut registry_status = use_signal(String::new);
     let registry_agents =
         use_resource(move || async move { acp::load_acp_registry_agents().await });
+    let visible_messages = state
+        .messages
+        .clone()
+        .into_iter()
+        .filter(|message| !is_connection_notice(&message.kind, &message.text))
+        .collect::<Vec<_>>();
     let opencode_agent = registry_agents().and_then(|result| {
         result
             .ok()
@@ -49,33 +114,20 @@ pub fn AcpAgentPanel(
     rsx! {
         aside { class: "agent-panel",
             div { class: "agent-panel__header",
-                div {
+                div { class: "agent-panel__header-copy",
                     h3 { class: "agent-panel__title", "ACP Agent" }
                     p { class: "agent-panel__meta", "{state.status}" }
                 }
-                if let Some(connection) = state.connection.clone() {
-                    div { class: "agent-panel__badge",
-                        "{connection.agent_name}"
-                    }
-                }
-            }
-
-            if state.connected {
-                div { class: "agent-panel__session",
+                div { class: "agent-panel__header-actions",
                     if let Some(connection) = state.connection.clone() {
-                        p { class: "agent-panel__session-line",
-                            span { class: "agent-panel__session-label", "Session" }
-                            span { class: "agent-panel__session-value", "{connection.session_id}" }
-                        }
-                        p { class: "agent-panel__session-line",
-                            span { class: "agent-panel__session-label", "Protocol" }
-                            span { class: "agent-panel__session-value", "{connection.protocol_version}" }
+                        div { class: "agent-panel__badge",
+                            "{connection.agent_name}"
                         }
                     }
-                    div { class: "agent-panel__session-actions",
-                        button {
-                            class: "button button--ghost button--small",
-                            disabled: !state.busy,
+                    if state.connected && state.busy {
+                        IconButton {
+                            icon: ActionIcon::Clear,
+                            label: "Cancel request".to_string(),
                             onclick: move |_| {
                                 if let Err(err) = acp::cancel_acp_prompt() {
                                     panel_state.with_mut(|state| {
@@ -88,10 +140,14 @@ pub fn AcpAgentPanel(
                                     });
                                 }
                             },
-                            "Cancel"
+                            small: true,
+                            disabled: !state.busy,
                         }
-                        button {
-                            class: "button button--ghost button--small",
+                    }
+                    if state.connected {
+                        IconButton {
+                            icon: ActionIcon::Close,
+                            label: "Disconnect agent".to_string(),
                             onclick: move |_| {
                                 let _ = acp::disconnect_acp_agent();
                                 panel_state.with_mut(|state| {
@@ -102,16 +158,18 @@ pub fn AcpAgentPanel(
                                     state.status = "ACP agent is disconnected.".to_string();
                                 });
                             },
-                            "Disconnect"
+                            small: true,
                         }
                     }
                 }
+            }
 
+            if state.connected {
                 div { class: "agent-panel__messages",
-                    if state.messages.is_empty() {
+                    if visible_messages.is_empty() {
                         p { class: "empty-state", "Ask for SQL or schema help. Generated SQL can be inserted into the active editor." }
                     } else {
-                        for message in state.messages {
+                        for message in visible_messages {
                             article {
                                 class: format!("agent-panel__message agent-panel__message--{}", message_kind_class(&message.kind)),
                                 p { class: "agent-panel__message-role", "{message_kind_label(&message.kind)}" }
@@ -236,6 +294,20 @@ pub fn AcpAgentPanel(
                         oninput: move |event| {
                             let value = event.value();
                             panel_state.with_mut(|state| state.prompt = value);
+                        },
+                        onkeydown: move |event| {
+                            if event.key() != Key::Enter
+                                || event.modifiers().contains(Modifiers::SHIFT)
+                            {
+                                return;
+                            }
+                            event.prevent_default();
+                            send_chat_prompt_request(
+                                panel_state,
+                                tabs,
+                                active_tab_id(),
+                                enter_chat_label.clone(),
+                            );
                         }
                     }
                     div { class: "agent-panel__composer-actions",
@@ -317,65 +389,12 @@ pub fn AcpAgentPanel(
                             class: "button button--primary",
                             disabled: state.busy || state.prompt.trim().is_empty(),
                             onclick: move |_| {
-                                let prompt = panel_state().prompt.trim().to_string();
-                                if prompt.is_empty() {
-                                    return;
-                                }
-                                let connection = active_editor_connection(tabs, active_tab_id());
-                                let connection_label = chat_label.clone();
-                                panel_state.with_mut(|state| {
-                                    state.busy = true;
-                                    state.pending_sql_insert = false;
-                                    state.status =
-                                        "Preparing connected database context for the agent..."
-                                            .to_string();
-                                });
-                                spawn(async move {
-                                    let contextual_prompt = match connection {
-                                        Some(connection) => {
-                                            match acp::build_acp_database_context(
-                                                connection,
-                                                connection_label.clone(),
-                                            )
-                                            .await
-                                            {
-                                                Ok(db_context) => build_chat_prompt(
-                                                    &connection_label,
-                                                    &prompt,
-                                                    Some(db_context),
-                                                ),
-                                                Err(_) => build_chat_prompt(
-                                                    &connection_label,
-                                                    &prompt,
-                                                    None,
-                                                ),
-                                            }
-                                        }
-                                        None => {
-                                            build_chat_prompt(&connection_label, &prompt, None)
-                                        }
-                                    };
-
-                                    match acp::send_acp_prompt(contextual_prompt) {
-                                        Ok(()) => {
-                                            panel_state.with_mut(|state| {
-                                                push_message(state, AcpMessageKind::User, prompt);
-                                                state.prompt.clear();
-                                                state.busy = true;
-                                                state.pending_sql_insert = false;
-                                                state.status =
-                                                    "Waiting for agent response...".to_string();
-                                            });
-                                        }
-                                        Err(err) => {
-                                            panel_state.with_mut(|state| {
-                                                state.status = err.clone();
-                                                state.busy = false;
-                                                push_message(state, AcpMessageKind::Error, err);
-                                            });
-                                        }
-                                    }
-                                });
+                                send_chat_prompt_request(
+                                    panel_state,
+                                    tabs,
+                                    active_tab_id(),
+                                    chat_label.clone(),
+                                );
                             },
                             "Send Prompt"
                         }
@@ -462,15 +481,7 @@ pub fn AcpAgentPanel(
                                             match acp::connect_acp_agent(launch).await {
                                                 Ok(connection) => {
                                                     panel_state.with_mut(|state| {
-                                                        apply_connected(state, connection.clone());
-                                                        push_message(
-                                                            state,
-                                                            AcpMessageKind::System,
-                                                            format!(
-                                                                "Connected to {} using Showel's embedded Ollama ACP bridge.",
-                                                                connection.agent_name
-                                                            ),
-                                                        );
+                                                        apply_connected(state, connection);
                                                     });
                                                 }
                                                 Err(err) => {
@@ -524,15 +535,7 @@ pub fn AcpAgentPanel(
                                                 match acp::connect_acp_agent(launch).await {
                                                     Ok(connection) => {
                                                         panel_state.with_mut(|state| {
-                                                            apply_connected(state, connection.clone());
-                                                            push_message(
-                                                                state,
-                                                                AcpMessageKind::System,
-                                                                format!(
-                                                                    "Connected to {} using the ACP registry entry.",
-                                                                    connection.agent_name
-                                                                ),
-                                                            );
+                                                            apply_connected(state, connection);
                                                         });
                                                         registry_status.set("OpenCode connected.".to_string());
                                                     }
@@ -631,12 +634,7 @@ pub fn AcpAgentPanel(
                                     match acp::connect_acp_agent(launch).await {
                                         Ok(connection) => {
                                             panel_state.with_mut(|state| {
-                                                apply_connected(state, connection.clone());
-                                                push_message(
-                                                    state,
-                                                    AcpMessageKind::System,
-                                                    format!("Connected to {} using ACP.", connection.agent_name),
-                                                );
+                                                apply_connected(state, connection);
                                             });
                                         }
                                         Err(err) => {

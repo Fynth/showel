@@ -24,6 +24,10 @@ pub(crate) fn sql_format_settings_path() -> PathBuf {
     storage_root().join("sql_format_settings.json")
 }
 
+pub(crate) fn app_ui_settings_path() -> PathBuf {
+    storage_root().join("app_ui_settings.json")
+}
+
 pub(crate) fn session_state_path() -> PathBuf {
     storage_root().join("session_state.json")
 }

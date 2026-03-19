@@ -1,0 +1,122 @@
+@use "../base/tokens" as *;
+
+.settings-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: clamp($spacing-md, 3vw, $spacing-xl);
+  background: var(--color-backdrop);
+  backdrop-filter: blur(12px);
+}
+
+.settings-modal {
+  width: min(920px, 100%);
+  max-height: min(88vh, 100%);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  padding: clamp($spacing-md, 2vw, $spacing-lg);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-panel-2) 78%, transparent),
+      transparent 180px
+    ),
+    var(--color-panel);
+  box-shadow: $shadow-lg;
+}
+
+.settings-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+}
+
+.settings-modal__header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-modal__title {
+  font-size: $font-size-2xl;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.settings-modal__hint,
+.settings-modal__section-hint {
+  color: var(--color-text-muted);
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+}
+
+.settings-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.settings-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-panel) 92%, transparent);
+}
+
+.settings-modal__section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+}
+
+.settings-modal__section-title {
+  font-size: $font-size-lg;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.settings-modal__segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+}
+
+.settings-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: $spacing-sm;
+}
+
+.settings-modal__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-sm;
+  color: var(--color-text);
+  font-size: $font-size-sm;
+}
+
+@media (max-width: 760px) {
+  .settings-modal {
+    width: 100%;
+    max-height: 100%;
+    border-radius: 14px;
+  }
+
+  .settings-modal__header,
+  .settings-modal__section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

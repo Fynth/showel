@@ -2,9 +2,11 @@
 @use "../base/states" as *;
 
 .tree {
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .tree__header {
@@ -19,12 +21,12 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .tree__header-label {
   color: var(--color-text-dim);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -32,7 +34,7 @@
 
 .tree__header-count {
   flex-shrink: 0;
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-panel-3) 88%, transparent);
   color: var(--color-text-muted);
@@ -41,23 +43,34 @@
 }
 
 .tree__filter {
-  padding: 0 2px 2px;
+  padding: 0 1px 1px;
 }
 
 .tree__filter-input {
-  min-height: 32px;
-  padding: 0 10px;
-  border-radius: 10px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 9px;
   font-size: $font-size-sm;
+}
+
+.tree__body {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-right: 2px;
 }
 
 .tree__connection {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
   padding: 4px;
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
-  border-radius: 12px;
+  border-radius: 10px;
   background:
     linear-gradient(
       180deg,
@@ -70,7 +83,7 @@
 .tree__connection-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tree__connection--active {
@@ -83,12 +96,12 @@
 .tree__connection-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   min-width: 0;
   flex: 1;
-  padding: 6px 8px;
-  border-radius: 10px;
+  padding: 5px 7px;
+  border-radius: 8px;
   color: var(--color-text);
   text-align: left;
   cursor: pointer;
@@ -102,14 +115,14 @@
 }
 
 .tree__connection-copy {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: baseline;
 }
 
 .tree__connection-topline {
+  flex: 1 1 auto;
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -119,24 +132,26 @@
 .tree__connection-kind {
   flex-shrink: 0;
   color: var(--color-primary);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .tree__connection-title {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: $font-size-sm;
-  font-weight: 600;
+  font-size: $font-size-md;
+  font-weight: 700;
 }
 
 .tree__connection-meta {
+  flex: 0 0 auto;
   color: var(--color-text-dim);
-  font-size: 10px;
+  font-size: 9px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -146,13 +161,13 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0 0 2px 16px;
+  padding: 0 0 1px 13px;
 }
 
 .tree__schema {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -161,10 +176,10 @@
 .tree__schema-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  padding: 4px 6px;
-  border-radius: 8px;
+  padding: 3px 5px;
+  border-radius: 7px;
   color: var(--color-text);
   text-align: left;
   cursor: pointer;
@@ -188,7 +203,7 @@
   display: flex;
   flex-direction: row;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tree__schema-title {
@@ -203,27 +218,27 @@
 
 .tree__schema-meta {
   color: var(--color-text-dim);
-  font-size: 10px;
+  font-size: 9px;
   white-space: nowrap;
 }
 
 .tree__schema-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 0 0 2px 14px;
+  gap: 3px;
+  padding: 0 0 1px 10px;
 }
 
 .tree__group {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .tree__group-header {
-  padding: 0 6px;
+  padding: 0 5px;
   color: var(--color-text-dim);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -238,11 +253,11 @@
 .tree__object {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   min-width: 0;
-  padding: 5px 6px;
-  border-radius: 8px;
+  padding: 4px 5px;
+  border-radius: 7px;
   color: var(--color-text);
   text-align: left;
   cursor: pointer;
@@ -256,12 +271,12 @@
 
 .tree__object-badge {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
   border: 1px solid var(--color-border);
-  border-radius: 5px;
+  border-radius: 4px;
   background: var(--color-panel-3);
   color: var(--color-primary);
   font-size: 9px;
@@ -274,7 +289,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tree__object-name {
@@ -283,7 +298,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: $font-size-sm;
+  font-size: 10px;
   font-weight: 500;
 }
 
@@ -294,13 +309,34 @@
 }
 
 .history {
-  margin-top: $spacing-sm;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  margin-top: 0;
+}
+
+.history__header {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.history__list {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
 }
 
 .session-list {
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
 }
 
 .session-list__header {
@@ -310,12 +346,24 @@
   gap: $spacing-sm;
 }
 
+.session-list__body {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
+}
+
 .session-list__item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-xs $spacing-sm;
+  gap: $spacing-xs;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 6px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel);
@@ -331,10 +379,11 @@
 .session-list__main {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  padding: 6px $spacing-xs;
+  gap: $spacing-xs;
+  padding: 4px 2px;
   border-radius: $radius-sm;
   color: var(--color-text);
   text-align: left;
@@ -345,7 +394,7 @@
 .session-list__kind {
   flex-shrink: 0;
   color: var(--color-primary);
-  font-size: $font-size-xs;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -358,7 +407,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: $font-size-sm;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .session-list__context-backdrop {
@@ -401,28 +450,28 @@
 }
 
 .history__item {
-  margin-bottom: $spacing-sm;
-  padding: $spacing-sm;
+  margin-bottom: $spacing-xs;
+  padding: 7px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel);
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 6px;
 }
 
 .history__meta {
   color: var(--color-text-muted);
-  font-size: $font-size-xs;
+  font-size: 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .history__connection {
   display: flex;
   align-items: center;
-  gap: $spacing-xs;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -430,11 +479,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
 }
 
 .history__title {
   min-width: 0;
+  font-size: $font-size-sm;
   font-weight: 600;
   color: var(--color-text);
   overflow: hidden;
@@ -448,7 +498,7 @@
   border-radius: 999px;
   border: 1px solid var(--color-border);
   background: var(--color-panel-2);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -469,7 +519,7 @@
   border-radius: 999px;
   background: var(--color-panel-2);
   color: var(--color-primary);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -481,20 +531,20 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text-muted);
-  font-size: $font-size-xs;
+  font-size: 10px;
 }
 
 .history__sql {
   margin: 0;
-  padding: $spacing-sm;
+  padding: $spacing-xs;
   border-radius: $radius-sm;
   background: var(--editor-bg);
   overflow: hidden;
   color: var(--color-text);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 88px;
-  font-size: $font-size-xs;
+  max-height: 72px;
+  font-size: 10px;
   line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 4;
@@ -504,19 +554,38 @@
 .history__actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: $spacing-xs;
+  gap: 6px;
 }
 
 .saved-queries {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
+}
+
+.saved-queries__header {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.saved-queries__body {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
 }
 
 .saved-queries__form {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
 }
 
 .saved-queries__form-actions {
@@ -528,7 +597,7 @@
 .saved-queries__folder {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 6px;
 }
 
 .saved-queries__folder-header {
@@ -561,24 +630,24 @@
 .saved-queries__folder-body {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
 }
 
 .saved-queries__item {
-  padding: $spacing-sm;
+  padding: 7px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel);
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 6px;
 }
 
 .saved-queries__item-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
 }
 
 .saved-queries__title {
@@ -600,14 +669,14 @@
 
 .saved-queries__sql {
   margin: 0;
-  padding: $spacing-sm;
+  padding: $spacing-xs;
   border-radius: $radius-sm;
   background: var(--editor-bg);
   overflow: hidden;
   color: var(--color-text);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 88px;
+  max-height: 72px;
   font-size: $font-size-xs;
   line-height: 1.45;
   display: -webkit-box;
@@ -618,5 +687,5 @@
 .saved-queries__actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: $spacing-xs;
+  gap: 6px;
 }

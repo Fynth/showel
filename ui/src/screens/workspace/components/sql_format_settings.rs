@@ -2,6 +2,151 @@ use dioxus::prelude::*;
 use models::{SqlFormatSettings, SqlKeywordCase};
 
 #[component]
+pub fn SqlFormatSettingsFields(mut settings: Signal<SqlFormatSettings>) -> Element {
+    rsx! {
+        div {
+            class: "editor__format-settings-grid",
+            div {
+                class: "field",
+                span { class: "field__label", "Formatting mode" }
+                select {
+                    class: "input",
+                    value: if settings().inline { "inline" } else { "multiline" },
+                    oninput: move |event| {
+                        settings.with_mut(|current| {
+                            current.inline = event.value() == "inline";
+                        });
+                    },
+                    option { value: "multiline", "Multiline" }
+                    option { value: "inline", "Single line" }
+                }
+            }
+
+            div {
+                class: "field",
+                span { class: "field__label", "Keyword case" }
+                select {
+                    class: "input",
+                    value: keyword_case_value(settings().keyword_case),
+                    oninput: move |event| {
+                        settings.with_mut(|current| {
+                            current.keyword_case = parse_keyword_case(event.value());
+                        });
+                    },
+                    option { value: "uppercase", "Uppercase" }
+                    option { value: "lowercase", "Lowercase" }
+                    option { value: "preserve", "Preserve" }
+                }
+            }
+
+            div {
+                class: "field",
+                span { class: "field__label", "Indent width" }
+                input {
+                    class: "input",
+                    r#type: "number",
+                    min: "1",
+                    max: "8",
+                    value: "{settings().indent_width}",
+                    oninput: move |event| {
+                        settings.with_mut(|current| {
+                            current.indent_width =
+                                parse_u8_in_range(&event.value(), current.indent_width, 1, 8);
+                        });
+                    },
+                }
+            }
+
+            div {
+                class: "field",
+                span { class: "field__label", "Blank lines between queries" }
+                input {
+                    class: "input",
+                    r#type: "number",
+                    min: "0",
+                    max: "4",
+                    value: "{settings().lines_between_queries}",
+                    oninput: move |event| {
+                        settings.with_mut(|current| {
+                            current.lines_between_queries = parse_u8_in_range(
+                                &event.value(),
+                                current.lines_between_queries,
+                                0,
+                                4,
+                            );
+                        });
+                    },
+                }
+            }
+
+            div {
+                class: "field",
+                span { class: "field__label", "Wrap to new line after" }
+                input {
+                    class: "input",
+                    r#type: "number",
+                    min: "20",
+                    max: "255",
+                    disabled: settings().inline,
+                    value: "{settings().max_inline_block}",
+                    oninput: move |event| {
+                        settings.with_mut(|current| {
+                            let wrap_width = parse_u8_in_range(
+                                &event.value(),
+                                current.max_inline_block,
+                                20,
+                                255,
+                            );
+                            current.max_inline_block = wrap_width;
+                            current.max_inline_top_level = Some(wrap_width);
+                        });
+                    },
+                }
+            }
+
+            div {
+                class: "field",
+                span { class: "field__label", "Keep arguments inline up to" }
+                input {
+                    class: "input",
+                    r#type: "number",
+                    min: "1",
+                    max: "255",
+                    disabled: settings().inline,
+                    placeholder: "No limit",
+                    value: "{inline_arguments_input_value(settings().max_inline_arguments)}",
+                    oninput: move |event| {
+                        settings.with_mut(|current| {
+                            current.max_inline_arguments = parse_optional_u8_in_range(
+                                &event.value(),
+                                current.max_inline_arguments,
+                                1,
+                                255,
+                            );
+                        });
+                    },
+                }
+            }
+
+            label {
+                class: "editor__format-settings-toggle",
+                input {
+                    r#type: "checkbox",
+                    checked: settings().joins_as_top_level,
+                    disabled: settings().inline,
+                    oninput: move |event| {
+                        settings.with_mut(|current| {
+                            current.joins_as_top_level = event.checked();
+                        });
+                    },
+                }
+                span { "Move JOIN clauses to top level" }
+            }
+        }
+    }
+}
+
+#[component]
 pub fn SqlFormatSettingsPanel(
     mut settings: Signal<SqlFormatSettings>,
     on_close: EventHandler<()>,
@@ -30,148 +175,7 @@ pub fn SqlFormatSettingsPanel(
                     "Close"
                 }
             }
-
-            div {
-                class: "editor__format-settings-grid",
-                div {
-                    class: "field",
-                    span { class: "field__label", "Formatting mode" }
-                    select {
-                        class: "input",
-                        value: if settings().inline { "inline" } else { "multiline" },
-                        oninput: move |event| {
-                            settings.with_mut(|current| {
-                                current.inline = event.value() == "inline";
-                            });
-                        },
-                        option { value: "multiline", "Multiline" }
-                        option { value: "inline", "Single line" }
-                    }
-                }
-
-                div {
-                    class: "field",
-                    span { class: "field__label", "Keyword case" }
-                    select {
-                        class: "input",
-                        value: keyword_case_value(settings().keyword_case),
-                        oninput: move |event| {
-                            settings.with_mut(|current| {
-                                current.keyword_case = parse_keyword_case(event.value());
-                            });
-                        },
-                        option { value: "uppercase", "Uppercase" }
-                        option { value: "lowercase", "Lowercase" }
-                        option { value: "preserve", "Preserve" }
-                    }
-                }
-
-                div {
-                    class: "field",
-                    span { class: "field__label", "Indent width" }
-                    input {
-                        class: "input",
-                        r#type: "number",
-                        min: "1",
-                        max: "8",
-                        value: "{settings().indent_width}",
-                        oninput: move |event| {
-                            settings.with_mut(|current| {
-                                current.indent_width =
-                                    parse_u8_in_range(&event.value(), current.indent_width, 1, 8);
-                            });
-                        },
-                    }
-                }
-
-                div {
-                    class: "field",
-                    span { class: "field__label", "Blank lines between queries" }
-                    input {
-                        class: "input",
-                        r#type: "number",
-                        min: "0",
-                        max: "4",
-                        value: "{settings().lines_between_queries}",
-                        oninput: move |event| {
-                            settings.with_mut(|current| {
-                                current.lines_between_queries = parse_u8_in_range(
-                                    &event.value(),
-                                    current.lines_between_queries,
-                                    0,
-                                    4,
-                                );
-                            });
-                        },
-                    }
-                }
-
-                div {
-                    class: "field",
-                    span { class: "field__label", "Wrap to new line after" }
-                    input {
-                        class: "input",
-                        r#type: "number",
-                        min: "20",
-                        max: "255",
-                        disabled: settings().inline,
-                        value: "{settings().max_inline_block}",
-                        oninput: move |event| {
-                            settings.with_mut(|current| {
-                                let wrap_width = parse_u8_in_range(
-                                    &event.value(),
-                                    current.max_inline_block,
-                                    20,
-                                    255,
-                                );
-                                current.max_inline_block = wrap_width;
-                                current.max_inline_top_level = Some(wrap_width);
-                            });
-                        },
-                    }
-                }
-
-                div {
-                    class: "field",
-                    span { class: "field__label", "Keep arguments inline up to" }
-                    input {
-                        class: "input",
-                        r#type: "number",
-                        min: "1",
-                        max: "255",
-                        disabled: settings().inline,
-                        placeholder: "No limit",
-                        value: "{inline_arguments_input_value(settings().max_inline_arguments)}",
-                        oninput: move |event| {
-                            settings.with_mut(|current| {
-                                current.max_inline_arguments =
-                                    parse_optional_u8_in_range(
-                                        &event.value(),
-                                        current.max_inline_arguments,
-                                        1,
-                                        255,
-                                    );
-                            });
-                        },
-                    }
-                }
-
-            }
-
-            label {
-                class: "editor__format-settings-toggle",
-                input {
-                    r#type: "checkbox",
-                    checked: settings().joins_as_top_level,
-                    disabled: settings().inline,
-                    oninput: move |event| {
-                        settings.with_mut(|current| {
-                            current.joins_as_top_level = event.checked();
-                        });
-                    },
-                }
-                span { "Move JOIN clauses to top level" }
-            }
+            SqlFormatSettingsFields { settings }
         }
     }
 }

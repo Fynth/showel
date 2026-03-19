@@ -19,5 +19,5 @@ pub use result_table::ResultTable;
 pub use saved_queries::SavedQueriesPanel;
 pub use session_rail::SessionRail;
 pub use sql_editor::SqlEditor;
-pub use sql_format_settings::SqlFormatSettingsPanel;
+pub use sql_format_settings::SqlFormatSettingsFields;
 pub use tabs::TabsManager;

@@ -46,66 +46,72 @@ pub fn QueryHistoryPanel(
     rsx! {
         section {
             class: "history",
-            h2 { class: "workspace__section-title", "History" }
-            if history_entries.is_empty() {
-                p { class: "empty-state", "No executed queries yet." }
-            } else {
-                for (item, source_session_id, connection_kind, connection_target, outcome_class, outcome_label) in history_entries {
-                    div {
-                        class: "history__item",
+            div {
+                class: "history__header",
+                h2 { class: "workspace__section-title", "History" }
+            }
+            div {
+                class: "history__list",
+                if history_entries.is_empty() {
+                    p { class: "empty-state", "No executed queries yet." }
+                } else {
+                    for (item, source_session_id, connection_kind, connection_target, outcome_class, outcome_label) in history_entries {
                         div {
-                            class: "history__meta",
+                            class: "history__item",
                             div {
-                                class: "history__topline",
-                                p { class: "history__title", "{item.tab_title}" }
-                                p {
-                                    class: outcome_class,
-                                    title: "{item.outcome}",
-                                    "{outcome_label}"
-                                }
-                            }
-                            if !connection_target.is_empty() {
+                                class: "history__meta",
                                 div {
-                                    class: "history__connection",
-                                    if !connection_kind.is_empty() {
-                                        span { class: "history__connection-kind", "{connection_kind}" }
+                                    class: "history__topline",
+                                    p { class: "history__title", "{item.tab_title}" }
+                                    p {
+                                        class: outcome_class,
+                                        title: "{item.outcome}",
+                                        "{outcome_label}"
                                     }
-                                    span {
-                                        class: "history__connection-target",
-                                        title: "{item.connection_name}",
-                                        "{connection_target}"
+                                }
+                                if !connection_target.is_empty() {
+                                    div {
+                                        class: "history__connection",
+                                        if !connection_kind.is_empty() {
+                                            span { class: "history__connection-kind", "{connection_kind}" }
+                                        }
+                                        span {
+                                            class: "history__connection-target",
+                                            title: "{item.connection_name}",
+                                            "{connection_target}"
+                                        }
                                     }
                                 }
                             }
-                        }
-                        pre {
-                            class: "history__sql",
-                            title: "{item.sql}",
-                            "{item.sql}"
-                        }
-                        div {
-                            class: "history__actions",
-                            if let Some(session_id) = source_session_id {
-                                button {
-                                    class: "button button--ghost button--small",
-                                    onclick: move |_| activate_session(session_id),
-                                    "Activate"
-                                }
-                            },
-                            button {
-                                class: "button button--ghost button--small",
-                                onclick: {
-                                    let sql = item.sql.clone();
-                                    move |_| {
-                                        set_active_tab_sql(
-                                            tabs,
-                                            active_tab_id(),
-                                            sql.clone(),
-                                            "Loaded query from history".to_string(),
-                                        );
+                            pre {
+                                class: "history__sql",
+                                title: "{item.sql}",
+                                "{item.sql}"
+                            }
+                            div {
+                                class: "history__actions",
+                                if let Some(session_id) = source_session_id {
+                                    button {
+                                        class: "button button--ghost button--small",
+                                        onclick: move |_| activate_session(session_id),
+                                        "Activate"
                                     }
                                 },
-                                "Load in tab"
+                                button {
+                                    class: "button button--ghost button--small",
+                                    onclick: {
+                                        let sql = item.sql.clone();
+                                        move |_| {
+                                            set_active_tab_sql(
+                                                tabs,
+                                                active_tab_id(),
+                                                sql.clone(),
+                                                "Loaded query from history".to_string(),
+                                            );
+                                        }
+                                    },
+                                    "Load in tab"
+                                }
                             }
                         }
                     }

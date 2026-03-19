@@ -1,9 +1,25 @@
 use dioxus::prelude::*;
-use models::{AppState, ConnectionRequest, ConnectionSession, DatabaseConnection};
+use models::{
+    AppState, AppThemePreference, AppUiSettings, ConnectionRequest, ConnectionSession,
+    DatabaseConnection, SqlFormatSettings,
+};
 
 pub static APP_STATE: GlobalSignal<AppState> = Signal::global(AppState::default);
-pub static APP_THEME: GlobalSignal<String> = Signal::global(|| "theme-dark".to_string());
+pub static APP_THEME: GlobalSignal<String> =
+    Signal::global(|| AppThemePreference::Dark.css_class().to_string());
+pub static APP_UI_SETTINGS: GlobalSignal<AppUiSettings> = Signal::global(AppUiSettings::default);
+pub static APP_SQL_FORMAT_SETTINGS: GlobalSignal<SqlFormatSettings> =
+    Signal::global(SqlFormatSettings::default);
 pub static APP_SHOW_HISTORY: GlobalSignal<bool> = Signal::global(|| false);
+pub static APP_SHOW_SETTINGS_MODAL: GlobalSignal<bool> = Signal::global(|| false);
+
+pub fn open_settings_modal() {
+    *APP_SHOW_SETTINGS_MODAL.write() = true;
+}
+
+pub fn close_settings_modal() {
+    *APP_SHOW_SETTINGS_MODAL.write() = false;
+}
 
 pub fn open_connection_screen() {
     APP_STATE.with_mut(|state| {

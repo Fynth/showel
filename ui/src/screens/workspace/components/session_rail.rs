@@ -1,4 +1,5 @@
 use crate::app_state::{APP_STATE, activate_session, open_connection_screen, remove_session};
+use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
 use models::{ConnectionRequest, QueryTabState};
 
@@ -44,80 +45,84 @@ pub fn SessionRail(
                 }
             }
 
-            if session_cards.is_empty() {
-                p { class: "empty-state", "No active connections." }
-            } else {
-                for (session, kind_label, target_label) in session_cards {
+            div {
+                class: "session-list__body",
+                if session_cards.is_empty() {
+                    p { class: "empty-state", "No active connections." }
+                } else {
+                    for (session, kind_label, target_label) in session_cards {
                         div {
                             class: if Some(session.id) == active_session_id {
                                 "session-list__item session-list__item--active"
                             } else {
                                 "session-list__item"
-                        },
-                        oncontextmenu: {
-                            let session_id = session.id;
-                            move |event| {
-                                open_context_menu(context_menu, session_id, event);
-                            }
-                        },
-                        div {
-                            class: "session-list__main",
-                            role: "button",
-                            tabindex: "0",
-                            onclick: {
+                            },
+                            oncontextmenu: {
                                 let session_id = session.id;
-                                move |_| {
-                                    context_menu.set(None);
-                                    activate_session(session_id);
+                                move |event| {
+                                    open_context_menu(context_menu, session_id, event);
                                 }
                             },
-                            onkeydown: {
-                                let session_id = session.id;
-                                move |event| match event.key() {
-                                    Key::Enter => {
-                                        event.prevent_default();
-                                        context_menu.set(None);
-                                        activate_session(session_id);
-                                    }
-                                    Key::Character(text) if text == " " => {
-                                        event.prevent_default();
-                                        context_menu.set(None);
-                                        activate_session(session_id);
-                                    }
-                                    _ => {}
-                                }
-                            },
-                            span { class: "session-list__kind", "{kind_label}" }
-                            strong {
-                                class: "session-list__name",
-                                title: "{target_label}",
-                                "{target_label}"
-                            }
-                        }
-                        button {
-                            class: "button button--ghost button--small",
-                            onclick: {
-                                let session_id = session.id;
-                                move |_| {
-                                    context_menu.set(None);
-                                    disconnect_session(tabs, active_tab_id, session_id);
-                                }
-                            },
-                            "Disconnect"
-                        }
-
-                        if context_menu() == Some(session.id) {
                             div {
-                                class: "session-list__context-menu",
-                                onmousedown: move |event| event.stop_propagation(),
-                                onclick: move |event| event.stop_propagation(),
-                                button {
-                                    class: "session-list__context-action",
-                                    onclick: move |_| {
+                                class: "session-list__main",
+                                role: "button",
+                                tabindex: "0",
+                                onclick: {
+                                    let session_id = session.id;
+                                    move |_| {
                                         context_menu.set(None);
-                                        disconnect_session(tabs, active_tab_id, session.id);
-                                    },
-                                    "Disconnect"
+                                        activate_session(session_id);
+                                    }
+                                },
+                                onkeydown: {
+                                    let session_id = session.id;
+                                    move |event| match event.key() {
+                                        Key::Enter => {
+                                            event.prevent_default();
+                                            context_menu.set(None);
+                                            activate_session(session_id);
+                                        }
+                                        Key::Character(text) if text == " " => {
+                                            event.prevent_default();
+                                            context_menu.set(None);
+                                            activate_session(session_id);
+                                        }
+                                        _ => {}
+                                    }
+                                },
+                                span { class: "session-list__kind", "{kind_label}" }
+                                strong {
+                                    class: "session-list__name",
+                                    title: "{target_label}",
+                                    "{target_label}"
+                                }
+                            }
+                            IconButton {
+                                icon: ActionIcon::Close,
+                                label: "Disconnect".to_string(),
+                                small: true,
+                                onclick: {
+                                    let session_id = session.id;
+                                    move |_| {
+                                        context_menu.set(None);
+                                        disconnect_session(tabs, active_tab_id, session_id);
+                                    }
+                                },
+                            }
+
+                            if context_menu() == Some(session.id) {
+                                div {
+                                    class: "session-list__context-menu",
+                                    onmousedown: move |event| event.stop_propagation(),
+                                    onclick: move |event| event.stop_propagation(),
+                                    button {
+                                        class: "session-list__context-action",
+                                        onclick: move |_| {
+                                            context_menu.set(None);
+                                            disconnect_session(tabs, active_tab_id, session.id);
+                                        },
+                                        "Disconnect"
+                                    }
                                 }
                             }
                         }

@@ -1,15 +1,47 @@
 use crate::{
-    app_state::{APP_STATE, APP_THEME, restore_connection_sessions},
-    layout::{StatusBar, Toolbar},
+    app_state::{
+        APP_SHOW_HISTORY, APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_STATE, APP_THEME,
+        APP_UI_SETTINGS, restore_connection_sessions,
+    },
+    layout::{SettingsModal, StatusBar, Toolbar},
     screens::{DbConnect, Workspace},
 };
 use dioxus::prelude::*;
+use models::{AppUiSettings, SqlFormatSettings};
 
 #[component]
 pub fn App() -> Element {
     let mut restored_once = use_signal(|| false);
+    let mut ui_settings_loaded = use_signal(|| false);
+    let mut sql_settings_loaded = use_signal(|| false);
+    let mut last_saved_ui_settings = use_signal(|| None::<AppUiSettings>);
+    let mut last_saved_sql_settings = use_signal(|| None::<SqlFormatSettings>);
+    let persisted_ui_settings =
+        use_resource(
+            move || async move { storage::load_app_ui_settings().await.unwrap_or_default() },
+        );
+    let persisted_sql_settings = use_resource(move || async move {
+        storage::load_sql_format_settings()
+            .await
+            .unwrap_or_default()
+    });
+
     use_effect(move || {
-        if restored_once() {
+        let Some(settings) = persisted_ui_settings() else {
+            return;
+        };
+        if ui_settings_loaded() {
+            return;
+        }
+
+        *APP_UI_SETTINGS.write() = settings.clone();
+        *APP_THEME.write() = settings.theme.css_class().to_string();
+        *APP_SHOW_HISTORY.write() = settings.show_history;
+        last_saved_ui_settings.set(Some(settings.clone()));
+        ui_settings_loaded.set(true);
+
+        if restored_once() || !settings.restore_session_on_launch {
+            restored_once.set(true);
             return;
         }
 
@@ -33,6 +65,54 @@ pub fn App() -> Element {
             if !restored.is_empty() {
                 restore_connection_sessions(restored, active_connection_name);
             }
+        });
+    });
+
+    use_effect(move || {
+        let Some(settings) = persisted_sql_settings() else {
+            return;
+        };
+        if sql_settings_loaded() {
+            return;
+        }
+
+        *APP_SQL_FORMAT_SETTINGS.write() = settings.clone();
+        last_saved_sql_settings.set(Some(settings));
+        sql_settings_loaded.set(true);
+    });
+
+    use_effect(move || {
+        if !ui_settings_loaded() {
+            return;
+        }
+
+        let settings = APP_UI_SETTINGS();
+        *APP_THEME.write() = settings.theme.css_class().to_string();
+        *APP_SHOW_HISTORY.write() = settings.show_history;
+
+        if last_saved_ui_settings().as_ref() == Some(&settings) {
+            return;
+        }
+
+        last_saved_ui_settings.set(Some(settings.clone()));
+        spawn(async move {
+            let _ = storage::save_app_ui_settings(settings).await;
+        });
+    });
+
+    use_effect(move || {
+        if !sql_settings_loaded() {
+            return;
+        }
+
+        let settings = APP_SQL_FORMAT_SETTINGS();
+        if last_saved_sql_settings().as_ref() == Some(&settings) {
+            return;
+        }
+
+        last_saved_sql_settings.set(Some(settings.clone()));
+        spawn(async move {
+            let _ = storage::save_sql_format_settings(settings).await;
         });
     });
 
@@ -65,6 +145,9 @@ pub fn App() -> Element {
                     }
                 } else {
                     DbConnect {}
+                }
+                if APP_SHOW_SETTINGS_MODAL() {
+                    SettingsModal {}
                 }
             }
             StatusBar {}

@@ -84,6 +84,10 @@ pub(super) fn apply_connected(state: &mut AcpPanelState, connection: AcpConnecti
     state.pending_sql_insert = false;
     state.connection = Some(connection.clone());
     state.pending_permission = None;
+    state.messages.retain(|message| {
+        !matches!(message.kind, AcpMessageKind::System)
+            || !message.text.starts_with("Connected to ")
+    });
     state.status = format!("Connected to {}", connection.agent_name);
 }
 

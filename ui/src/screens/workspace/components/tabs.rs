@@ -1,5 +1,5 @@
 use crate::{
-    app_state::{APP_STATE, open_connection_screen},
+    app_state::{APP_SQL_FORMAT_SETTINGS, APP_STATE, open_connection_screen},
     screens::workspace::actions::{
         new_query_tab, open_structure_tab, refresh_tab_result, replace_active_tab_sql,
         run_query_for_tab, set_active_tab_status, tab_connection_or_error, update_active_tab_sql,
@@ -9,10 +9,7 @@ use dioxus::prelude::*;
 use models::{QueryHistoryItem, QueryOutput, QueryTabState, SqlFormatSettings};
 use rfd::AsyncFileDialog;
 
-use super::{
-    ActionIcon, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor,
-    SqlFormatSettingsPanel,
-};
+use super::{ActionIcon, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor};
 
 const EDITOR_MIN_HEIGHT: f64 = 160.0;
 const EDITOR_MAX_HEIGHT: f64 = 720.0;
@@ -60,15 +57,6 @@ pub fn TabsManager(
 ) -> Element {
     let mut editor_height = use_signal(|| 260.0);
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
-    let mut show_format_settings = use_signal(|| false);
-    let mut format_settings = use_signal(SqlFormatSettings::default);
-    let mut format_settings_loaded = use_signal(|| false);
-    let mut last_saved_format_settings = use_signal(|| None::<SqlFormatSettings>);
-    let persisted_format_settings = use_resource(move || async move {
-        storage::load_sql_format_settings()
-            .await
-            .unwrap_or_default()
-    });
     let active_tab = tabs
         .read()
         .iter()
@@ -92,36 +80,6 @@ pub fn TabsManager(
             .map(|session| (session.id, session.name.clone()))
             .collect::<std::collections::HashMap<_, _>>()
     };
-
-    use_effect(move || {
-        if format_settings_loaded() {
-            return;
-        }
-
-        let Some(loaded_settings) = persisted_format_settings() else {
-            return;
-        };
-
-        format_settings.set(loaded_settings.clone());
-        last_saved_format_settings.set(Some(loaded_settings));
-        format_settings_loaded.set(true);
-    });
-
-    use_effect(move || {
-        if !format_settings_loaded() {
-            return;
-        }
-
-        let settings = format_settings();
-        if last_saved_format_settings().as_ref() == Some(&settings) {
-            return;
-        }
-
-        last_saved_format_settings.set(Some(settings.clone()));
-        spawn(async move {
-            let _ = storage::save_sql_format_settings(settings).await;
-        });
-    });
 
     rsx! {
         div {
@@ -330,15 +288,9 @@ pub fn TabsManager(
                         label: "Format SQL".to_string(),
                         onclick: {
                             let current_tab = active_tab.clone();
-                            let format_settings = format_settings();
+                            let format_settings = APP_SQL_FORMAT_SETTINGS();
                             move |_| format_active_sql(tabs, current_tab.clone(), format_settings.clone())
                         },
-                    }
-                    IconButton {
-                        icon: ActionIcon::Settings,
-                        label: "SQL format settings".to_string(),
-                        active: show_format_settings(),
-                        onclick: move |_| show_format_settings.toggle(),
                     }
                     IconButton {
                         icon: ActionIcon::Structure,
@@ -397,20 +349,6 @@ pub fn TabsManager(
                         result: active_tab.result.clone(),
                         tabs,
                         active_tab_id,
-                    }
-                }
-                if show_format_settings() {
-                    div {
-                        class: "editor__modal-backdrop",
-                        onclick: move |_| show_format_settings.set(false),
-                        div {
-                            class: "editor__modal",
-                            onclick: move |event| event.stop_propagation(),
-                            SqlFormatSettingsPanel {
-                                settings: format_settings,
-                                on_close: move |_| show_format_settings.set(false),
-                            }
-                        }
                     }
                 }
             } else {

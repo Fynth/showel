@@ -1,4 +1,4 @@
-use crate::app_state::{APP_STATE, APP_THEME, open_connection_screen, show_workspace};
+use crate::app_state::{APP_STATE, open_connection_screen, open_settings_modal, show_workspace};
 use dioxus::prelude::*;
 
 const APP_ICON: &str = include_str!("../../../app/assets/icon.svg");
@@ -22,7 +22,6 @@ pub fn Toolbar() -> Element {
             app_state.show_connection_screen,
         )
     };
-    let theme = APP_THEME();
     rsx! {
         header {
             class: "toolbar",
@@ -64,14 +63,8 @@ pub fn Toolbar() -> Element {
                 }
                 button {
                     class: "button button--ghost button--small",
-                    onclick: move |_| {
-                        if APP_THEME() == "theme-dark" {
-                            *APP_THEME.write() = "theme-light".to_string();
-                        } else {
-                            *APP_THEME.write() = "theme-dark".to_string();
-                        }
-                    },
-                    if theme == "theme-dark" { "Light Theme" } else { "Dark Theme" }
+                    onclick: move |_| open_settings_modal(),
+                    "Settings"
                 }
             }
         }

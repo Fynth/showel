@@ -64,6 +64,7 @@ fn launch_app() {
                 .with_event_loop(event_loop)
                 .with_menu(None)
                 .with_disable_context_menu(true)
+                .with_disable_drag_drop_handler(true)
                 .with_disable_dma_buf_on_wayland(true)
                 .with_window(
                     WindowBuilder::new()

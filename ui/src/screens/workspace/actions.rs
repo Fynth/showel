@@ -1,11 +1,10 @@
-use crate::app_state::{activate_session, session_connection};
+use crate::app_state::{APP_UI_SETTINGS, activate_session, session_connection};
 use dioxus::prelude::*;
 use models::{
     DatabaseConnection, PendingTableChanges, QueryFilter, QueryFilterMode, QueryHistoryItem,
     QueryOutput, QuerySort, QueryTabState, TablePreviewSource, WorkspaceTabKind,
 };
 
-pub const DEFAULT_PAGE_SIZE: u32 = 100;
 type QueryHistorySignals = (Signal<Vec<QueryHistoryItem>>, Signal<u64>, String, String);
 
 pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> QueryTabState {
@@ -17,7 +16,7 @@ pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> Qu
         status: "Ready".to_string(),
         result: None,
         current_offset: 0,
-        page_size: DEFAULT_PAGE_SIZE,
+        page_size: APP_UI_SETTINGS().default_page_size,
         last_run_sql: None,
         preview_source: None,
         filter: None,
