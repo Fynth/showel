@@ -54,12 +54,11 @@ jobs:
             git \
             pacman-contrib \
             rustup \
-            cargo \
             pkgconf \
             gtk3 \
             webkit2gtk-4.1 \
             libayatana-appindicator \
-            libxdo \
+            xdotool \
             librsvg \
             fakeroot
 

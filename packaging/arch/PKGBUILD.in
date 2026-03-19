@@ -9,11 +9,10 @@ depends=(
   'gtk3'
   'webkit2gtk-4.1'
   'libayatana-appindicator'
-  'libxdo'
+  'xdotool'
   'librsvg'
 )
 makedepends=(
-  'cargo'
   'git'
   'pkgconf'
   'rustup'
