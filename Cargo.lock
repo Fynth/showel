@@ -1882,6 +1882,7 @@ name = "driver-sqlite"
 version = "0.1.0"
 dependencies = [
  "database",
+ "libsqlite3-sys",
  "sqlx",
 ]
 

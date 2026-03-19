@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 database.workspace = true
+libsqlite3-sys.workspace = true
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
