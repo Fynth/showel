@@ -6,7 +6,10 @@
 use acp::{EmbeddedOllamaAgentConfig, run_embedded_ollama_agent};
 use dioxus::{
     LaunchBuilder,
-    desktop::{Config, LogicalSize, WindowBuilder, tao::event_loop::EventLoopBuilder},
+    desktop::{
+        Config, LogicalSize, WindowBuilder,
+        tao::{event_loop::EventLoopBuilder, window::Icon as TaoIcon},
+    },
     prelude::*,
 };
 use rfd::{MessageButtons, MessageDialog, MessageLevel};
@@ -29,6 +32,7 @@ use ui::App as UiApp;
 use dioxus::desktop::tao::platform::unix::EventLoopBuilderExtUnix;
 
 const APP_CSS: &str = include_str!("../assets/app.css");
+const APP_ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
 
 fn main() {
     if let Some(result) = try_run_embedded_acp_agent() {
@@ -62,6 +66,7 @@ fn launch_app() {
         .with_cfg(
             Config::new()
                 .with_event_loop(event_loop)
+                .with_icon(load_app_icon())
                 .with_menu(None)
                 .with_disable_context_menu(true)
                 .with_disable_drag_drop_handler(true)
@@ -76,6 +81,15 @@ fn launch_app() {
                 ),
         )
         .launch(Root);
+}
+
+fn load_app_icon() -> TaoIcon {
+    let image = image::load_from_memory_with_format(APP_ICON_PNG, image::ImageFormat::Png)
+        .expect("failed to decode app icon")
+        .into_rgba8();
+    let (width, height) = image.dimensions();
+
+    TaoIcon::from_rgba(image.into_raw(), width, height).expect("failed to create app icon")
 }
 
 #[component]

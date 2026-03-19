@@ -15,6 +15,7 @@ script = []
 script = []
 
 [bundle]
+icon = ["app/assets/icon.png", "icons/icon.ico"]
 identifier = "dev.showel.app"
 publisher = "Showel"
 category = "DeveloperTool"
@@ -25,6 +26,7 @@ Showel is a lightweight native desktop database client for SQLite, PostgreSQL, a
 resources = []
 
 [bundle.windows]
+icon_path = "icons/icon.ico"
 digest_algorithm = "sha-256"
 
 [bundle.windows.webview_install_mode.OfflineInstaller]
