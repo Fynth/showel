@@ -1,0 +1,143 @@
+name: Publish Arch Repo
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version without leading v'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-arch-package:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    permissions:
+      contents: write
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Arch build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm \
+            git \
+            pacman-contrib \
+            rustup \
+            cargo \
+            pkgconf \
+            gtk3 \
+            webkit2gtk-4.1 \
+            libayatana-appindicator \
+            librsvg \
+            fakeroot
+
+      - name: Render Arch packaging files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/render-arch-package.sh \
+            "${{ steps.meta.outputs.version }}" \
+            "${{ github.repository_owner }}" \
+            "${{ github.event.repository.name }}" \
+            "${GITHUB_WORKSPACE}/packaging/arch/generated"
+
+      - name: Build Arch package
+        shell: bash
+        run: |
+          set -euo pipefail
+          useradd --create-home builder
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+          su builder -c "cd '${GITHUB_WORKSPACE}/packaging/arch/generated' && makepkg --noconfirm --cleanbuild --clean"
+
+      - name: Build pacman repository metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pacman-repo/arch/x86_64
+          cp packaging/arch/generated/*.pkg.tar.* pacman-repo/arch/x86_64/
+          ./scripts/build-pacman-repo.sh pacman-repo/arch/x86_64 showel
+          cat <<'EOF' > pacman-repo/index.html
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Showel Arch Repository</title>
+          </head>
+          <body>
+            <h1>Showel Arch Repository</h1>
+            <p>Repository URL: <code>https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/arch/$arch</code></p>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload Arch package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: showel-arch-package
+          path: packaging/arch/generated/*.pkg.tar.*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload pacman repo artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pacman-repo
+
+      - name: Publish GitHub release assets
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          files: |
+            packaging/arch/generated/*.pkg.tar.*
+
+  deploy-pages:
+    needs: build-arch-package
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy pacman repository to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

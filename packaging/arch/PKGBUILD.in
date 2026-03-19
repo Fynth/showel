@@ -1,0 +1,45 @@
+pkgname=showel
+pkgver=__PKGVER__
+pkgrel=1
+pkgdesc="Fast native desktop database client built with Rust and Dioxus"
+arch=('x86_64')
+url="https://github.com/__OWNER__/__REPO__"
+license=('unknown')
+depends=(
+  'gtk3'
+  'webkit2gtk-4.1'
+  'libayatana-appindicator'
+  'librsvg'
+)
+makedepends=(
+  'cargo'
+  'git'
+  'pkgconf'
+  'rustup'
+)
+source=(
+  "${pkgname}::git+${url}.git#tag=v${pkgver}"
+  "showel.desktop"
+)
+sha256sums=(
+  'SKIP'
+  '__DESKTOP_SHA256__'
+)
+
+build() {
+  cd "${srcdir}/${pkgname}"
+
+  export CARGO_HOME="${srcdir}/cargo-home"
+  export CARGO_TARGET_DIR="${srcdir}/target"
+
+  cargo build --locked --release -p app --features desktop
+}
+
+package() {
+  cd "${srcdir}/${pkgname}"
+
+  install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/showel"
+  install -Dm644 "${srcdir}/showel.desktop" "${pkgdir}/usr/share/applications/showel.desktop"
+  install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/showel.svg"
+  install -Dm644 "README.md" "${pkgdir}/usr/share/doc/showel/README.md"
+}

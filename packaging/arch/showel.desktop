@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Showel
+Comment=Fast native desktop database client
+Exec=showel
+Icon=showel
+Terminal=false
+Categories=Development;Database;
+StartupWMClass=Showel

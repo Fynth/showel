@@ -88,11 +88,59 @@ cargo run -p app --features desktop
 cargo build -p app --release --features desktop
 ```
 
+### Build a Linux release package artifact
+
+GitHub Actions can build a Linux desktop tarball from `.github/workflows/linux.yml`.
+
+The archive contains:
+
+- `bin/showel`
+- desktop entry
+- app icon
+- README
+
 ### Build a Windows bundle
 
 ```bash
 dx bundle --release --platform desktop --package app --features bundle --package-types msi
 ```
+
+## Arch Linux Updates With Pacman
+
+`pacman -Syu` only works if Showel is shipped through a real pacman repository.
+
+This repo now includes:
+
+- `.github/workflows/arch-repo.yml` to build an Arch `pkg.tar.zst` on version tags
+- `packaging/arch/PKGBUILD.in` to define the Arch package
+- GitHub Pages publication of `showel.db` and the package payload
+
+Release flow:
+
+1. bump the Rust package version if needed
+2. create and push a tag like `v0.1.0`
+3. GitHub Actions builds `showel-0.1.0-1-x86_64.pkg.tar.zst`
+4. Actions publishes the pacman repo to `https://fynth.github.io/showel/arch/x86_64`
+
+Client setup on Arch:
+
+```ini
+[showel]
+SigLevel = Optional TrustAll
+Server = https://fynth.github.io/showel/arch/$arch
+```
+
+Then install and update with:
+
+```bash
+sudo pacman -Sy showel
+sudo pacman -Syu
+```
+
+Notes:
+
+- `SigLevel = Optional TrustAll` is used because the workflow currently publishes an unsigned repo
+- if you want stricter pacman trust, the next step is adding package and repo signing with a dedicated GPG key in GitHub Actions secrets
 
 ## Windows CI
 
@@ -104,6 +152,11 @@ It can build:
 
 - raw Windows `.exe` artifact
 - `.msi` installer artifact
+
+Linux and Arch workflows:
+
+- `.github/workflows/linux.yml`
+- `.github/workflows/arch-repo.yml`
 
 Notes:
 

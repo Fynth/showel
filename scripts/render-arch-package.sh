@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -ne 4 ]]; then
+  echo "usage: $0 <version> <owner> <repo> <output-dir>" >&2
+  exit 1
+fi
+
+version="$1"
+owner="$2"
+repo="$3"
+output_dir="$4"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_root="$(cd "${script_dir}/.." && pwd)"
+template="${project_root}/packaging/arch/PKGBUILD.in"
+desktop_file="${project_root}/packaging/arch/showel.desktop"
+
+mkdir -p "${output_dir}"
+cp "${desktop_file}" "${output_dir}/showel.desktop"
+
+desktop_sha="$(sha256sum "${desktop_file}" | awk '{print $1}')"
+
+sed \
+  -e "s/__PKGVER__/${version}/g" \
+  -e "s/__OWNER__/${owner}/g" \
+  -e "s/__REPO__/${repo}/g" \
+  -e "s/__DESKTOP_SHA256__/${desktop_sha}/g" \
+  "${template}" > "${output_dir}/PKGBUILD"
