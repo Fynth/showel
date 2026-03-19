@@ -1,0 +1,47 @@
+name: Validate AUR Package
+
+on:
+  push:
+    paths:
+      - '.github/workflows/aur-check.yml'
+      - 'packaging/aur/**'
+      - 'packaging/arch/showel.desktop'
+      - 'scripts/update-aur-srcinfo.sh'
+      - 'app/Cargo.toml'
+  pull_request:
+    paths:
+      - '.github/workflows/aur-check.yml'
+      - 'packaging/aur/**'
+      - 'packaging/arch/showel.desktop'
+      - 'scripts/update-aur-srcinfo.sh'
+      - 'app/Cargo.toml'
+
+jobs:
+  validate-aur:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install AUR metadata tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm git
+
+      - name: Regenerate .SRCINFO
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./scripts/update-aur-srcinfo.sh
+          cp packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated
+          git checkout -- packaging/aur/showel-git/.SRCINFO
+
+      - name: Verify tracked .SRCINFO
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff -u packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated

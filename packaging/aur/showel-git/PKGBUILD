@@ -1,0 +1,59 @@
+pkgname=showel-git
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc="Fast native desktop database client built with Rust and Dioxus"
+arch=('x86_64')
+url="https://github.com/Fynth/showel"
+license=('unknown')
+depends=(
+  'gtk3'
+  'webkit2gtk-4.1'
+  'libayatana-appindicator'
+  'xdotool'
+  'librsvg'
+)
+makedepends=(
+  'git'
+  'pkgconf'
+  'cargo'
+  'rust'
+)
+provides=('showel')
+conflicts=('showel')
+options=('!lto')
+source=(
+  "showel::git+${url}.git"
+)
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "${srcdir}/showel"
+
+  local base_ver
+  local commit_count
+  local commit_sha
+
+  base_ver="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' app/Cargo.toml | head -n 1)"
+  commit_count="$(git rev-list --count HEAD)"
+  commit_sha="$(git rev-parse --short HEAD)"
+
+  printf '%s.r%s.g%s\n' "${base_ver}" "${commit_count}" "${commit_sha}"
+}
+
+build() {
+  cd "${srcdir}/showel"
+
+  export CARGO_HOME="${srcdir}/cargo-home"
+  export CARGO_TARGET_DIR="${srcdir}/target"
+
+  cargo build --locked --release -p app --features desktop
+}
+
+package() {
+  cd "${srcdir}/showel"
+
+  install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/showel"
+  install -Dm644 "packaging/arch/showel.desktop" "${pkgdir}/usr/share/applications/showel.desktop"
+  install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/showel.svg"
+  install -Dm644 "README.md" "${pkgdir}/usr/share/doc/showel/README.md"
+}
