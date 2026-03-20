@@ -60,6 +60,9 @@ pub fn ResultTable(
         .cloned();
     let active_filter = active_tab.as_ref().and_then(|tab| tab.filter.clone());
     let active_sort = active_tab.as_ref().and_then(|tab| tab.sort.clone());
+    let active_error = active_tab
+        .as_ref()
+        .and_then(|tab| result_error_message(&tab.status));
     let pending_changes = active_tab
         .as_ref()
         .map(|tab| tab.pending_table_changes.clone())
@@ -601,9 +604,52 @@ pub fn ResultTable(
                 }
             }
             None => rsx! {
-                p { class: "empty-state", "Double-click a table in Explorer or run SQL to see rows here." }
+                if let Some(error) = active_error {
+                    div {
+                        class: "results results--error",
+                        div {
+                            class: "results__error",
+                            p { class: "results__error-title", "Query failed" }
+                            pre { class: "results__error-body", "{error}" }
+                        }
+                    }
+                } else {
+                    p { class: "empty-state", "Double-click a table in Explorer or run SQL to see rows here." }
+                }
             },
         }
+    }
+}
+
+fn result_error_message(status: &str) -> Option<String> {
+    [
+        "Error: ",
+        "Preview error: ",
+        "Structure error: ",
+        "Load more error: ",
+    ]
+    .iter()
+    .find_map(|prefix| status.strip_prefix(prefix))
+    .map(str::trim)
+    .filter(|message| !message.is_empty())
+    .map(ToOwned::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::result_error_message;
+
+    #[test]
+    fn extracts_query_error_from_status() {
+        assert_eq!(
+            result_error_message("Error: SQLite error: near \"from\": syntax error"),
+            Some("SQLite error: near \"from\": syntax error".to_string())
+        );
+    }
+
+    #[test]
+    fn ignores_non_error_status() {
+        assert_eq!(result_error_message("Loaded rows 1-10"), None);
     }
 }
 

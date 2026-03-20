@@ -30,6 +30,7 @@ dependencies = [
  "models",
  "reqwest",
  "serde",
+ "serde_json",
  "tar",
  "tokio",
  "walkdir",

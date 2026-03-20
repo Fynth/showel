@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
-use models::{AcpMessageKind, AcpPanelState, QueryOutput, QueryPage, QueryTabState};
+use models::{
+    AcpMessageKind, AcpPanelState, QueryOutput, QueryPage, QueryTabState, TablePreviewSource,
+};
 
 use crate::{app_state::session_connection, screens::workspace::actions::update_active_tab_sql};
 
@@ -72,6 +74,7 @@ Database context: {connection_label}\n"
     prompt.push_str(
         "Snapshot rows are previews only. Never infer total row counts, aggregates, or full-table statistics unless a query result explicitly provides them.\n\
 If the available context is insufficient, generate SQL that verifies the answer instead of guessing.\n\
+Use the existing ACP session history for follow-up requests, but prefer the current editor and database context when they conflict with older assumptions.\n\
 When creating tables, always define an auto-generated primary key `id`.\n\
 For SQLite use `id INTEGER PRIMARY KEY AUTOINCREMENT`.\n\
 For PostgreSQL use `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`.\n\
@@ -138,6 +141,7 @@ Database context: {connection_label}\n"
         "Always answer in English.\n\
 Snapshot rows are previews only. Never infer total row counts, aggregates, or full-table statistics unless a query result explicitly provides them.\n\
 If the available context is insufficient, say exactly what is unknown and give the SQL needed to verify it.\n\
+Use the ongoing ACP session history for follow-up questions, but do not invent facts that were not established earlier in the session.\n\
 Prefer facts from the active editor context over generic assumptions.\n\
 If you propose schema creation, always use an auto-generated primary key `id`.\n\
 If you propose inserts, omit `id` unless the user explicitly asks for manual ids.\n",
@@ -157,14 +161,35 @@ pub(super) fn active_editor_prompt_context(
 
 fn build_active_tab_context(tab: &QueryTabState) -> Option<String> {
     let mut sections = Vec::new();
+    if let Some(source) = tab.preview_source.as_ref() {
+        sections.push(format!("Focused relation: {}", source.qualified_name));
+    }
+
     let sql = tab.sql.trim();
     if !sql.is_empty() {
         sections.push(format!("Active editor SQL:\n```sql\n{sql}\n```"));
     }
 
+    if let Some(last_run_sql) = tab
+        .last_run_sql
+        .as_deref()
+        .map(str::trim)
+        .filter(|last_run_sql| !last_run_sql.is_empty() && *last_run_sql != sql)
+    {
+        sections.push(format!("Last executed SQL:\n```sql\n{last_run_sql}\n```"));
+    }
+
     let status = tab.status.trim();
     if !status.is_empty() {
         sections.push(format!("Active tab status: {status}"));
+    }
+
+    if !tab.pending_table_changes.is_empty() {
+        sections.push(format!(
+            "Pending local table edits: {} inserted row(s), {} edited cell(s).",
+            tab.pending_table_changes.inserted_rows.len(),
+            tab.pending_table_changes.updated_cells.len()
+        ));
     }
 
     if let Some(result) = &tab.result {
@@ -308,4 +333,14 @@ pub(super) fn active_editor_connection(
         .find(|tab| tab.id == active_tab_id)
         .map(|tab| tab.session_id)?;
     session_connection(session_id)
+}
+
+pub(super) fn active_editor_focus_source(
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+) -> Option<TablePreviewSource> {
+    tabs.read()
+        .iter()
+        .find(|tab| tab.id == active_tab_id)
+        .and_then(|tab| tab.preview_source.clone())
 }

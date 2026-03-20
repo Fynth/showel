@@ -1,12 +1,16 @@
 use models::{AcpLaunchRequest, AcpRegistryAgent};
+use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::Deserialize;
 use std::{
+    collections::HashMap,
     io::Cursor,
     path::{Path, PathBuf},
 };
 
 const ACP_REGISTRY_URL: &str =
     "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
+const ACP_REGISTRY_ACCEPT: &str = "application/json";
+const ACP_REGISTRY_USER_AGENT: &str = concat!("showel/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Deserialize)]
 struct RegistryDocument {
@@ -58,12 +62,20 @@ pub async fn load_acp_registry_agents() -> Result<Vec<AcpRegistryAgent>, String>
         .collect::<Vec<_>>();
 
     agents.sort_by(|left, right| {
-        (right.id == "opencode")
-            .cmp(&(left.id == "opencode"))
+        registry_agent_priority(&left.id)
+            .cmp(&registry_agent_priority(&right.id))
             .then_with(|| left.name.cmp(&right.name))
     });
 
     Ok(agents)
+}
+
+fn registry_agent_priority(agent_id: &str) -> usize {
+    match agent_id {
+        "codex-acp" => 0,
+        "opencode" => 1,
+        _ => 2,
+    }
 }
 
 pub async fn install_acp_registry_agent(
@@ -114,14 +126,192 @@ pub async fn install_acp_registry_agent(
 }
 
 async fn fetch_registry() -> Result<RegistryDocument, String> {
-    reqwest::get(ACP_REGISTRY_URL)
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|err| format!("Failed to build ACP registry HTTP client: {err}"))?;
+
+    let response = client
+        .get(ACP_REGISTRY_URL)
+        .header(USER_AGENT, ACP_REGISTRY_USER_AGENT)
+        .header(ACCEPT, ACP_REGISTRY_ACCEPT)
+        .send()
+        .await;
+
+    let response = match response {
+        Ok(response) => response,
+        Err(err) => {
+            return fallback_registry_document(format!("Failed to fetch ACP registry: {err}"));
+        }
+    };
+
+    let status = response.status();
+    let body = response
+        .text()
         .await
-        .map_err(|err| format!("Failed to fetch ACP registry: {err}"))?
-        .error_for_status()
-        .map_err(|err| format!("ACP registry returned an error: {err}"))?
-        .json::<RegistryDocument>()
-        .await
-        .map_err(|err| format!("Failed to parse ACP registry: {err}"))
+        .map_err(|err| format!("Failed to read ACP registry response: {err}"))?;
+
+    if !status.is_success() {
+        return fallback_registry_document(format!(
+            "ACP registry returned HTTP {}",
+            status.as_u16()
+        ));
+    }
+
+    serde_json::from_str::<RegistryDocument>(&body).or_else(|err| {
+        fallback_registry_document(format!(
+            "Failed to parse ACP registry: {err}. Response starts with: {}",
+            response_excerpt(&body)
+        ))
+    })
+}
+
+fn fallback_registry_document(reason: String) -> Result<RegistryDocument, String> {
+    let fallback = built_in_registry();
+    if fallback.agents.is_empty() {
+        Err(reason)
+    } else {
+        Ok(fallback)
+    }
+}
+
+fn response_excerpt(body: &str) -> String {
+    let trimmed = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let excerpt = trimmed.chars().take(120).collect::<String>();
+    if excerpt.is_empty() {
+        "<empty response>".to_string()
+    } else if trimmed.chars().count() > 120 {
+        format!("{excerpt}...")
+    } else {
+        excerpt
+    }
+}
+
+fn built_in_registry() -> RegistryDocument {
+    RegistryDocument {
+        agents: vec![built_in_codex_agent(), built_in_opencode_agent()],
+    }
+}
+
+fn built_in_codex_agent() -> RegistryAgentRecord {
+    RegistryAgentRecord {
+        id: "codex-acp".to_string(),
+        name: "Codex CLI".to_string(),
+        version: "0.10.0".to_string(),
+        description: "ACP adapter for OpenAI's coding assistant".to_string(),
+        distribution: RegistryDistribution {
+            binary: HashMap::from([
+                (
+                    "darwin-aarch64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-aarch64-apple-darwin.tar.gz",
+                        "./codex-acp",
+                        &[],
+                    ),
+                ),
+                (
+                    "darwin-x86_64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-x86_64-apple-darwin.tar.gz",
+                        "./codex-acp",
+                        &[],
+                    ),
+                ),
+                (
+                    "linux-aarch64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-aarch64-unknown-linux-gnu.tar.gz",
+                        "./codex-acp",
+                        &[],
+                    ),
+                ),
+                (
+                    "linux-x86_64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-x86_64-unknown-linux-gnu.tar.gz",
+                        "./codex-acp",
+                        &[],
+                    ),
+                ),
+                (
+                    "windows-aarch64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-aarch64-pc-windows-msvc.zip",
+                        "./codex-acp.exe",
+                        &[],
+                    ),
+                ),
+                (
+                    "windows-x86_64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-x86_64-pc-windows-msvc.zip",
+                        "./codex-acp.exe",
+                        &[],
+                    ),
+                ),
+            ]),
+        },
+    }
+}
+
+fn built_in_opencode_agent() -> RegistryAgentRecord {
+    RegistryAgentRecord {
+        id: "opencode".to_string(),
+        name: "OpenCode".to_string(),
+        version: "1.2.27".to_string(),
+        description: "The open source coding agent".to_string(),
+        distribution: RegistryDistribution {
+            binary: HashMap::from([
+                (
+                    "darwin-aarch64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/anomalyco/opencode/releases/download/v1.2.27/opencode-darwin-arm64.zip",
+                        "./opencode",
+                        &["acp"],
+                    ),
+                ),
+                (
+                    "darwin-x86_64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/anomalyco/opencode/releases/download/v1.2.27/opencode-darwin-x64.zip",
+                        "./opencode",
+                        &["acp"],
+                    ),
+                ),
+                (
+                    "linux-aarch64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/anomalyco/opencode/releases/download/v1.2.27/opencode-linux-arm64.tar.gz",
+                        "./opencode",
+                        &["acp"],
+                    ),
+                ),
+                (
+                    "linux-x86_64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/anomalyco/opencode/releases/download/v1.2.27/opencode-linux-x64.tar.gz",
+                        "./opencode",
+                        &["acp"],
+                    ),
+                ),
+                (
+                    "windows-x86_64".to_string(),
+                    registry_binary_target(
+                        "https://github.com/anomalyco/opencode/releases/download/v1.2.27/opencode-windows-x64.zip",
+                        "./opencode.exe",
+                        &["acp"],
+                    ),
+                ),
+            ]),
+        },
+    }
+}
+
+fn registry_binary_target(archive: &str, cmd: &str, args: &[&str]) -> RegistryBinaryTarget {
+    RegistryBinaryTarget {
+        archive: archive.to_string(),
+        cmd: cmd.to_string(),
+        args: args.iter().map(|arg| (*arg).to_string()).collect(),
+    }
 }
 
 fn current_platform_key() -> Result<String, String> {
@@ -176,7 +366,15 @@ fn resolve_installed_command(install_root: &Path, cmd: &str) -> Option<PathBuf> 
 }
 
 async fn download_and_extract(archive_url: &str, install_root: &Path) -> Result<(), String> {
-    let bytes = reqwest::get(archive_url)
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|err| format!("Failed to build ACP download HTTP client: {err}"))?;
+
+    let bytes = client
+        .get(archive_url)
+        .header(USER_AGENT, ACP_REGISTRY_USER_AGENT)
+        .header(ACCEPT, "*/*")
+        .send()
         .await
         .map_err(|err| format!("Failed to download ACP agent archive: {err}"))?
         .error_for_status()
@@ -256,6 +454,24 @@ fn join_args(args: &[String]) -> String {
         .map(|arg| shell_escape(arg))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{built_in_registry, response_excerpt};
+
+    #[test]
+    fn built_in_registry_contains_known_agents() {
+        let registry = built_in_registry();
+        assert!(registry.agents.iter().any(|agent| agent.id == "opencode"));
+        assert!(registry.agents.iter().any(|agent| agent.id == "codex-acp"));
+    }
+
+    #[test]
+    fn response_excerpt_flattens_html_like_bodies() {
+        let excerpt = response_excerpt("<html>\n  <body>blocked</body>\n</html>");
+        assert_eq!(excerpt, "<html> <body>blocked</body> </html>");
+    }
 }
 
 fn shell_escape(arg: &str) -> String {

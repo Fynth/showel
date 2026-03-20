@@ -12,8 +12,8 @@ use super::{ActionIcon, IconButton};
 
 use self::{
     prompt::{
-        active_editor_connection, active_editor_prompt_context, build_chat_prompt,
-        build_sql_generation_prompt, insert_sql_into_editor,
+        active_editor_connection, active_editor_focus_source, active_editor_prompt_context,
+        build_chat_prompt, build_sql_generation_prompt, insert_sql_into_editor,
     },
     registry_card::RegistryAgentCard,
     state::{
@@ -39,6 +39,7 @@ fn send_chat_prompt_request(
     }
 
     let connection = active_editor_connection(tabs, active_tab_id);
+    let focus_source = active_editor_focus_source(tabs, active_tab_id);
     let active_tab_context = active_editor_prompt_context(tabs, active_tab_id);
     panel_state.with_mut(|state| {
         state.busy = true;
@@ -49,7 +50,13 @@ fn send_chat_prompt_request(
     spawn(async move {
         let contextual_prompt = match connection {
             Some(connection) => {
-                match acp::build_acp_database_context(connection, connection_label.clone()).await {
+                match acp::build_acp_database_context(
+                    connection,
+                    connection_label.clone(),
+                    focus_source,
+                )
+                .await
+                {
                     Ok(db_context) => build_chat_prompt(
                         &connection_label,
                         &prompt,
@@ -97,20 +104,25 @@ fn is_visible_message(kind: &AcpMessageKind, text: &str) -> bool {
         && !matches!(kind, AcpMessageKind::System | AcpMessageKind::Tool)
 }
 
+const OPENCODE_REGISTRY_AGENT_ID: &str = "opencode";
+const CODEX_REGISTRY_AGENT_ID: &str = "codex-acp";
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AgentSetupMode {
     Ollama,
-    Registry,
+    OpenCode,
+    Codex,
     Custom,
 }
 
 impl AgentSetupMode {
-    const ALL: [Self; 3] = [Self::Ollama, Self::Registry, Self::Custom];
+    const ALL: [Self; 4] = [Self::Ollama, Self::OpenCode, Self::Codex, Self::Custom];
 
     fn label(self) -> &'static str {
         match self {
             Self::Ollama => "Ollama",
-            Self::Registry => "OpenCode",
+            Self::OpenCode => "OpenCode",
+            Self::Codex => "Codex",
             Self::Custom => "Custom",
         }
     }
@@ -118,8 +130,32 @@ impl AgentSetupMode {
     fn meta(self) -> &'static str {
         match self {
             Self::Ollama => "Embedded",
-            Self::Registry => "Registry",
+            Self::OpenCode | Self::Codex => "Registry",
             Self::Custom => "stdio",
+        }
+    }
+
+    fn registry_agent_id(self) -> Option<&'static str> {
+        match self {
+            Self::OpenCode => Some(OPENCODE_REGISTRY_AGENT_ID),
+            Self::Codex => Some(CODEX_REGISTRY_AGENT_ID),
+            Self::Ollama | Self::Custom => None,
+        }
+    }
+
+    fn registry_name(self) -> Option<&'static str> {
+        match self {
+            Self::OpenCode => Some("OpenCode"),
+            Self::Codex => Some("Codex CLI"),
+            Self::Ollama | Self::Custom => None,
+        }
+    }
+
+    fn registry_hint(self) -> Option<&'static str> {
+        match self {
+            Self::OpenCode => Some("OpenCode from the ACP registry."),
+            Self::Codex => Some("Codex CLI from the ACP registry."),
+            Self::Ollama | Self::Custom => None,
         }
     }
 }
@@ -149,17 +185,23 @@ pub fn AcpAgentPanel(
     let mut registry_status = use_signal(String::new);
     let registry_agents =
         use_resource(move || async move { acp::load_acp_registry_agents().await });
+    let registry_result = registry_agents();
+    let selected_registry_mode = setup_mode();
+    let selected_registry_agent = selected_registry_mode
+        .registry_agent_id()
+        .and_then(|agent_id| {
+            registry_result
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .and_then(|agents| agents.iter().find(|agent| agent.id == agent_id))
+                .cloned()
+        });
     let visible_messages = state
         .messages
         .clone()
         .into_iter()
         .filter(|message| is_visible_message(&message.kind, &message.text))
         .collect::<Vec<_>>();
-    let opencode_agent = registry_agents().and_then(|result| {
-        result
-            .ok()
-            .and_then(|agents| agents.into_iter().find(|agent| agent.id == "opencode"))
-    });
 
     rsx! {
         aside { class: "agent-panel",
@@ -372,6 +414,8 @@ pub fn AcpAgentPanel(
                                         return;
                                 }
                                 let connection = active_editor_connection(tabs, active_tab_id());
+                                let focus_source =
+                                    active_editor_focus_source(tabs, active_tab_id());
                                 let active_tab_context =
                                     active_editor_prompt_context(tabs, active_tab_id());
                                 let connection_label = sql_generation_label.clone();
@@ -388,6 +432,7 @@ pub fn AcpAgentPanel(
                                                 match acp::build_acp_database_context(
                                                     connection,
                                                     connection_label.clone(),
+                                                    focus_source,
                                                 )
                                             .await
                                             {
@@ -575,40 +620,60 @@ pub fn AcpAgentPanel(
                                 }
                             }
                         },
-                        AgentSetupMode::Registry => rsx! {
+                        AgentSetupMode::OpenCode | AgentSetupMode::Codex => rsx! {
                             div { class: "agent-panel__section",
+                                {
+                                    let registry_name = selected_registry_mode
+                                        .registry_name()
+                                        .unwrap_or("Registry agent");
+                                    let registry_hint = selected_registry_mode
+                                        .registry_hint()
+                                        .unwrap_or("Quick start from the ACP registry.");
+                                    let registry_agent_id = selected_registry_mode
+                                        .registry_agent_id()
+                                        .unwrap_or_default()
+                                        .to_string();
+
+                                    rsx! {
                                 div { class: "agent-panel__section-header",
                                     div { class: "agent-panel__section-copy",
-                                        h4 { class: "agent-panel__section-title", "OpenCode" }
-                                        p { class: "agent-panel__hint", "Quick start from the ACP registry." }
+                                        h4 { class: "agent-panel__section-title", "{registry_name}" }
+                                        p { class: "agent-panel__hint", "{registry_hint}" }
                                     }
                                     span { class: "agent-panel__badge", "Registry" }
                                 }
                                 if !registry_status().trim().is_empty() {
                                     p { class: "agent-panel__hint agent-panel__hint--status", "{registry_status}" }
                                 }
-                                if let Some(opencode) = opencode_agent {
+                                if let Some(agent) = selected_registry_agent {
                                     RegistryAgentCard {
-                                        agent: opencode,
+                                        agent,
                                         busy: registry_busy(),
                                         on_connect: move |_| {
                                             let cwd = panel_state().launch.cwd.clone();
+                                            let registry_name = registry_name.to_string();
+                                            let registry_agent_id = registry_agent_id.clone();
                                             registry_busy.set(true);
-                                            registry_status.set("Preparing OpenCode from the ACP registry...".to_string());
+                                            registry_status.set(format!(
+                                                "Preparing {registry_name} from the ACP registry..."
+                                            ));
                                             spawn(async move {
-                                                match acp::install_acp_registry_agent("opencode".to_string(), cwd).await {
+                                                match acp::install_acp_registry_agent(registry_agent_id, cwd).await {
                                                     Ok(launch) => {
                                                         panel_state.with_mut(|state| {
                                                             state.launch = launch.clone();
                                                             state.busy = true;
-                                                            state.status = "Connecting to OpenCode...".to_string();
+                                                            state.status =
+                                                                format!("Connecting to {registry_name}...");
                                                         });
                                                         match acp::connect_acp_agent(launch).await {
                                                             Ok(connection) => {
                                                                 panel_state.with_mut(|state| {
                                                                     apply_connected(state, connection);
                                                                 });
-                                                                registry_status.set("OpenCode connected.".to_string());
+                                                                registry_status.set(format!(
+                                                                    "{registry_name} connected."
+                                                                ));
                                                             }
                                                             Err(err) => {
                                                                 panel_state.with_mut(|state| {
@@ -637,7 +702,7 @@ pub fn AcpAgentPanel(
                                 } else if let Some(result) = registry_agents() {
                                     match result {
                                         Ok(_) => rsx! {
-                                            p { class: "agent-panel__hint", "OpenCode is not available in the ACP registry for this platform." }
+                                            p { class: "agent-panel__hint", "{registry_name} is not available in the ACP registry for this platform." }
                                         },
                                         Err(err) => rsx! {
                                             p { class: "agent-panel__hint", "Failed to load ACP registry: {err}" }
@@ -645,6 +710,8 @@ pub fn AcpAgentPanel(
                                     }
                                 } else {
                                     p { class: "agent-panel__hint", "Loading ACP registry..." }
+                                }
+                                    }
                                 }
                             }
                         },

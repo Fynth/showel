@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::{error::Error, fmt};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DatabaseKind {
@@ -96,6 +97,20 @@ impl ClickHouseFormData {
         }
     }
 }
+
+impl fmt::Display for DatabaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sqlite(err) => write!(f, "SQLite error: {err}"),
+            Self::Postgres(err) => write!(f, "PostgreSQL error: {err}"),
+            Self::ClickHouse(err) => write!(f, "ClickHouse error: {err}"),
+            Self::Tunnel(err) => write!(f, "SSH tunnel error: {err}"),
+            Self::UnsupportedDriver(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl Error for DatabaseError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConnectionRequest {

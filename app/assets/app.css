@@ -2960,6 +2960,37 @@ select.input:focus-visible {
   color: var(--color-text-muted);
 }
 
+.results--error {
+  overflow: auto;
+}
+
+.results__error {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  padding: clamp(12px, 2vw, 18px);
+}
+
+.results__error-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-danger);
+}
+
+.results__error-body {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 24%, var(--color-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-danger) 7%, var(--color-panel));
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  line-height: 1.5;
+}
+
 .results__table-wrap {
   min-height: 0;
   flex: 1;

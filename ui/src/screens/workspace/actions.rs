@@ -195,7 +195,7 @@ pub fn open_structure_tab(
                 tabs.with_mut(|all_tabs| {
                     if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == tab_id) {
                         tab.result = None;
-                        tab.status = format!("Structure error: {err:?}");
+                        tab.status = format!("Structure error: {err}");
                     }
                 });
             }
@@ -301,7 +301,7 @@ pub fn run_query_for_tab(
                 tabs.with_mut(|all_tabs| {
                     if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
                         tab.result = None;
-                        tab.status = format!("Error: {err:?}");
+                        tab.status = format!("Error: {err}");
                         tab.preview_source = None;
                         tab.is_loading_more = false;
                         tab.pending_table_changes = PendingTableChanges::default();
@@ -318,7 +318,7 @@ pub fn run_query_for_tab(
                         tab_title,
                         connection_name,
                         sql,
-                        outcome: format!("Error: {err:?}"),
+                        outcome: format!("Error: {err}"),
                     };
                     history.with_mut(|items| {
                         items.insert(0, history_item.clone());
@@ -421,7 +421,7 @@ pub fn run_table_preview_for_tab(
                 tabs.with_mut(|all_tabs| {
                     if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
                         tab.result = None;
-                        tab.status = format!("Preview error: {err:?}");
+                        tab.status = format!("Preview error: {err}");
                         tab.preview_source = Some(source.clone());
                         tab.is_loading_more = false;
                     }
@@ -557,7 +557,7 @@ pub fn append_next_tab_page(mut tabs: Signal<Vec<QueryTabState>>, current_tab: Q
                 tabs.with_mut(|all_tabs| {
                     if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_tab.id) {
                         tab.is_loading_more = false;
-                        tab.status = format!("Load more error: {err:?}");
+                        tab.status = format!("Load more error: {err}");
                     }
                 });
             }

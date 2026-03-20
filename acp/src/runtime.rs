@@ -36,10 +36,6 @@ struct AcpRuntimeHandle {
     _thread: thread::JoinHandle<()>,
 }
 
-fn should_refresh_session_per_prompt(agent_name: &str) -> bool {
-    agent_name.to_ascii_lowercase().contains("opencode")
-}
-
 enum AcpCommand {
     Prompt(String),
     Cancel,
@@ -727,33 +723,16 @@ async fn run_acp_worker(
     let _ = event_tx.send(AcpEvent::Status(format!("Connected to {agent_name}")));
 
     let active_session_id = Rc::new(RefCell::new(session_response.session_id.to_string()));
-    let refresh_session_per_prompt = should_refresh_session_per_prompt(&agent_name);
 
     while let Some(command) = command_rx.recv().await {
         match command {
             AcpCommand::Prompt(prompt) => {
                 let conn = Rc::clone(&conn);
-                let cwd = cwd.clone();
                 let event_tx = event_tx.clone();
                 let active_session_id = Rc::clone(&active_session_id);
 
                 tokio::task::spawn_local(async move {
-                    let session_id = if refresh_session_per_prompt {
-                        match conn.new_session(acp::NewSessionRequest::new(cwd)).await {
-                            Ok(session) => {
-                                active_session_id.replace(session.session_id.to_string());
-                                session.session_id
-                            }
-                            Err(err) => {
-                                let _ = event_tx.send(AcpEvent::Error(format!(
-                                    "ACP session refresh failed: {err}"
-                                )));
-                                return;
-                            }
-                        }
-                    } else {
-                        active_session_id.borrow().clone().into()
-                    };
+                    let session_id = active_session_id.borrow().clone();
 
                     let _ = event_tx.send(AcpEvent::PromptStarted);
                     match conn
@@ -791,18 +770,6 @@ async fn run_acp_worker(
 
     drop(child);
     let _ = event_tx.send(AcpEvent::Disconnected);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::should_refresh_session_per_prompt;
-
-    #[test]
-    fn opencode_uses_fresh_sessions() {
-        assert!(should_refresh_session_per_prompt("OpenCode"));
-        assert!(should_refresh_session_per_prompt("opencode acp"));
-        assert!(!should_refresh_session_per_prompt("Ollama ACP Bridge"));
-    }
 }
 
 fn normalize_cwd(cwd: &str) -> Result<PathBuf, String> {
