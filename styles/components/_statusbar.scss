@@ -3,8 +3,8 @@
 .statusbar {
   display: flex;
   align-items: center;
-  gap: $spacing-lg;
-  padding: 0 $spacing-md;
+  gap: $spacing-md;
+  padding: 0 $spacing-sm;
   border-top: 1px solid var(--color-border);
   background: var(--color-panel-2);
   color: var(--color-text-muted);

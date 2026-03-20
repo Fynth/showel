@@ -123,7 +123,7 @@ textarea {
   height: 100vh;
   min-height: 100vh;
   display: grid;
-  grid-template-rows: minmax(48px, auto) 1fr minmax(30px, auto);
+  grid-template-rows: minmax(44px, auto) 1fr minmax(26px, auto);
   background: var(--color-bg);
   color: var(--color-text);
   overflow: hidden;
@@ -139,7 +139,7 @@ textarea {
 .app__body--welcome {
   display: grid;
   place-items: center;
-  padding: clamp(16px, 3vw, 32px);
+  padding: clamp(12px, 2.5vw, 24px);
 }
 
 .app__overlay {
@@ -148,7 +148,7 @@ textarea {
   z-index: 10;
   display: grid;
   place-items: center;
-  padding: clamp(12px, 3vw, 32px);
+  padding: clamp(8px, 2.5vw, 24px);
   background: var(--color-backdrop);
   backdrop-filter: blur(10px);
 }
@@ -158,8 +158,8 @@ textarea {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(220px, var(--workspace-sidebar-width, clamp(240px, 21vw, 320px))) 10px minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
   background: var(--color-bg);
   overflow: hidden;
 }
@@ -231,10 +231,10 @@ textarea {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding: 4px;
+  padding: 3px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .workspace__title {
@@ -291,8 +291,8 @@ textarea {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 4px;
+  gap: 3px;
+  padding: 3px;
   border-left: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 46%, transparent);
 }
@@ -301,8 +301,8 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: 6px;
+  padding: 3px 6px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 56%, transparent);
 }
@@ -321,8 +321,8 @@ textarea {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 0 4px 4px;
+  gap: 3px;
+  padding: 0 3px 3px;
   border-top: 1px solid var(--color-border);
   background: var(--color-panel);
   overflow: hidden;
@@ -338,7 +338,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-panel);
@@ -466,22 +466,22 @@ textarea {
 .workspace__sidebar .input,
 .workspace__inspector .input {
   min-height: 34px;
-  padding: 0 11px;
+  padding: 0 9px;
   font-size: 12px;
 }
 
 .workspace__sidebar .button.button--small,
 .workspace__inspector .button.button--small {
-  height: 24px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 7px;
   font-size: 11px;
 }
 
 .workspace__sidebar .button.button--small.button--icon,
 .workspace__inspector .button.button--small.button--icon {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
 }
 
 .workspace__empty {
@@ -520,27 +520,27 @@ textarea {
 }
 @media (max-width: 640px) {
   .workspace__toolbar {
-    gap: 4px;
+    gap: 3px;
   }
 }
 @media (max-height: 860px) {
   .workspace {
-    gap: 8px;
-    padding: 8px;
+    gap: 6px;
+    padding: 6px;
   }
   .workspace__header {
-    padding-top: 8px;
-    padding-bottom: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
   .workspace__sidebar-body {
-    gap: 8px;
+    gap: 6px;
   }
 }
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 clamp(8px, 1.2vw, 12px);
+  gap: 10px;
+  padding: 0 clamp(6px, 1vw, 8px);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-panel);
   min-width: 0;
@@ -550,7 +550,7 @@ textarea {
 .toolbar__brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .toolbar__logo {
@@ -590,7 +590,7 @@ textarea {
 .toolbar__connection {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--color-text-muted);
   font-size: 12px;
   min-width: 0;
@@ -610,14 +610,14 @@ textarea {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 @media (max-width: 920px) {
   .toolbar {
-    gap: 8px;
+    gap: 6px;
   }
   .toolbar__connection {
     flex: 1 1 auto;
@@ -626,7 +626,7 @@ textarea {
 @media (max-width: 760px) {
   .toolbar {
     height: auto;
-    min-height: 48px;
+    min-height: 44px;
     padding-top: 4px;
     padding-bottom: 4px;
     flex-wrap: wrap;
@@ -641,8 +641,8 @@ textarea {
 .statusbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 12px;
+  gap: 12px;
+  padding: 0 8px;
   border-top: 1px solid var(--color-border);
   background: var(--color-panel-2);
   color: var(--color-text-muted);
@@ -668,12 +668,12 @@ textarea {
 }
 .button {
   position: relative;
-  height: 30px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-panel-2);
@@ -714,22 +714,22 @@ textarea {
 }
 
 .button--small {
-  height: 24px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 7px;
   font-size: 12px;
 }
 
 .button--icon {
-  width: 32px;
-  min-width: 32px;
+  width: 28px;
+  min-width: 28px;
   padding: 0;
   overflow: visible;
 }
 
 .button--small.button--icon {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   padding: 0;
 }
 
@@ -799,8 +799,8 @@ textarea {
 
 .input {
   width: 100%;
-  min-height: 38px;
-  padding: 0 12px;
+  min-height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-panel-2);
@@ -814,9 +814,9 @@ textarea {
 select.input {
   appearance: none;
   cursor: pointer;
-  padding-right: 40px;
+  padding-right: 34px;
   background-image: linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%), linear-gradient(135deg, var(--color-text-muted) 50%, transparent 50%);
-  background-position: calc(100% - 18px) 16px, calc(100% - 12px) 16px;
+  background-position: calc(100% - 15px) 14px, calc(100% - 10px) 14px;
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
 }
@@ -1102,11 +1102,11 @@ select.input:focus {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  min-height: 38px;
+  min-height: 34px;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px 0;
+  padding: 3px 6px 0;
   margin-bottom: -1px;
   background: var(--color-panel);
   overflow-x: auto;
@@ -1115,8 +1115,8 @@ select.input:focus {
 
 .tabbar__tab,
 .tabbar__add {
-  height: 30px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
@@ -1152,7 +1152,7 @@ select.input:focus {
 .tabbar__tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   max-width: clamp(140px, 18vw, 220px);
   min-width: 0;
   background: var(--color-panel-2);
@@ -1162,7 +1162,7 @@ select.input:focus {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   overflow: hidden;
 }
 
@@ -1182,8 +1182,8 @@ select.input:focus {
 
 .tabbar__close {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   margin-right: -4px;
   border-radius: 999px;
   color: var(--color-text-dim);
@@ -1951,7 +1951,7 @@ select.input:focus {
 .editor {
   flex: 0 0 var(--editor-pane-height, clamp(160px, 30vh, 260px));
   min-height: 120px;
-  padding: 8px;
+  padding: 6px;
   background: var(--color-panel);
   min-width: 0;
   overflow: hidden;
@@ -1997,8 +1997,8 @@ select.input:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-panel);
 }
@@ -2006,16 +2006,16 @@ select.input:focus {
 .editor__toolbar-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .editor__session-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 2px 8px;
+  padding: 2px 6px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-panel-2);
@@ -2034,7 +2034,7 @@ select.input:focus {
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-top: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 64%, transparent);
 }
@@ -2054,8 +2054,8 @@ select.input:focus {
 .editor__format-settings {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
   background: var(--color-panel);
@@ -2066,7 +2066,7 @@ select.input:focus {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -2089,13 +2089,13 @@ select.input:focus {
 .editor__format-settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .editor__format-settings-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--color-text);
   font-size: 12px;
 }
@@ -2106,7 +2106,7 @@ select.input:focus {
   z-index: 30;
   display: grid;
   place-items: center;
-  padding: clamp(12px, 3vw, 24px);
+  padding: clamp(8px, 2vw, 16px);
   background: var(--color-backdrop);
   backdrop-filter: blur(10px);
 }
@@ -2145,7 +2145,7 @@ select.input:focus {
 .sql-editor__highlight,
 .sql-editor__input {
   margin: 0;
-  padding: 18px 20px;
+  padding: 14px 16px;
   font-family: "JetBrains Mono", "Cascadia Code", monospace;
   font-size: 15px;
   line-height: 1.6;
@@ -2167,7 +2167,7 @@ select.input:focus {
   }
   .sql-editor__highlight,
 .sql-editor__input {
-    padding: 14px 16px;
+    padding: 12px 14px;
     font-size: 14px;
     line-height: 1.5;
   }
@@ -2201,9 +2201,9 @@ select.input:focus {
 
 .sql-editor__autocomplete {
   position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
   z-index: 3;
   max-height: min(280px, 48%);
   display: flex;
@@ -2219,8 +2219,8 @@ select.input:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 6px 8px;
   border: 0;
   border-bottom: 1px solid var(--color-border);
   background: transparent;
@@ -2323,8 +2323,8 @@ select.input:focus {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: clamp(4px, 1vw, 8px);
+  gap: 6px;
+  padding: clamp(3px, 0.8vw, 6px);
   border: 1px solid var(--color-border);
   border-radius: 14px;
   background: var(--color-panel);
@@ -2335,7 +2335,7 @@ select.input:focus {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .agent-panel__header-copy,
@@ -2371,7 +2371,7 @@ select.input:focus {
 }
 
 .agent-panel__badge {
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-panel-2);
@@ -2383,7 +2383,7 @@ select.input:focus {
 .agent-panel__composer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .agent-panel__connect {
@@ -2396,8 +2396,8 @@ select.input:focus {
 .agent-panel__registry-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-panel);
@@ -2408,14 +2408,14 @@ select.input:focus {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .agent-panel__field-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .agent-panel__section-title,
@@ -2441,8 +2441,8 @@ select.input:focus {
 .agent-panel__permission {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
   border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-warning) 8%, var(--color-panel));
@@ -2457,7 +2457,7 @@ select.input:focus {
 .agent-panel__permission-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .agent-panel__composer-actions {
@@ -2480,7 +2480,7 @@ select.input:focus {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px;
+  padding: 6px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-panel);
@@ -2529,7 +2529,7 @@ select.input:focus {
 }
 
 .agent-panel__tool-emoji {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
 }
 
@@ -2619,8 +2619,8 @@ select.input:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
 }
@@ -2637,7 +2637,7 @@ select.input:focus {
 .results__toolbar-chip {
   flex-shrink: 0;
   max-width: min(240px, 30vw);
-  padding: 2px 8px;
+  padding: 1px 6px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: 999px;
   color: var(--color-text-muted);
@@ -2671,8 +2671,8 @@ select.input:focus {
 .results__filters {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
+  gap: 3px;
+  padding: 6px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
 }
@@ -2680,7 +2680,7 @@ select.input:focus {
 .results__filters-topbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex-wrap: wrap;
 }
 
@@ -2709,10 +2709,10 @@ select.input:focus {
 }
 
 .results__filter-null {
-  min-height: 30px;
+  min-height: 28px;
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 6px;
   border: 1px dashed var(--color-border);
   border-radius: 8px;
   color: var(--color-text-muted);
@@ -2720,7 +2720,7 @@ select.input:focus {
 }
 
 .results__summary {
-  padding: 8px;
+  padding: 6px;
   color: var(--color-text-muted);
 }
 
@@ -2728,7 +2728,7 @@ select.input:focus {
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 0 4px 4px;
+  padding: 0 3px 3px;
   scrollbar-gutter: stable both-edges;
   overscroll-behavior: contain;
   background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel) 70%, transparent), transparent 28px);
@@ -2738,8 +2738,8 @@ select.input:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 8px 8px;
+  min-height: 30px;
+  padding: 0 6px 6px;
   color: var(--color-text-muted);
   font-size: 12px;
   border-top: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
@@ -2788,8 +2788,8 @@ select.input:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 6px;
   border: 0;
   background: transparent;
   color: var(--color-text);
@@ -2842,7 +2842,7 @@ select.input:focus {
 }
 
 .results__cell {
-  padding: 8px 8px;
+  padding: 6px;
   border-bottom: 1px solid var(--color-border);
   border-right: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   white-space: nowrap;
@@ -2876,7 +2876,7 @@ select.input:focus {
 .results__cell-input {
   width: 100%;
   min-width: 120px;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: 1px solid var(--color-primary);
   border-radius: 4px;
   background: var(--editor-bg);
@@ -2903,8 +2903,8 @@ select.input:focus {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -2929,7 +2929,7 @@ select.input:focus {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -2943,15 +2943,15 @@ select.input:focus {
 .results__details-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
 }
 
 .results__details-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px;
+  padding: 5px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-panel) 86%, transparent);
@@ -2976,14 +2976,14 @@ select.input:focus {
 }
 
 .results__details-value {
-  padding: 6px;
+  padding: 5px;
   border: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
   border-radius: 4px;
   background: var(--editor-bg);
 }
 
 .results__details-json {
-  padding: 8px;
+  padding: 6px;
 }
 
 @media (max-width: 760px) {

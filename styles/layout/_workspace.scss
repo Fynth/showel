@@ -8,8 +8,8 @@
     minmax(220px, var(--workspace-sidebar-width, clamp(240px, 21vw, 320px)))
     10px
     minmax(0, 1fr);
-  gap: $spacing-sm;
-  padding: $spacing-sm;
+  gap: 6px;
+  padding: 6px;
   background: var(--color-bg);
   overflow: hidden;
 }
@@ -81,10 +81,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding: $spacing-xs;
+  padding: 3px;
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 3px;
 }
 
 .workspace__title {
@@ -144,8 +144,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
-  padding: $spacing-xs;
+  gap: 3px;
+  padding: 3px;
   border-left: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 46%, transparent);
 }
@@ -154,8 +154,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: $spacing-sm;
-  padding: $spacing-xs $spacing-sm;
+  gap: 6px;
+  padding: 3px 6px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 56%, transparent);
 }
@@ -174,8 +174,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
-  padding: 0 $spacing-xs $spacing-xs;
+  gap: 3px;
+  padding: 0 3px 3px;
   border-top: 1px solid var(--color-border);
   background: var(--color-panel);
   overflow: hidden;
@@ -191,7 +191,7 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-2xs;
-  padding: $spacing-xs;
+  padding: 3px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel);
@@ -332,22 +332,22 @@
 .workspace__sidebar .input,
 .workspace__inspector .input {
   min-height: 34px;
-  padding: 0 11px;
+  padding: 0 9px;
   font-size: $font-size-sm;
 }
 
 .workspace__sidebar .button.button--small,
 .workspace__inspector .button.button--small {
-  height: 24px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 7px;
   font-size: $font-size-xs;
 }
 
 .workspace__sidebar .button.button--small.button--icon,
 .workspace__inspector .button.button--small.button--icon {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
 }
 
 .workspace__empty {
@@ -396,22 +396,22 @@
 
 @media (max-width: 640px) {
   .workspace__toolbar {
-    gap: $spacing-xs;
+    gap: 3px;
   }
 }
 
 @media (max-height: 860px) {
   .workspace {
-    gap: $spacing-sm;
-    padding: $spacing-sm;
+    gap: 6px;
+    padding: 6px;
   }
 
   .workspace__header {
-    padding-top: $spacing-sm;
-    padding-bottom: $spacing-sm;
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
 
   .workspace__sidebar-body {
-    gap: $spacing-sm;
+    gap: 6px;
   }
 }

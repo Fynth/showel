@@ -20,7 +20,7 @@
 .app__body--welcome {
   display: grid;
   place-items: center;
-  padding: clamp($spacing-lg, 3vw, $spacing-2xl);
+  padding: clamp($spacing-md, 2.5vw, $spacing-xl);
 }
 
 .app__overlay {
@@ -29,7 +29,7 @@
   z-index: 10;
   display: grid;
   place-items: center;
-  padding: clamp($spacing-md, 3vw, $spacing-2xl);
+  padding: clamp($spacing-sm, 2.5vw, $spacing-xl);
   background: var(--color-backdrop);
   backdrop-filter: blur(10px);
 }

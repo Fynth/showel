@@ -5,11 +5,11 @@
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  min-height: 38px;
+  min-height: 34px;
   display: flex;
   align-items: center;
   gap: $spacing-xs;
-  padding: $spacing-xs $spacing-sm 0;
+  padding: 3px 6px 0;
   margin-bottom: -1px;
   background: var(--color-panel);
   overflow-x: auto;
@@ -18,8 +18,8 @@
 
 .tabbar__tab,
 .tabbar__add {
-  height: 30px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-top-left-radius: $radius-md;
   border-top-right-radius: $radius-md;
@@ -42,7 +42,7 @@
 .tabbar__tab {
   display: inline-flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: 6px;
   max-width: clamp(140px, 18vw, 220px);
   min-width: 0;
   background: var(--color-panel-2);
@@ -52,7 +52,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: 6px;
   overflow: hidden;
 }
 
@@ -72,8 +72,8 @@
 
 .tabbar__close {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   margin-right: -4px;
   border-radius: 999px;
   color: var(--color-text-dim);

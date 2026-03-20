@@ -5,8 +5,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
-  padding: clamp($spacing-xs, 1vw, $spacing-sm);
+  gap: 6px;
+  padding: clamp(3px, 0.8vw, 6px);
   border: 1px solid var(--color-border);
   border-radius: $radius-lg;
   background: var(--color-panel);
@@ -17,7 +17,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: $spacing-sm;
+  gap: 6px;
 }
 
 .agent-panel__header-copy,
@@ -53,7 +53,7 @@
 }
 
 .agent-panel__badge {
-  padding: $spacing-xs $spacing-sm;
+  padding: 3px 6px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel-2);
@@ -65,7 +65,7 @@
 .agent-panel__composer {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: 6px;
 }
 
 .agent-panel__connect {
@@ -78,8 +78,8 @@
 .agent-panel__registry-card {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
-  padding: $spacing-sm;
+  gap: 6px;
+  padding: 6px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel);
@@ -90,14 +90,14 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: $spacing-sm;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .agent-panel__field-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: $spacing-sm;
+  gap: 6px;
 }
 
 .agent-panel__section-title,
@@ -123,8 +123,8 @@
 .agent-panel__permission {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
-  padding: $spacing-sm;
+  gap: 6px;
+  padding: 6px;
   border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
   border-radius: $radius-md;
   background: color-mix(in srgb, var(--color-warning) 8%, var(--color-panel));
@@ -139,7 +139,7 @@
 .agent-panel__permission-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: $spacing-sm;
+  gap: 6px;
 }
 
 .agent-panel__composer-actions {
@@ -162,7 +162,7 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
-  padding: $spacing-sm;
+  padding: 6px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
   background: var(--color-panel);
@@ -211,7 +211,7 @@
 }
 
 .agent-panel__tool-emoji {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
 }
 

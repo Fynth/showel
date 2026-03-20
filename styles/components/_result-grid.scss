@@ -39,8 +39,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: $spacing-sm;
-  padding: 6px $spacing-sm;
+  gap: 6px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
 }
@@ -57,7 +57,7 @@
 .results__toolbar-chip {
   flex-shrink: 0;
   max-width: min(240px, 30vw);
-  padding: 2px 8px;
+  padding: 1px 6px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: 999px;
   color: var(--color-text-muted);
@@ -91,8 +91,8 @@
 .results__filters {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
-  padding: $spacing-sm;
+  gap: 3px;
+  padding: 6px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
 }
@@ -100,7 +100,7 @@
 .results__filters-topbar {
   display: flex;
   align-items: center;
-  gap: $spacing-xs;
+  gap: 3px;
   flex-wrap: wrap;
 }
 
@@ -129,10 +129,10 @@
 }
 
 .results__filter-null {
-  min-height: 30px;
+  min-height: 28px;
   display: flex;
   align-items: center;
-  padding: 0 $spacing-sm;
+  padding: 0 6px;
   border: 1px dashed var(--color-border);
   border-radius: $radius-md;
   color: var(--color-text-muted);
@@ -140,7 +140,7 @@
 }
 
 .results__summary {
-  padding: $spacing-sm;
+  padding: 6px;
   color: var(--color-text-muted);
 }
 
@@ -148,7 +148,7 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 0 $spacing-xs $spacing-xs;
+  padding: 0 3px 3px;
   scrollbar-gutter: stable both-edges;
   overscroll-behavior: contain;
   background:
@@ -163,8 +163,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 $spacing-sm $spacing-sm;
+  min-height: 30px;
+  padding: 0 6px 6px;
   color: var(--color-text-muted);
   font-size: $font-size-sm;
   border-top: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
@@ -213,8 +213,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: $spacing-sm;
-  padding: 6px $spacing-sm;
+  gap: 6px;
+  padding: 4px 6px;
   border: 0;
   background: transparent;
   color: var(--color-text);
@@ -267,7 +267,7 @@
 }
 
 .results__cell {
-  padding: 8px $spacing-sm;
+  padding: 6px;
   border-bottom: 1px solid var(--color-border);
   border-right: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   white-space: nowrap;
@@ -301,7 +301,7 @@
 .results__cell-input {
   width: 100%;
   min-width: 120px;
-  padding: $spacing-xs $spacing-sm;
+  padding: 3px 6px;
   border: 1px solid var(--color-primary);
   border-radius: $radius-sm;
   background: var(--editor-bg);
@@ -334,8 +334,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: $spacing-sm;
-  padding: $spacing-sm;
+  gap: 6px;
+  padding: 6px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -360,7 +360,7 @@
   display: flex;
   align-items: center;
   gap: $spacing-xs;
-  padding: $spacing-xs $spacing-sm;
+  padding: 3px 6px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -374,15 +374,15 @@
 .results__details-list {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
-  padding: $spacing-sm;
+  gap: 6px;
+  padding: 6px;
 }
 
 .results__details-field {
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
-  padding: 6px;
+  padding: 5px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: $radius-md;
   background: color-mix(in srgb, var(--color-panel) 86%, transparent);
@@ -407,14 +407,14 @@
 }
 
 .results__details-value {
-  padding: 6px;
+  padding: 5px;
   border: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
   border-radius: $radius-sm;
   background: var(--editor-bg);
 }
 
 .results__details-json {
-  padding: $spacing-sm;
+  padding: 6px;
 }
 
 @media (max-width: 760px) {
