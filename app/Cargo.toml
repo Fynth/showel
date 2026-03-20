@@ -14,6 +14,9 @@ rfd = "0.17.2"
 [build-dependencies]
 grass = "0.13.4"
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winres = "0.1.12"
+
 [features]
 default = ["desktop"]
 desktop = ["dioxus/desktop"]

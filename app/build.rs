@@ -26,7 +26,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
 
     write_generated_css(&output_css, &css)?;
+    configure_windows_resources(&workspace_root)?;
 
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn configure_windows_resources(workspace_root: &Path) -> Result<(), Box<dyn Error>> {
+    let icon_path = workspace_root.join("icons").join("icon.ico");
+    println!("cargo:rerun-if-changed={}", icon_path.display());
+
+    let icon_path = icon_path.to_string_lossy().into_owned();
+    let mut resources = winres::WindowsResource::new();
+    resources.set_icon(&icon_path);
+    resources.compile()?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_windows_resources(_workspace_root: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
