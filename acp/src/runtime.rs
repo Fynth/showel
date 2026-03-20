@@ -7,6 +7,7 @@ use models::{
     AcpPermissionRequest,
 };
 use std::{
+    cell::RefCell,
     collections::HashMap,
     path::PathBuf,
     rc::Rc,
@@ -33,6 +34,10 @@ struct AcpRuntimeHandle {
     permission_registry: PermissionRegistry,
     terminal_registry: TerminalRegistry,
     _thread: thread::JoinHandle<()>,
+}
+
+fn should_refresh_session_per_prompt(agent_name: &str) -> bool {
+    agent_name.to_ascii_lowercase().contains("opencode")
 }
 
 enum AcpCommand {
@@ -685,7 +690,10 @@ async fn run_acp_worker(
         }
     };
 
-    let session_response = match conn.new_session(acp::NewSessionRequest::new(cwd)).await {
+    let session_response = match conn
+        .new_session(acp::NewSessionRequest::new(cwd.clone()))
+        .await
+    {
         Ok(response) => response,
         Err(err) => {
             let _ = ready_tx.send(Err(format!("ACP session creation failed: {err}")));
@@ -718,14 +726,35 @@ async fn run_acp_worker(
     let _ = event_tx.send(AcpEvent::Connected(connection));
     let _ = event_tx.send(AcpEvent::Status(format!("Connected to {agent_name}")));
 
+    let active_session_id = Rc::new(RefCell::new(session_response.session_id.to_string()));
+    let refresh_session_per_prompt = should_refresh_session_per_prompt(&agent_name);
+
     while let Some(command) = command_rx.recv().await {
         match command {
             AcpCommand::Prompt(prompt) => {
                 let conn = Rc::clone(&conn);
-                let session_id = session_response.session_id.clone();
+                let cwd = cwd.clone();
                 let event_tx = event_tx.clone();
+                let active_session_id = Rc::clone(&active_session_id);
 
                 tokio::task::spawn_local(async move {
+                    let session_id = if refresh_session_per_prompt {
+                        match conn.new_session(acp::NewSessionRequest::new(cwd)).await {
+                            Ok(session) => {
+                                active_session_id.replace(session.session_id.to_string());
+                                session.session_id
+                            }
+                            Err(err) => {
+                                let _ = event_tx.send(AcpEvent::Error(format!(
+                                    "ACP session refresh failed: {err}"
+                                )));
+                                return;
+                            }
+                        }
+                    } else {
+                        active_session_id.borrow().clone().into()
+                    };
+
                     let _ = event_tx.send(AcpEvent::PromptStarted);
                     match conn
                         .prompt(acp::PromptRequest::new(
@@ -747,12 +776,8 @@ async fn run_acp_worker(
                 });
             }
             AcpCommand::Cancel => {
-                if let Err(err) = conn
-                    .cancel(acp::CancelNotification::new(
-                        session_response.session_id.clone(),
-                    ))
-                    .await
-                {
+                let session_id = active_session_id.borrow().clone();
+                if let Err(err) = conn.cancel(acp::CancelNotification::new(session_id)).await {
                     let _ = event_tx.send(AcpEvent::Error(format!("ACP cancel failed: {err}")));
                 } else {
                     let _ = event_tx.send(AcpEvent::Status("Cancelling prompt...".to_string()));
@@ -766,6 +791,18 @@ async fn run_acp_worker(
 
     drop(child);
     let _ = event_tx.send(AcpEvent::Disconnected);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_refresh_session_per_prompt;
+
+    #[test]
+    fn opencode_uses_fresh_sessions() {
+        assert!(should_refresh_session_per_prompt("OpenCode"));
+        assert!(should_refresh_session_per_prompt("opencode acp"));
+        assert!(!should_refresh_session_per_prompt("Ollama ACP Bridge"));
+    }
 }
 
 fn normalize_cwd(cwd: &str) -> Result<PathBuf, String> {

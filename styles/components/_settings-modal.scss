@@ -87,10 +87,14 @@
 }
 
 .settings-modal__segmented {
-  display: inline-flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: $spacing-xs;
-  flex-wrap: wrap;
+}
+
+.settings-modal__segmented .button {
+  width: 100%;
+  justify-content: center;
 }
 
 .settings-modal__grid {
@@ -99,12 +103,35 @@
   gap: $spacing-sm;
 }
 
+.settings-modal__grid .field {
+  padding: $spacing-sm;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--color-panel-2) 74%, transparent);
+}
+
 .settings-modal__toggle {
-  display: inline-flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
   gap: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
   color: var(--color-text);
   font-size: $font-size-sm;
+}
+
+.settings-modal__toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  accent-color: var(--color-primary);
+}
+
+.settings-modal__toggle span {
+  line-height: 1.4;
 }
 
 @media (max-width: 760px) {
@@ -112,6 +139,10 @@
     width: 100%;
     max-height: 100%;
     border-radius: 14px;
+  }
+
+  .settings-modal__segmented {
+    grid-template-columns: 1fr;
   }
 
   .settings-modal__header,

@@ -198,13 +198,71 @@ fn is_simple_column_ref(item: &str) -> bool {
 
 fn strip_limit_offset(tail: &str) -> String {
     let lower = tail.to_lowercase();
-    let limit_pos = find_top_level_keyword(&lower, " limit ");
-    let offset_pos = find_top_level_keyword(&lower, " offset ");
+    let limit_pos = find_top_level_clause(&lower, "limit");
+    let offset_pos = find_top_level_clause(&lower, "offset");
 
     match (limit_pos, offset_pos) {
         (Some(limit), Some(offset)) => tail[..limit.min(offset)].trim().to_string(),
         (Some(limit), None) => tail[..limit].trim().to_string(),
         (None, Some(offset)) => tail[..offset].trim().to_string(),
         (None, None) => tail.trim().to_string(),
+    }
+}
+
+fn find_top_level_clause(sql: &str, keyword: &str) -> Option<usize> {
+    let bytes = sql.as_bytes();
+    let keyword_bytes = keyword.as_bytes();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut depth = 0i32;
+    let mut idx = 0usize;
+
+    while idx + keyword_bytes.len() <= bytes.len() {
+        let ch = bytes[idx] as char;
+        match ch {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            '(' if !in_single && !in_double => depth += 1,
+            ')' if !in_single && !in_double && depth > 0 => depth -= 1,
+            _ => {}
+        }
+
+        if !in_single
+            && !in_double
+            && depth == 0
+            && &bytes[idx..idx + keyword_bytes.len()] == keyword_bytes
+        {
+            let start_ok = idx == 0 || (bytes[idx - 1] as char).is_whitespace();
+            let end_idx = idx + keyword_bytes.len();
+            let end_ok = end_idx == bytes.len() || (bytes[end_idx] as char).is_whitespace();
+
+            if start_ok && end_ok {
+                return Some(idx);
+            }
+        }
+
+        idx += 1;
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{editable_select_plan, strip_limit_offset};
+
+    #[test]
+    fn strip_limit_offset_handles_leading_limit_clause() {
+        assert_eq!(strip_limit_offset("limit 100"), "");
+        assert_eq!(strip_limit_offset("offset 20"), "");
+        assert_eq!(strip_limit_offset("limit 100 offset 20"), "");
+    }
+
+    #[test]
+    fn editable_select_plan_strips_limit_from_quoted_table_query() {
+        let plan = editable_select_plan(r#"select * from "products" limit 100;"#).unwrap();
+
+        assert_eq!(plan.source.qualified_name, r#""products""#);
+        assert!(plan.tail.is_empty());
     }
 }

@@ -3,10 +3,14 @@ use dioxus::prelude::*;
 use models::{ConnectionRequest, SqliteFormData};
 use rfd::AsyncFileDialog;
 
+use super::connection_status_class;
+
 #[component]
 pub fn SqliteForm() -> Element {
     let mut path = use_signal(|| "".to_string());
     let mut status = use_signal(|| "Idle".to_string());
+    let status_value = status();
+    let status_class = connection_status_class(&status_value);
 
     rsx! {
         form {
@@ -81,13 +85,15 @@ pub fn SqliteForm() -> Element {
                 }
             }
 
-            button {
-                class: "button button--primary",
-                r#type: "submit",
-                "Connect"
+            div {
+                class: "connect-form__actions",
+                button {
+                    class: "button button--primary connect-form__submit",
+                    r#type: "submit",
+                    "Connect"
+                }
+                p { class: "{status_class}", "Status: {status_value}" }
             }
-
-            p { class: "connect-screen__status", "Status: {status}" }
         }
     }
 }

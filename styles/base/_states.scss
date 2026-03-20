@@ -10,11 +10,11 @@
     border-color 120ms ease,
     box-shadow 120ms ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: var(--color-hover);
   }
 
-  &:active {
+  &:active:not(:disabled) {
     background: var(--color-active);
   }
 

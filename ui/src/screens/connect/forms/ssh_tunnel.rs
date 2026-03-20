@@ -16,7 +16,7 @@ pub fn SshTunnelFields(
                 div {
                     p { class: "connect-screen__section-title", "SSH Tunnel" }
                     p {
-                        class: "connect-screen__status",
+                        class: "connect-screen__status connect-screen__status--hint",
                         "Forward the database port through the local OpenSSH client using agent or private key authentication."
                     }
                 }

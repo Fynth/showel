@@ -2,7 +2,7 @@ use crate::app_state::add_connection_session;
 use dioxus::prelude::*;
 use models::{ConnectionRequest, PostgresFormData, SshTunnelConfig};
 
-use super::SshTunnelFields;
+use super::{SshTunnelFields, connection_status_class};
 
 #[component]
 pub fn PostgresForm() -> Element {
@@ -17,6 +17,8 @@ pub fn PostgresForm() -> Element {
     let ssh_username = use_signal(String::new);
     let ssh_private_key_path = use_signal(String::new);
     let mut status = use_signal(|| "Idle".to_string());
+    let status_value = status();
+    let status_class = connection_status_class(&status_value);
 
     rsx! {
         form {
@@ -130,13 +132,15 @@ pub fn PostgresForm() -> Element {
                 private_key_path: ssh_private_key_path,
             }
 
-            button {
-                class: "button button--primary",
-                r#type: "submit",
-                "Connect"
+            div {
+                class: "connect-form__actions",
+                button {
+                    class: "button button--primary connect-form__submit",
+                    r#type: "submit",
+                    "Connect"
+                }
+                p { class: "{status_class}", "Status: {status_value}" }
             }
-
-            p { class: "connect-screen__status", "Status: {status}" }
         }
     }
 }

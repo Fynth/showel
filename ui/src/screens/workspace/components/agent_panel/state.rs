@@ -134,11 +134,11 @@ pub(super) fn push_message(state: &mut AcpPanelState, kind: AcpMessageKind, text
 
 pub(super) fn message_kind_label(kind: &AcpMessageKind) -> &'static str {
     match kind {
-        AcpMessageKind::User => "User",
+        AcpMessageKind::User => "You",
         AcpMessageKind::Agent => "Agent",
-        AcpMessageKind::Thought => "Thinking",
-        AcpMessageKind::Tool => "🛠",
-        AcpMessageKind::System => "System",
+        AcpMessageKind::Thought => "Working",
+        AcpMessageKind::Tool => "Tool",
+        AcpMessageKind::System => "Status",
         AcpMessageKind::Error => "Error",
     }
 }

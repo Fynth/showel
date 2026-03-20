@@ -21,6 +21,11 @@
   &:disabled {
     cursor: default;
     opacity: 0.45;
+    pointer-events: none;
+  }
+
+  &:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--color-border-strong) 82%, transparent);
   }
 }
 
@@ -28,6 +33,15 @@
   border-color: transparent;
   background: var(--color-primary);
   color: white;
+
+  &:not(:disabled):hover {
+    border-color: transparent;
+    background: var(--color-primary-hover);
+  }
+
+  &:not(:disabled):active {
+    background: var(--color-primary-active);
+  }
 }
 
 .button--ghost {
@@ -37,6 +51,15 @@
 .button--active {
   border-color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 18%, var(--color-panel-2));
+
+  &:not(:disabled):hover {
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 24%, var(--color-panel-2));
+  }
+
+  &:not(:disabled):active {
+    background: color-mix(in srgb, var(--color-primary) 30%, var(--color-panel-2));
+  }
 }
 
 .button--small {

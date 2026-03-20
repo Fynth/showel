@@ -1,3 +1,24 @@
 * {
   scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-border-strong) 86%, transparent)
+    color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border-strong) 86%, transparent);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-primary) 44%, var(--color-border-strong));
 }

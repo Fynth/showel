@@ -2,11 +2,18 @@
 
 .editor-shell {
   position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-panel);
   overflow: hidden;
+}
+
+.editor-shell--editor-hidden .workspace__results {
+  padding-top: 3px;
+  border-top: 0;
 }
 
 .editor {

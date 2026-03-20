@@ -1,6 +1,7 @@
 @use "../base/tokens" as *;
 
 .agent-panel {
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -65,7 +66,15 @@
 .agent-panel__composer {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: $spacing-sm;
+}
+
+.agent-panel__session {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
 }
 
 .agent-panel__connect {
@@ -74,24 +83,58 @@
   padding-right: $spacing-2xs;
 }
 
+.agent-panel__mode-switch {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: $spacing-xs;
+}
+
+.agent-panel__mode-button {
+  height: auto;
+  min-height: 52px;
+  padding: $spacing-sm;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.agent-panel__mode-name {
+  font-weight: 600;
+}
+
+.agent-panel__mode-kind {
+  color: var(--color-text-muted);
+  font-size: $font-size-xs;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .agent-panel__section,
 .agent-panel__registry-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid var(--color-border);
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
   border-radius: $radius-md;
-  background: var(--color-panel);
+  background: color-mix(in srgb, var(--color-panel-2) 76%, transparent);
 }
 
 .agent-panel__section-header,
 .agent-panel__registry-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.agent-panel__section-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .agent-panel__field-grid {
@@ -111,13 +154,18 @@
 .agent-panel__message-actions {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 4px;
 }
 
 .agent-panel__section > .button,
-.agent-panel__registry-card > .button {
+.agent-panel__registry-card > .button,
+.agent-panel__registry-actions > .button {
   width: 100%;
   justify-content: center;
+}
+
+.agent-panel__hint--status {
+  color: var(--color-info);
 }
 
 .agent-panel__permission {
@@ -133,7 +181,7 @@
 .agent-panel__permission-copy {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 4px;
 }
 
 .agent-panel__permission-actions {
@@ -143,9 +191,13 @@
 }
 
 .agent-panel__composer-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: $spacing-xs;
-  flex-wrap: wrap;
+}
+
+.agent-panel__composer-actions .button {
+  width: 100%;
 }
 
 .agent-panel__messages {
@@ -155,17 +207,29 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
+  padding: 2px $spacing-2xs 0 0;
+}
+
+.agent-panel__composer {
+  margin-top: auto;
+}
+
+.agent-panel__message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-xs;
   padding-right: $spacing-2xs;
 }
 
 .agent-panel__message {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
-  padding: 6px;
-  border: 1px solid var(--color-border);
+  gap: 4px;
+  padding: $spacing-sm;
+  border: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
   border-radius: $radius-md;
-  background: var(--color-panel);
+  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
 }
 
 .agent-panel__message--user {
@@ -190,6 +254,13 @@
 }
 
 .agent-panel__message-role {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-panel) 88%, transparent);
   font-size: $font-size-xs;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -207,12 +278,7 @@
 }
 
 .agent-panel__message-actions {
-  margin-top: $spacing-xs;
-}
-
-.agent-panel__tool-emoji {
-  font-size: 16px;
-  line-height: 1;
+  margin-top: 2px;
 }
 
 .agent-panel__thinking {
@@ -259,6 +325,12 @@
   resize: vertical;
   font-family: $font-family-mono;
   line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .agent-panel__composer-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 1500px) {

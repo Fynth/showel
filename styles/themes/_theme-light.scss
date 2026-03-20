@@ -1,4 +1,6 @@
 .theme-light {
+  color-scheme: light;
+
   --color-bg: #f3f6fb;
   --color-panel: #ffffff;
   --color-panel-2: #f9fbfe;
@@ -13,6 +15,7 @@
   --color-primary: #2563eb;
   --color-primary-hover: #3a75f0;
   --color-primary-active: #1f57ce;
+  --color-info: #1b84d6;
   --color-success: #169b69;
   --color-danger: #d4475b;
   --color-warning: #b88317;

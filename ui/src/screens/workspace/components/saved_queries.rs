@@ -4,7 +4,6 @@ use crate::{
 };
 use dioxus::prelude::*;
 use models::{QueryTabState, SavedQuery, SavedQueryKind};
-use std::collections::BTreeMap;
 
 #[component]
 pub fn SavedQueriesPanel(
@@ -16,7 +15,6 @@ pub fn SavedQueriesPanel(
     next_tab_id: Signal<u64>,
 ) -> Element {
     let mut save_title = use_signal(String::new);
-    let mut save_folder = use_signal(|| "General".to_string());
     let mut panel_status = use_signal(String::new);
 
     let active_tab = tabs
@@ -37,20 +35,12 @@ pub fn SavedQueriesPanel(
         .map(|session| (session.name.clone(), session.id))
         .collect::<std::collections::HashMap<_, _>>();
 
-    let mut grouped = BTreeMap::<String, Vec<SavedQuery>>::new();
-    for item in saved_queries {
-        grouped
-            .entry(item.folder_name().to_string())
-            .or_default()
-            .push(item);
-    }
-    for items in grouped.values_mut() {
-        items.sort_by(|left, right| {
-            left.title
-                .cmp(&right.title)
-                .then_with(|| left.id.cmp(&right.id))
-        });
-    }
+    let mut items = saved_queries;
+    items.sort_by(|left, right| {
+        left.title
+            .cmp(&right.title)
+            .then_with(|| left.id.cmp(&right.id))
+    });
 
     rsx! {
         section {
@@ -61,33 +51,21 @@ pub fn SavedQueriesPanel(
                 p {
                     class: "workspace__hint",
                     if panel_status().trim().is_empty() {
-                        "Reusable queries and snippets grouped by folder."
+                        "Reusable queries and snippets."
                     } else {
                         "{panel_status}"
                     }
                 }
 
                 div { class: "saved-queries__form",
-                    div { class: "field",
-                        label { class: "field__label", "Title" }
-                        input {
-                            class: "input",
-                            value: "{save_title}",
-                            placeholder: active_tab
-                                .as_ref()
-                                .map(|tab| tab.title.clone())
-                                .unwrap_or_else(|| "Saved Query".to_string()),
-                            oninput: move |event| save_title.set(event.value()),
-                        }
-                    }
-                    div { class: "field",
-                        label { class: "field__label", "Folder" }
-                        input {
-                            class: "input",
-                            value: "{save_folder}",
-                            placeholder: "General",
-                            oninput: move |event| save_folder.set(event.value()),
-                        }
+                    input {
+                        class: "input",
+                        value: "{save_title}",
+                        placeholder: active_tab
+                            .as_ref()
+                            .map(|tab| tab.title.clone())
+                            .unwrap_or_else(|| "Saved Query".to_string()),
+                        oninput: move |event| save_title.set(event.value()),
                     }
                     div { class: "saved-queries__form-actions",
                         button {
@@ -100,7 +78,6 @@ pub fn SavedQueriesPanel(
                                         SavedQueryKind::Snippet,
                                         active_tab.clone(),
                                         save_title,
-                                        save_folder,
                                         next_saved_query_id,
                                         saved_queries_signal,
                                         panel_status,
@@ -119,7 +96,6 @@ pub fn SavedQueriesPanel(
                                         SavedQueryKind::Query,
                                         active_tab.clone(),
                                         save_title,
-                                        save_folder,
                                         next_saved_query_id,
                                         saved_queries_signal,
                                         panel_status,
@@ -134,89 +110,77 @@ pub fn SavedQueriesPanel(
 
             div {
                 class: "saved-queries__body",
-                if grouped.is_empty() {
+                if items.is_empty() {
                     p { class: "empty-state", "No saved queries or snippets yet." }
                 } else {
-                    for (folder_name, items) in grouped {
-                        div {
-                            class: "saved-queries__folder",
-                            div {
-                                class: "saved-queries__folder-header",
-                                h3 { class: "saved-queries__folder-title", "{folder_name}" }
-                                span { class: "saved-queries__folder-count", "{items.len()}" }
-                            }
-                            div { class: "saved-queries__folder-body",
-                                for item in items {
-                                    {
-                                        let source_session_id = item
-                                            .connection_name
-                                            .as_ref()
-                                            .and_then(|name| sessions_by_name.get(name))
-                                            .copied();
-                                        let load_label = if item.kind == SavedQueryKind::Snippet {
-                                            "Insert in tab"
-                                        } else {
-                                            "Load in tab"
-                                        };
+                    for item in items {
+                        {
+                            let source_session_id = item
+                                .connection_name
+                                .as_ref()
+                                .and_then(|name| sessions_by_name.get(name))
+                                .copied();
+                            let load_label = if item.kind == SavedQueryKind::Snippet {
+                                "Insert in tab"
+                            } else {
+                                "Load in tab"
+                            };
 
-                                        rsx! {
-                                            article { class: "saved-queries__item",
-                                                div { class: "saved-queries__item-top",
-                                                    p { class: "saved-queries__title", "{item.title}" }
-                                                    span { class: "saved-queries__kind", "{item.kind_label()}" }
+                            rsx! {
+                                article { class: "saved-queries__item",
+                                    div { class: "saved-queries__item-top",
+                                        p { class: "saved-queries__title", "{item.title}" }
+                                        span { class: "saved-queries__kind", "{item.kind_label()}" }
+                                    }
+                                    if let Some(connection_name) = item.connection_name.clone() {
+                                        p {
+                                            class: "saved-queries__connection",
+                                            title: "{connection_name}",
+                                            "{connection_name}"
+                                        }
+                                    }
+                                    pre {
+                                        class: "saved-queries__sql",
+                                        title: "{item.sql}",
+                                        "{item.sql}"
+                                    }
+                                    div { class: "saved-queries__actions",
+                                        button {
+                                            class: "button button--ghost button--small",
+                                            onclick: {
+                                                let item = item.clone();
+                                                move |_| {
+                                                    load_saved_query_into_workspace(
+                                                        item.clone(),
+                                                        source_session_id,
+                                                        tabs,
+                                                        active_tab_id,
+                                                        next_tab_id,
+                                                    );
+                                                    panel_status.set(format!(
+                                                        "{} loaded into workspace.",
+                                                        item.title
+                                                    ));
                                                 }
-                                                if let Some(connection_name) = item.connection_name.clone() {
-                                                    p {
-                                                        class: "saved-queries__connection",
-                                                        title: "{connection_name}",
-                                                        "{connection_name}"
-                                                    }
+                                            },
+                                            "{load_label}"
+                                        }
+                                        button {
+                                            class: "button button--ghost button--small",
+                                            onclick: {
+                                                let item_id = item.id;
+                                                let item_title = item.title.clone();
+                                                move |_| {
+                                                    saved_queries_signal.with_mut(|items| {
+                                                        items.retain(|existing| existing.id != item_id);
+                                                    });
+                                                    panel_status.set(format!("Deleted {item_title}."));
+                                                    spawn(async move {
+                                                        let _ = storage::delete_saved_query(item_id).await;
+                                                    });
                                                 }
-                                                pre {
-                                                    class: "saved-queries__sql",
-                                                    title: "{item.sql}",
-                                                    "{item.sql}"
-                                                }
-                                                div { class: "saved-queries__actions",
-                                                    button {
-                                                        class: "button button--ghost button--small",
-                                                        onclick: {
-                                                            let item = item.clone();
-                                                            move |_| {
-                                                                load_saved_query_into_workspace(
-                                                                    item.clone(),
-                                                                    source_session_id,
-                                                                    tabs,
-                                                                    active_tab_id,
-                                                                    next_tab_id,
-                                                                );
-                                                                panel_status.set(format!(
-                                                                    "{} loaded into workspace.",
-                                                                    item.title
-                                                                ));
-                                                            }
-                                                        },
-                                                        "{load_label}"
-                                                    }
-                                                    button {
-                                                        class: "button button--ghost button--small",
-                                                        onclick: {
-                                                            let item_id = item.id;
-                                                            let item_title = item.title.clone();
-                                                            move |_| {
-                                                                saved_queries_signal.with_mut(|items| {
-                                                                    items.retain(|existing| existing.id != item_id);
-                                                                });
-                                                                panel_status.set(format!("Deleted {item_title}."));
-                                                                spawn(async move {
-                                                                    let _ = storage::delete_saved_query(item_id).await;
-                                                                });
-                                                            }
-                                                        },
-                                                        "Delete"
-                                                    }
-                                                }
-                                            }
+                                            },
+                                            "Delete"
                                         }
                                     }
                                 }
@@ -233,7 +197,6 @@ fn save_current_sql(
     kind: SavedQueryKind,
     active_tab: Option<QueryTabState>,
     mut save_title: Signal<String>,
-    save_folder: Signal<String>,
     mut next_saved_query_id: Signal<u64>,
     mut saved_queries_signal: Signal<Vec<SavedQuery>>,
     mut panel_status: Signal<String>,
@@ -252,16 +215,11 @@ fn save_current_sql(
     } else {
         save_title().trim().to_string()
     };
-    let folder = if save_folder().trim().is_empty() {
-        "General".to_string()
-    } else {
-        save_folder().trim().to_string()
-    };
     let connection_name = APP_STATE.read().session_name(active_tab.session_id);
     let item = SavedQuery {
         id: next_saved_query_id(),
         title: title.clone(),
-        folder,
+        folder: String::new(),
         sql: active_tab.sql,
         kind,
         connection_name,
@@ -271,9 +229,8 @@ fn save_current_sql(
     saved_queries_signal.with_mut(|items| {
         items.push(item.clone());
         items.sort_by(|left, right| {
-            left.folder_name()
-                .cmp(right.folder_name())
-                .then_with(|| left.title.cmp(&right.title))
+            left.title
+                .cmp(&right.title)
                 .then_with(|| left.id.cmp(&right.id))
         });
     });

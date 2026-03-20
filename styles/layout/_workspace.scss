@@ -136,6 +136,9 @@
 .workspace__canvas {
   min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
 }
 
 .workspace__inspector {
@@ -172,13 +175,14 @@
 .workspace__results {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
   padding: 0 3px 3px;
   border-top: 1px solid var(--color-border);
   background: var(--color-panel);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .workspace__section-title {
@@ -198,6 +202,16 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.workspace__panel--history {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-panel-2) 68%, transparent),
+      transparent 160px
+    ),
+    var(--color-panel);
 }
 
 .workspace__tool-panel {

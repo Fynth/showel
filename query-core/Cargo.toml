@@ -11,3 +11,6 @@ serde_json = "1.0.140"
 sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "postgres", "runtime-tokio-rustls", "uuid", "time", "json", "bigdecimal"] }
 time = "0.3.41"
 uuid = "1.17.0"
+
+[dev-dependencies]
+tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread"] }

@@ -95,8 +95,13 @@ pub async fn load_table_preview_page(
             )))
         }
         DatabaseConnection::ClickHouse(config) => {
-            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
-            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+            let schema_name = source
+                .schema
+                .clone()
+                .unwrap_or_else(|| "default".to_string());
+            let pk_result =
+                clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name)
+                    .await?;
 
             let (response, row_locators) = if let Some((ref pk_columns, _)) = pk_result {
                 let pk_select = pk_columns
@@ -120,9 +125,7 @@ pub async fn load_table_preview_page(
                 let row_locators: Vec<String> = response
                     .data
                     .iter()
-                    .map(|row| {
-                        build_clickhouse_locator(pk_columns, &row[..pk_count])
-                    })
+                    .map(|row| build_clickhouse_locator(pk_columns, &row[..pk_count]))
                     .collect();
                 (response, row_locators)
             } else {
@@ -167,17 +170,11 @@ pub async fn load_table_preview_page(
                     .collect();
                 (columns, rows)
             } else {
-                let columns: Vec<String> = response
-                    .meta
-                    .iter()
-                    .map(|m| m.name.clone())
-                    .collect();
+                let columns: Vec<String> = response.meta.iter().map(|m| m.name.clone()).collect();
                 let rows: Vec<Vec<String>> = response
                     .data
                     .iter()
-                    .map(|row| {
-                        row.iter().map(clickhouse_json_value_to_string).collect()
-                    })
+                    .map(|row| row.iter().map(clickhouse_json_value_to_string).collect())
                     .collect();
                 (columns, rows)
             };
@@ -236,8 +233,13 @@ pub async fn update_table_cell(
             Ok(())
         }
         DatabaseConnection::ClickHouse(config) => {
-            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
-            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+            let schema_name = source
+                .schema
+                .clone()
+                .unwrap_or_else(|| "default".to_string());
+            let pk_result =
+                clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name)
+                    .await?;
 
             let Some((pk_columns, _)) = pk_result else {
                 return Err(DatabaseError::UnsupportedDriver(
@@ -401,8 +403,13 @@ pub async fn next_table_primary_key_id(
             )))
         }
         DatabaseConnection::ClickHouse(config) => {
-            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
-            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+            let schema_name = source
+                .schema
+                .clone()
+                .unwrap_or_else(|| "default".to_string());
+            let pk_result =
+                clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name)
+                    .await?;
 
             let Some((pk_columns, data_type)) = pk_result else {
                 return Ok(None);
@@ -415,8 +422,7 @@ pub async fn next_table_primary_key_id(
             let column = quote_identifier_clickhouse(&pk_columns[0]);
             let sql = format!(
                 "SELECT toString(COALESCE(MAX({}), 0) + 1) AS next_id FROM {}",
-                column,
-                source.qualified_name
+                column, source.qualified_name
             );
             let response = execute_json_query(&config, &sql)
                 .await
@@ -471,8 +477,13 @@ pub async fn delete_table_row(
             Ok(())
         }
         DatabaseConnection::ClickHouse(config) => {
-            let schema_name = source.schema.clone().unwrap_or_else(|| "default".to_string());
-            let pk_result = clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name).await?;
+            let schema_name = source
+                .schema
+                .clone()
+                .unwrap_or_else(|| "default".to_string());
+            let pk_result =
+                clickhouse_get_primary_key_columns(&config, &schema_name, &source.table_name)
+                    .await?;
 
             let Some((pk_columns, _)) = pk_result else {
                 return Err(DatabaseError::UnsupportedDriver(
@@ -774,6 +785,64 @@ async fn postgres_single_primary_key_column(
         .try_get::<String, _>("data_type")
         .unwrap_or_else(|_| String::new());
     Ok(Some((column_name, data_type)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::execute_query_page;
+    use models::{DatabaseConnection, QueryOutput};
+    use sqlx::SqlitePool;
+
+    #[tokio::test]
+    async fn execute_query_page_supports_quoted_sqlite_table_names() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            create table "products" (
+                id integer primary key,
+                name text not null,
+                price real not null
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            insert into "products" (name, price)
+            values
+                ('Wireless Mouse', 29.99),
+                ('Mechanical Keyboard', 89.99);
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let result = execute_query_page(
+            DatabaseConnection::Sqlite(pool),
+            r#"select * from "products" limit 100;"#.to_string(),
+            100,
+            0,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        match result {
+            QueryOutput::Table(page) => {
+                assert_eq!(page.columns, vec!["id", "name", "price"]);
+                assert_eq!(page.rows.len(), 2);
+                assert_eq!(page.rows[0][1], "Wireless Mouse");
+                assert!(page.editable.is_some());
+            }
+            other => panic!("expected table result, got {other:?}"),
+        }
+    }
 }
 
 fn sqlite_type_supports_auto_id(data_type: &str) -> bool {

@@ -3,6 +3,8 @@ name: Build Windows Packages
 on:
   push:
     branches: [main, master]
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       package_type:
@@ -18,6 +20,9 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -68,6 +73,17 @@ jobs:
         if: github.event.inputs.package_type == 'exe' || github.event.inputs.package_type == 'both' || github.event_name == 'push'
         run: cargo build --release -p app --features bundle
 
+      - name: Prepare Windows release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          Copy-Item target/release/app.exe release-assets/showel-windows-x86_64.exe
+          if (Test-Path target/release/app.pdb) {
+            Copy-Item target/release/app.pdb release-assets/showel-windows-x86_64.pdb
+          }
+
       - name: Upload MSI Artifact
         if: github.event.inputs.package_type == 'msi' || github.event.inputs.package_type == 'both'
         uses: actions/upload-artifact@v4
@@ -89,3 +105,12 @@ jobs:
             target/release/app.pdb
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish Windows release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release-assets/showel-windows-x86_64.exe
+            release-assets/showel-windows-x86_64.pdb

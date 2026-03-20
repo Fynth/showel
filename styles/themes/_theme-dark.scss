@@ -1,4 +1,6 @@
 .theme-dark {
+  color-scheme: dark;
+
   --color-bg: #000000;
   --color-panel: #050608;
   --color-panel-2: #090b0e;
@@ -13,6 +15,7 @@
   --color-primary: #2f7cff;
   --color-primary-hover: #4a8dff;
   --color-primary-active: #2169de;
+  --color-info: #5bb5ff;
   --color-success: #31c38a;
   --color-danger: #ef5f77;
   --color-warning: #f0b248;

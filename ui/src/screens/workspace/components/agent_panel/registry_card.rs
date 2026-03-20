@@ -9,26 +9,34 @@ pub(super) fn RegistryAgentCard(
 ) -> Element {
     rsx! {
         article { class: "agent-panel__registry-card",
-            div { class: "agent-panel__registry-copy",
-                div { class: "agent-panel__registry-row",
+            div { class: "agent-panel__registry-row",
+                div { class: "agent-panel__registry-copy",
                     h5 { class: "agent-panel__registry-title", "{agent.name}" }
-                    span { class: "agent-panel__badge", "v{agent.version}" }
+                    p { class: "agent-panel__hint", "{agent.description}" }
                 }
-                p { class: "agent-panel__hint", "{agent.description}" }
+                span { class: "agent-panel__badge", "v{agent.version}" }
+            }
+            div { class: "agent-panel__registry-actions",
                 p {
-                    class: "agent-panel__hint",
+                    class: "agent-panel__hint agent-panel__hint--status",
                     if agent.installed {
-                        "Installed locally and ready to connect."
+                        "Installed locally"
                     } else {
-                        "Downloads and starts the official registry build as `opencode acp`."
+                        "Installs on first connect"
                     }
                 }
-            }
-            button {
-                class: "button button--primary button--small",
-                disabled: busy,
-                onclick: move |event| on_connect.call(event),
-                if busy { "Preparing..." } else if agent.installed { "Connect OpenCode" } else { "Install & Connect OpenCode" }
+                button {
+                    class: "button button--primary button--small",
+                    disabled: busy,
+                    onclick: move |event| on_connect.call(event),
+                    if busy {
+                        "Preparing..."
+                    } else if agent.installed {
+                        "Connect"
+                    } else {
+                        "Install & connect"
+                    }
+                }
             }
         }
     }
