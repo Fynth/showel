@@ -45,10 +45,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          su builder -c "cd '${GITHUB_WORKSPACE}' && bash ./scripts/update-aur-srcinfo.sh && cp packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated && git checkout -- packaging/aur/showel-git/.SRCINFO"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && bash ./scripts/update-aur-srcinfo.sh && cp packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated"
+          git -C "${GITHUB_WORKSPACE}" checkout -- packaging/aur/showel-git/.SRCINFO
 
       - name: Verify tracked .SRCINFO
         shell: bash
         run: |
           set -euo pipefail
-          su builder -c "cd '${GITHUB_WORKSPACE}' && diff -u packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated"
+          diff -u \
+            "${GITHUB_WORKSPACE}/packaging/aur/showel-git/.SRCINFO" \
+            "${GITHUB_WORKSPACE}/packaging/aur/showel-git/.SRCINFO.generated"

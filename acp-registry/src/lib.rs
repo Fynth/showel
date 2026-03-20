@@ -5,12 +5,17 @@ use std::{
     collections::HashMap,
     io::Cursor,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 const ACP_REGISTRY_URL: &str =
     "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 const ACP_REGISTRY_ACCEPT: &str = "application/json";
 const ACP_REGISTRY_USER_AGENT: &str = concat!("showel/", env!("CARGO_PKG_VERSION"));
+const ACP_REGISTRY_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
+const ACP_REGISTRY_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
+const ACP_ARCHIVE_CONNECT_TIMEOUT: Duration = Duration::from_secs(6);
+const ACP_ARCHIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
 
 #[derive(Debug, Deserialize)]
 struct RegistryDocument {
@@ -41,7 +46,7 @@ struct RegistryBinaryTarget {
 }
 
 pub async fn load_acp_registry_agents() -> Result<Vec<AcpRegistryAgent>, String> {
-    let registry = fetch_registry().await?;
+    let registry = merge_with_built_in_registry(fetch_registry().await?);
     let platform_key = current_platform_key()?;
 
     let mut agents = registry
@@ -82,7 +87,7 @@ pub async fn install_acp_registry_agent(
     agent_id: String,
     cwd: String,
 ) -> Result<AcpLaunchRequest, String> {
-    let registry = fetch_registry().await?;
+    let registry = merge_with_built_in_registry(fetch_registry().await?);
     let platform_key = current_platform_key()?;
     let agent = registry
         .agents
@@ -127,6 +132,8 @@ pub async fn install_acp_registry_agent(
 
 async fn fetch_registry() -> Result<RegistryDocument, String> {
     let client = reqwest::Client::builder()
+        .connect_timeout(ACP_REGISTRY_CONNECT_TIMEOUT)
+        .timeout(ACP_REGISTRY_REQUEST_TIMEOUT)
         .build()
         .map_err(|err| format!("Failed to build ACP registry HTTP client: {err}"))?;
 
@@ -171,6 +178,23 @@ fn fallback_registry_document(reason: String) -> Result<RegistryDocument, String
         Err(reason)
     } else {
         Ok(fallback)
+    }
+}
+
+fn merge_with_built_in_registry(remote: RegistryDocument) -> RegistryDocument {
+    // Keep built-ins as a safety net, but let remote records override them when available.
+    let mut merged: HashMap<String, RegistryAgentRecord> = built_in_registry()
+        .agents
+        .into_iter()
+        .map(|agent| (agent.id.clone(), agent))
+        .collect();
+
+    for agent in remote.agents {
+        merged.insert(agent.id.clone(), agent);
+    }
+
+    RegistryDocument {
+        agents: merged.into_values().collect(),
     }
 }
 
@@ -336,7 +360,7 @@ fn current_platform_key() -> Result<String, String> {
 fn install_root(agent_id: &str, version: &str) -> Result<PathBuf, String> {
     let base_dir = dirs::data_local_dir()
         .or_else(dirs::data_dir)
-        .ok_or_else(|| "Failed to resolve local data directory".to_string())?;
+        .unwrap_or_else(|| std::env::temp_dir().join("showel"));
     Ok(base_dir
         .join("showel")
         .join("acp")
@@ -367,6 +391,8 @@ fn resolve_installed_command(install_root: &Path, cmd: &str) -> Option<PathBuf> 
 
 async fn download_and_extract(archive_url: &str, install_root: &Path) -> Result<(), String> {
     let client = reqwest::Client::builder()
+        .connect_timeout(ACP_ARCHIVE_CONNECT_TIMEOUT)
+        .timeout(ACP_ARCHIVE_REQUEST_TIMEOUT)
         .build()
         .map_err(|err| format!("Failed to build ACP download HTTP client: {err}"))?;
 
