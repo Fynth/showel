@@ -32,16 +32,23 @@ jobs:
           set -euo pipefail
           pacman -Syu --noconfirm git
 
+      - name: Prepare non-root AUR build user
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! id -u builder >/dev/null 2>&1; then
+            useradd --create-home builder
+          fi
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+
       - name: Regenerate .SRCINFO
         shell: bash
         run: |
           set -euo pipefail
-          bash ./scripts/update-aur-srcinfo.sh
-          cp packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated
-          git checkout -- packaging/aur/showel-git/.SRCINFO
+          su builder -c "cd '${GITHUB_WORKSPACE}' && bash ./scripts/update-aur-srcinfo.sh && cp packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated && git checkout -- packaging/aur/showel-git/.SRCINFO"
 
       - name: Verify tracked .SRCINFO
         shell: bash
         run: |
           set -euo pipefail
-          diff -u packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated
+          su builder -c "cd '${GITHUB_WORKSPACE}' && diff -u packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated"
