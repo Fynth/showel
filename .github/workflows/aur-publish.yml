@@ -1,0 +1,113 @@
+name: Publish AUR Package
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version without leading v'
+        required: true
+        type: string
+
+jobs:
+  publish-aur:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install AUR publish dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm git openssh curl
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${{ github.event.release.tag_name }}"
+            version="${version#v}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare non-root AUR user
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! id -u builder >/dev/null 2>&1; then
+            useradd --create-home builder
+          fi
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+
+      - name: Render AUR package files
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && ./scripts/render-aur-release-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${output_dir}' && bash ./scripts/update-aur-srcinfo.sh '${output_dir}'"
+
+      - name: Configure SSH for AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${AUR_SSH_PRIVATE_KEY}" ]]; then
+            echo "AUR_SSH_PRIVATE_KEY secret is not configured" >&2
+            exit 1
+          fi
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          cat <<'EOF' > ~/.ssh/config
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            User aur
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Push package to AUR
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aur_repo="${RUNNER_TEMP}/aur-repo"
+          git clone "ssh://aur@aur.archlinux.org/showel.git" "${aur_repo}"
+          cd "${aur_repo}"
+
+          if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git checkout --orphan master
+          fi
+
+          cp "${GITHUB_WORKSPACE}/packaging/aur/generated-showel/PKGBUILD" "${aur_repo}/PKGBUILD"
+          cp "${GITHUB_WORKSPACE}/packaging/aur/generated-showel/.SRCINFO" "${aur_repo}/.SRCINFO"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "AUR package is already up to date"
+            exit 0
+          fi
+
+          git add PKGBUILD .SRCINFO
+          git commit -m "showel ${VERSION}"
+          git push origin HEAD:master

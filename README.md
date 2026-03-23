@@ -107,32 +107,45 @@ The archive contains:
 dx bundle --release --platform desktop --package app --features bundle --package-types msi
 ```
 
-## Arch Linux With yay
+## AUR
 
-For Arch users, the better fit is an AUR package that `yay` can build and update.
+This repo includes two AUR packaging paths:
 
-This repo now includes:
+- `packaging/aur/showel-git/` for a VCS package that tracks the repository head
+- `packaging/aur/showel/PKGBUILD.in` plus `scripts/render-aur-release-package.sh` for a stable `showel` package generated from release tags
 
-- `packaging/aur/showel-git/PKGBUILD`
-- `packaging/aur/showel-git/.SRCINFO`
-- `.github/workflows/aur-check.yml` to verify `.SRCINFO` stays in sync with `PKGBUILD`
-
-Recommended package name:
-
-- `showel-git`
-
-Install and update with:
+Once the packages are published to AUR, install with:
 
 ```bash
+yay -S showel
 yay -S showel-git
+```
+
+Update with:
+
+```bash
 yay -Syu
 ```
 
+### Automatic AUR updates on each release
+
+The workflow `.github/workflows/aur-publish.yml` pushes a fresh `PKGBUILD` and `.SRCINFO` to the AUR repository `showel.git` every time a GitHub release is published.
+
+One-time setup:
+
+1. Create an AUR account.
+2. Generate an SSH key dedicated to AUR publishing.
+3. Add the public key to your AUR account.
+4. Add the private key to this GitHub repository as the Actions secret `AUR_SSH_PRIVATE_KEY`.
+5. Publish a GitHub release like `v0.1.5`, or run the workflow manually with the version input.
+
+After that, each new published release updates the AUR package automatically.
+
 Notes:
 
-- `showel-git` is the practical choice for AUR because it can track the Git repository directly
-- publishing to AUR still requires pushing `PKGBUILD` and `.SRCINFO` into a separate AUR repo named `showel-git`
-- if you want a versioned non-VCS AUR package later, add a separate `showel` package based on release tarballs
+- `showel` is the stable release package built from the tagged source tarball
+- `showel-git` is still useful if you want AUR users to track the latest commit instead of tagged releases
+- `.github/workflows/aur-check.yml` verifies the tracked `showel-git` metadata and smoke-tests the generated stable package metadata
 
 ## Windows CI
 

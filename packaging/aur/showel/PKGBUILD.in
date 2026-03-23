@@ -1,0 +1,52 @@
+pkgname=showel
+pkgver=__PKGVER__
+pkgrel=1
+pkgdesc="Fast native desktop database client built with Rust and Dioxus"
+arch=('x86_64')
+url="https://github.com/__OWNER__/__REPO__"
+license=('unknown')
+depends=(
+  'gtk3'
+  'webkit2gtk-4.1'
+  'libayatana-appindicator'
+  'xdotool'
+  'librsvg'
+)
+makedepends=(
+  'cargo'
+  'pkgconf'
+  'rust'
+)
+conflicts=('showel-git')
+options=('!lto')
+source=(
+  "${pkgname}-${pkgver}.tar.gz::https://github.com/__OWNER__/__REPO__/archive/refs/tags/v${pkgver}.tar.gz"
+)
+sha256sums=(
+  '__SOURCE_SHA256__'
+)
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  export CARGO_HOME="${srcdir}/cargo-home"
+  cargo fetch --locked
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  export CARGO_HOME="${srcdir}/cargo-home"
+  export CARGO_TARGET_DIR="${srcdir}/target"
+
+  cargo build --frozen --release -p app --features desktop
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/showel"
+  install -Dm644 "packaging/arch/showel.desktop" "${pkgdir}/usr/share/applications/showel.desktop"
+  install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/showel.svg"
+  install -Dm644 "README.md" "${pkgdir}/usr/share/doc/showel/README.md"
+}
