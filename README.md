@@ -113,11 +113,13 @@ This repo includes two AUR packaging paths:
 
 - `packaging/aur/showel-git/` for a VCS package that tracks the repository head
 - `packaging/aur/showel/PKGBUILD.in` plus `scripts/render-aur-release-package.sh` for a stable `showel` package generated from release tags
+- `packaging/aur/showel-bin/PKGBUILD.in` plus `scripts/render-aur-binary-package.sh` for a binary `showel-bin` package generated from GitHub release assets
 
 Once the packages are published to AUR, install with:
 
 ```bash
 yay -S showel
+yay -S showel-bin
 yay -S showel-git
 ```
 
@@ -129,7 +131,7 @@ yay -Syu
 
 ### Automatic AUR updates on each release
 
-The workflow `.github/workflows/aur-publish.yml` pushes a fresh `PKGBUILD` and `.SRCINFO` to the AUR repository `showel.git` every time a GitHub release is published.
+The workflow `.github/workflows/aur-publish.yml` pushes fresh `PKGBUILD` and `.SRCINFO` metadata to the AUR repositories `showel.git` and `showel-bin.git` every time a GitHub release is published.
 
 One-time setup:
 
@@ -143,9 +145,10 @@ After that, each new published release updates the AUR package automatically.
 
 Notes:
 
-- `showel` is the stable release package built from the tagged source tarball
+- `showel` is the stable source package built from the tagged source tarball
+- `showel-bin` installs the prebuilt Linux release artifact and is the fastest option on AUR
 - `showel-git` is still useful if you want AUR users to track the latest commit instead of tagged releases
-- `.github/workflows/aur-check.yml` verifies the tracked `showel-git` metadata and smoke-tests the generated stable package metadata
+- `.github/workflows/aur-check.yml` verifies the tracked `showel-git` metadata and smoke-tests the generated stable and binary package metadata
 
 ## Windows CI
 

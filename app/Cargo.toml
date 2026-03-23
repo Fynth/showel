@@ -7,12 +7,12 @@ build = "build.rs"
 [dependencies]
 acp.workspace = true
 dioxus.workspace = true
-image = { version = "0.25.8", default-features = false, features = ["png"] }
 ui.workspace = true
 rfd = "0.17.2"
 
 [build-dependencies]
 grass = "0.13.4"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winres = "0.1.12"

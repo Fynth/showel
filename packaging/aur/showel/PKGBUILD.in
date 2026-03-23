@@ -8,12 +8,9 @@ license=('unknown')
 depends=(
   'gtk3'
   'webkit2gtk-4.1'
-  'libayatana-appindicator'
   'xdotool'
-  'librsvg'
 )
 makedepends=(
-  'cargo'
   'pkgconf'
   'rust'
 )

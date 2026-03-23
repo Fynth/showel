@@ -3,7 +3,6 @@ mod components;
 
 use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen};
 use dioxus::{html::input_data::MouseButton, prelude::*};
-use futures_util::future::join_all;
 use models::{
     AcpPanelState, AcpUiMessage, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery,
     WorkspaceToolDock, WorkspaceToolLayout, WorkspaceToolPanel,
@@ -70,6 +69,27 @@ async fn load_explorer_section(
 
 fn connection_target_label(request: &models::ConnectionRequest) -> String {
     request.short_name()
+}
+
+fn unloaded_explorer_section(
+    session: &models::ConnectionSession,
+    active_session_id: Option<u64>,
+    status: &str,
+) -> ExplorerConnectionSection {
+    let kind_label = match session.kind {
+        models::DatabaseKind::Sqlite => "SQLite".to_string(),
+        models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+        models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
+    };
+
+    ExplorerConnectionSection {
+        session_id: session.id,
+        name: connection_target_label(&session.request),
+        kind_label,
+        status: status.to_string(),
+        is_active: Some(session.id) == active_session_id,
+        nodes: Vec::new(),
+    }
 }
 
 fn is_tool_panel_visible(
@@ -415,13 +435,12 @@ pub fn Workspace() -> Element {
         use_resource(
             move || async move { storage::load_saved_queries().await.unwrap_or_default() },
         );
-    let persisted_chat_threads =
-        use_resource(move || async move { storage::load_chat_threads().await.unwrap_or_default() });
     let chat_bootstrap_connection_label = connection_label.clone();
     let chat_persist_connection_label = connection_label.clone();
 
     use_effect(move || {
         let reload_tick = tree_reload();
+        let explorer_visible = show_explorer();
         let (sessions, active_session_id) = {
             let app_state = APP_STATE.read();
             (app_state.sessions.clone(), app_state.active_session_id)
@@ -435,25 +454,48 @@ pub fn Workspace() -> Element {
                 return;
             }
 
+            if !explorer_visible {
+                tree_sections.set(
+                    sessions
+                        .iter()
+                        .map(|session| {
+                            unloaded_explorer_section(session, active_session_id, "Explorer hidden")
+                        })
+                        .collect(),
+                );
+                tree_status.set("Explorer hidden".to_string());
+                return;
+            }
+
+            let active_index = sessions
+                .iter()
+                .position(|session| Some(session.id) == active_session_id)
+                .unwrap_or(0);
+            let mut sections = sessions
+                .iter()
+                .map(|session| {
+                    unloaded_explorer_section(
+                        session,
+                        active_session_id,
+                        "Activate this connection to load explorer",
+                    )
+                })
+                .collect::<Vec<_>>();
+
             tree_status.set("Loading explorer...".to_string());
-            let sections = join_all(
-                sessions
-                    .into_iter()
-                    .map(|session| load_explorer_section(session, active_session_id)),
+            let active_section = load_explorer_section(
+                sessions[active_index].clone(),
+                active_session_id.or(Some(sessions[active_index].id)),
             )
             .await;
-            let failed_count = sections
-                .iter()
-                .filter(|section| section.status.starts_with("Error:"))
-                .count();
+            let active_failed = active_section.status.starts_with("Error:");
+            sections[active_index] = active_section;
 
             tree_sections.set(sections);
-            if failed_count == 0 {
-                tree_status.set("Explorer ready".to_string());
+            if active_failed {
+                tree_status.set("Explorer failed for the active connection".to_string());
             } else {
-                tree_status.set(format!(
-                    "Explorer ready, {failed_count} connection(s) failed"
-                ));
+                tree_status.set("Explorer ready for the active connection".to_string());
             }
         });
     });
@@ -526,26 +568,23 @@ pub fn Workspace() -> Element {
     });
 
     use_effect(move || {
-        let Some(items) = persisted_chat_threads() else {
+        if !ai_features_enabled() || !show_agent_panel() {
             return;
-        };
+        }
         if chat_threads_loaded() {
             return;
         }
+        if chat_bootstrap_inflight() {
+            return;
+        }
 
-        if items.is_empty() {
-            if chat_bootstrap_inflight() {
-                return;
-            }
-
-            chat_bootstrap_inflight.set(true);
-            let default_connection = chat_bootstrap_connection_label.clone();
-            spawn(async move {
-                match storage::create_chat_thread(
-                    default_connection.clone(),
-                    Some("New chat".to_string()),
-                )
-                .await
+        chat_bootstrap_inflight.set(true);
+        let default_connection = chat_bootstrap_connection_label.clone();
+        spawn(async move {
+            let items = storage::load_chat_threads().await.unwrap_or_default();
+            if items.is_empty() {
+                match storage::create_chat_thread(default_connection, Some("New chat".to_string()))
+                    .await
                 {
                     Ok(thread) => {
                         chat_threads.set(vec![thread.clone()]);
@@ -555,19 +594,23 @@ pub fn Workspace() -> Element {
                         eprintln!("Failed to create default chat thread: {err}");
                     }
                 }
+            } else {
+                let next_active_thread_id = active_chat_thread_id()
+                    .filter(|thread_id| items.iter().any(|thread| thread.id == *thread_id))
+                    .or_else(|| items.first().map(|thread| thread.id));
+                chat_threads.set(items);
+                active_chat_thread_id.set(next_active_thread_id);
+            }
 
-                chat_threads_loaded.set(true);
-                chat_bootstrap_inflight.set(false);
-            });
-            return;
-        }
-
-        chat_threads.set(items.clone());
-        active_chat_thread_id.set(Some(items[0].id));
-        chat_threads_loaded.set(true);
+            chat_threads_loaded.set(true);
+            chat_bootstrap_inflight.set(false);
+        });
     });
 
     use_effect(move || {
+        if !ai_features_enabled() || !show_agent_panel() {
+            return;
+        }
         let Some(thread_id) = active_chat_thread_id() else {
             return;
         };
@@ -680,9 +723,16 @@ pub fn Workspace() -> Element {
     use_effect(move || {
         spawn(async move {
             loop {
-                if !ai_features_enabled() {
+                let panel_active = ai_features_enabled() && show_agent_panel();
+                let poll_delay = if panel_active && acp_panel_state().connected {
+                    Duration::from_millis(120)
+                } else {
+                    Duration::from_millis(400)
+                };
+
+                if !panel_active {
                     let _ = acp::drain_acp_events();
-                    tokio::time::sleep(Duration::from_millis(120)).await;
+                    tokio::time::sleep(poll_delay).await;
                     continue;
                 }
 
@@ -738,7 +788,7 @@ pub fn Workspace() -> Element {
                     }
                 }
 
-                tokio::time::sleep(Duration::from_millis(120)).await;
+                tokio::time::sleep(poll_delay).await;
             }
         });
     });

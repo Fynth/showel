@@ -7,6 +7,8 @@ on:
       - '.github/workflows/aur-publish.yml'
       - 'packaging/aur/**'
       - 'packaging/arch/showel.desktop'
+      - 'scripts/publish-aur-package.sh'
+      - 'scripts/render-aur-binary-package.sh'
       - 'scripts/render-aur-release-package.sh'
       - 'scripts/update-aur-srcinfo.sh'
       - 'app/Cargo.toml'
@@ -16,6 +18,8 @@ on:
       - '.github/workflows/aur-publish.yml'
       - 'packaging/aur/**'
       - 'packaging/arch/showel.desktop'
+      - 'scripts/publish-aur-package.sh'
+      - 'scripts/render-aur-binary-package.sh'
       - 'scripts/render-aur-release-package.sh'
       - 'scripts/update-aur-srcinfo.sh'
       - 'app/Cargo.toml'
@@ -68,6 +72,25 @@ jobs:
           output_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel"
 
           ./scripts/render-aur-release-package.sh \
+            "0.0.0" \
+            "${{ github.repository_owner }}" \
+            "${{ github.event.repository.name }}" \
+            "${output_dir}" \
+            "${dummy_sha}"
+
+          su builder -c "cd '${GITHUB_WORKSPACE}' && bash ./scripts/update-aur-srcinfo.sh '${output_dir}'"
+
+          test -s "${output_dir}/PKGBUILD"
+          test -s "${output_dir}/.SRCINFO"
+
+      - name: Render binary AUR package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          dummy_sha="$(printf 'f%.0s' {1..64})"
+          output_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin"
+
+          ./scripts/render-aur-binary-package.sh \
             "0.0.0" \
             "${{ github.repository_owner }}" \
             "${{ github.event.repository.name }}" \

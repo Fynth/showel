@@ -31,8 +31,7 @@ use ui::App as UiApp;
 ))]
 use dioxus::desktop::tao::platform::unix::EventLoopBuilderExtUnix;
 
-const APP_CSS: &str = include_str!("../assets/app.css");
-const APP_ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
+const APP_ICON_RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app_icon.rgba"));
 
 fn main() {
     if let Some(result) = try_run_embedded_acp_agent() {
@@ -84,19 +83,21 @@ fn launch_app() {
 }
 
 fn load_app_icon() -> TaoIcon {
-    let image = image::load_from_memory_with_format(APP_ICON_PNG, image::ImageFormat::Png)
-        .expect("failed to decode app icon")
-        .into_rgba8();
-    let (width, height) = image.dimensions();
+    let width = env!("SHOWEL_ICON_WIDTH")
+        .parse::<u32>()
+        .expect("invalid icon width");
+    let height = env!("SHOWEL_ICON_HEIGHT")
+        .parse::<u32>()
+        .expect("invalid icon height");
 
-    TaoIcon::from_rgba(image.into_raw(), width, height).expect("failed to create app icon")
+    TaoIcon::from_rgba(APP_ICON_RGBA.to_vec(), width, height).expect("failed to create app icon")
 }
 
 #[component]
 fn Root() -> Element {
     rsx! {
-        style {
-            {APP_CSS}
+        document::Stylesheet {
+            href: asset!("/assets/app.css"),
         }
         UiApp {}
     }

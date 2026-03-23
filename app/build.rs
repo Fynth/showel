@@ -6,6 +6,7 @@ use std::{
 
 fn main() -> Result<(), Box<dyn Error>> {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
     let workspace_root = manifest_dir
         .parent()
         .ok_or("app crate is expected to live inside the workspace root")?
@@ -26,6 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
 
     write_generated_css(&output_css, &css)?;
+    write_generated_icon_rgba(&manifest_dir, &out_dir)?;
     configure_windows_resources(&workspace_root)?;
 
     Ok(())
@@ -81,6 +83,21 @@ fn write_generated_css(path: &Path, css: &str) -> Result<(), Box<dyn Error>> {
     if needs_write {
         fs::write(path, css)?;
     }
+
+    Ok(())
+}
+
+fn write_generated_icon_rgba(manifest_dir: &Path, out_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let icon_path = manifest_dir.join("assets").join("icon.png");
+    println!("cargo:rerun-if-changed={}", icon_path.display());
+
+    let image = image::open(&icon_path)?.into_rgba8();
+    let (width, height) = image.dimensions();
+
+    fs::create_dir_all(out_dir)?;
+    fs::write(out_dir.join("app_icon.rgba"), image.into_raw())?;
+    println!("cargo:rustc-env=SHOWEL_ICON_WIDTH={width}");
+    println!("cargo:rustc-env=SHOWEL_ICON_HEIGHT={height}");
 
     Ok(())
 }

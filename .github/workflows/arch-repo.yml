@@ -65,13 +65,11 @@ jobs:
           pacman -Syu --noconfirm \
             git \
             pacman-contrib \
-            rustup \
+            rust \
             pkgconf \
             gtk3 \
             webkit2gtk-4.1 \
-            libayatana-appindicator \
             xdotool \
-            librsvg \
             fakeroot
 
       - name: Render Arch packaging files
@@ -91,7 +89,6 @@ jobs:
           set -euo pipefail
           useradd --create-home builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
-          su builder -c "rustup default stable"
           su builder -c "cd '${GITHUB_WORKSPACE}/packaging/arch/generated' && makepkg --noconfirm --cleanbuild --clean"
 
       - name: Build pacman repository metadata

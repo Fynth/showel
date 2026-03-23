@@ -7,6 +7,7 @@ use crate::{
     screens::{DbConnect, Workspace},
 };
 use dioxus::prelude::*;
+use futures_util::future::join_all;
 use models::{AppUiSettings, SqlFormatSettings};
 
 #[component]
@@ -55,12 +56,16 @@ pub fn App() -> Element {
                 return;
             }
 
-            let mut restored = Vec::new();
-            for request in open_requests {
-                if let Ok(connection) = connection::connect_to_db(request.clone()).await {
-                    restored.push((request, connection));
-                }
-            }
+            let restored = join_all(open_requests.into_iter().map(|request| async move {
+                connection::connect_to_db(request.clone())
+                    .await
+                    .ok()
+                    .map(|connection| (request, connection))
+            }))
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
             if !restored.is_empty() {
                 restore_connection_sessions(restored, active_connection_name);
