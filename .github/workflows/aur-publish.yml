@@ -70,17 +70,25 @@ jobs:
             exit 1
           fi
 
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-          cat <<'EOF' > ~/.ssh/config
-          Host aur.archlinux.org
-            IdentityFile ~/.ssh/aur
-            User aur
-            StrictHostKeyChecking yes
-          EOF
-          chmod 600 ~/.ssh/config
+          ssh_dir="${RUNNER_TEMP}/aur-ssh"
+          install -d -m 700 "${ssh_dir}"
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > "${ssh_dir}/aur"
+          chmod 600 "${ssh_dir}/aur"
+          ssh-keyscan -H -t rsa,ecdsa,ed25519 aur.archlinux.org > "${ssh_dir}/known_hosts" 2>/dev/null
+          chmod 644 "${ssh_dir}/known_hosts"
+
+      - name: Verify SSH connectivity to AUR
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh_dir="${RUNNER_TEMP}/aur-ssh"
+          export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts"
+          ssh -i "${ssh_dir}/aur" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
+            aur@aur.archlinux.org help || true
 
       - name: Push package to AUR
         env:
@@ -88,6 +96,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          ssh_dir="${RUNNER_TEMP}/aur-ssh"
+          export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts"
 
           aur_repo="${RUNNER_TEMP}/aur-repo"
           git clone "ssh://aur@aur.archlinux.org/showel.git" "${aur_repo}"
