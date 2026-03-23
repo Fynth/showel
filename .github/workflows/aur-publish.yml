@@ -91,7 +91,7 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
-            aur@aur.archlinux.org help || true
+            aur@aur.archlinux.org help
 
       - name: Push package to AUR
         env:
