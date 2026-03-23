@@ -73,7 +73,10 @@ jobs:
           ssh_dir="${RUNNER_TEMP}/aur-ssh"
           install -d -m 700 "${ssh_dir}"
           printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > "${ssh_dir}/aur"
+          tr -d '\r' < "${ssh_dir}/aur" > "${ssh_dir}/aur.normalized"
+          mv "${ssh_dir}/aur.normalized" "${ssh_dir}/aur"
           chmod 600 "${ssh_dir}/aur"
+          ssh-keygen -yf "${ssh_dir}/aur" > /dev/null
           ssh-keyscan -H -t rsa,ecdsa,ed25519 aur.archlinux.org > "${ssh_dir}/known_hosts" 2>/dev/null
           chmod 644 "${ssh_dir}/known_hosts"
 
