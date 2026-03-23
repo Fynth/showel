@@ -17,7 +17,7 @@ makedepends=(
 )
 provides=('showel')
 conflicts=('showel')
-options=('!lto')
+options=('!debug' '!lto')
 source=(
   "showel::git+${url}.git"
 )

@@ -13,6 +13,7 @@ pkgbase = showel-git
 	depends = xdotool
 	provides = showel
 	conflicts = showel
+	options = !debug
 	options = !lto
 	source = showel::git+https://github.com/Fynth/showel.git
 	sha256sums = SKIP
