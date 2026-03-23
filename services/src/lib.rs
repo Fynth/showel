@@ -13,7 +13,8 @@ pub use query::{
     next_table_primary_key_id, update_table_cell,
 };
 pub use storage::{
-    append_query_history, delete_saved_query, load_query_history, load_saved_connections,
-    load_saved_queries, load_session_state, load_session_state_sync, save_connection_request,
-    save_saved_query, save_session_state, save_session_state_sync,
+    append_query_history, create_chat_thread, delete_chat_thread, delete_saved_query,
+    load_chat_thread_messages, load_chat_threads, load_query_history, load_saved_connections,
+    load_saved_queries, load_session_state, load_session_state_sync, save_chat_thread_snapshot,
+    save_connection_request, save_saved_query, save_session_state, save_session_state_sync,
 };

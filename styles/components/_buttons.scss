@@ -11,11 +11,12 @@
   gap: 4px;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
-  background: var(--color-panel-2);
+  background: var(--color-surface-contrast, var(--color-panel-2));
   color: var(--color-text);
   font-size: $font-size-sm;
   line-height: 1;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
   @include interactive;
 
   &:disabled {
@@ -30,35 +31,93 @@
 }
 
 .button--primary {
-  border-color: transparent;
-  background: var(--color-primary);
-  color: white;
+  border-color: color-mix(in srgb, var(--color-primary) 26%, var(--color-border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(
+        in srgb,
+        var(--color-primary) 26%,
+        var(--color-surface-contrast, var(--color-panel-2))
+      ),
+      color-mix(
+        in srgb,
+        var(--color-primary) 18%,
+        var(--color-surface-elevated, var(--color-panel))
+      )
+    );
+  color: color-mix(in srgb, var(--color-text) 92%, white 8%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 8%, transparent);
 
   &:not(:disabled):hover {
-    border-color: transparent;
-    background: var(--color-primary-hover);
+    border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border-strong));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(
+          in srgb,
+          var(--color-primary) 32%,
+          var(--color-surface-contrast, var(--color-panel-2))
+        ),
+        color-mix(
+          in srgb,
+          var(--color-primary) 22%,
+          var(--color-surface-elevated, var(--color-panel))
+        )
+      );
   }
 
   &:not(:disabled):active {
-    background: var(--color-primary-active);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(
+          in srgb,
+          var(--color-primary) 36%,
+          var(--color-surface-contrast, var(--color-panel-2))
+        ),
+        color-mix(
+          in srgb,
+          var(--color-primary) 24%,
+          var(--color-surface-elevated, var(--color-panel))
+        )
+      );
   }
 }
 
 .button--ghost {
-  background: transparent;
+  background: color-mix(
+    in srgb,
+    var(--color-surface-main, var(--color-panel)) 44%,
+    transparent
+  );
 }
 
 .button--active {
   border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-panel-2));
+  background: color-mix(
+    in srgb,
+    var(--color-primary) 12%,
+    var(--color-surface-contrast, var(--color-panel-2))
+  );
 
   &:not(:disabled):hover {
     border-color: var(--color-primary);
-    background: color-mix(in srgb, var(--color-primary) 24%, var(--color-panel-2));
+    background: color-mix(
+      in srgb,
+      var(--color-primary) 16%,
+      var(--color-surface-contrast, var(--color-panel-2))
+    );
   }
 
   &:not(:disabled):active {
-    background: color-mix(in srgb, var(--color-primary) 30%, var(--color-panel-2));
+    background: color-mix(
+      in srgb,
+      var(--color-primary) 20%,
+      var(--color-surface-contrast, var(--color-panel-2))
+    );
   }
 }
 

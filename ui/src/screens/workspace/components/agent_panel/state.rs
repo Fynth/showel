@@ -1,7 +1,8 @@
 use models::{
     AcpConnectionInfo, AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpOllamaConfig, AcpPanelState,
-    AcpUiMessage,
+    AcpUiMessage, ChatArtifact,
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) fn default_acp_panel_state() -> AcpPanelState {
     let cwd = std::env::current_dir()
@@ -127,9 +128,29 @@ fn push_or_append_message(state: &mut AcpPanelState, kind: AcpMessageKind, text:
 }
 
 pub(super) fn push_message(state: &mut AcpPanelState, kind: AcpMessageKind, text: String) {
+    push_message_with_artifact(state, kind, text, None);
+}
+
+pub(crate) fn push_message_with_artifact(
+    state: &mut AcpPanelState,
+    kind: AcpMessageKind,
+    text: String,
+    artifact: Option<ChatArtifact>,
+) {
     let id = state.next_message_id;
     state.next_message_id += 1;
-    state.messages.push(AcpUiMessage { id, kind, text });
+    state.messages.push(AcpUiMessage {
+        id,
+        kind,
+        text,
+        created_at: unix_timestamp(),
+        artifact,
+    });
+}
+
+pub(crate) fn replace_messages(state: &mut AcpPanelState, messages: Vec<AcpUiMessage>) {
+    state.next_message_id = next_message_id(&messages);
+    state.messages = messages;
 }
 
 pub(super) fn message_kind_label(kind: &AcpMessageKind) -> &'static str {
@@ -160,4 +181,15 @@ pub(super) fn permission_button_class(kind: &str) -> &'static str {
     } else {
         "button button--ghost button--small"
     }
+}
+
+fn next_message_id(messages: &[AcpUiMessage]) -> u64 {
+    messages.iter().map(|message| message.id).max().unwrap_or(0) + 1
+}
+
+fn unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
 }

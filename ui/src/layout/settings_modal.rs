@@ -138,6 +138,23 @@ pub fn SettingsModal() -> Element {
                             class: "settings-modal__toggle",
                             input {
                                 r#type: "checkbox",
+                                checked: settings.ai_features_enabled,
+                                oninput: move |event| {
+                                    let enabled = event.checked();
+                                    APP_UI_SETTINGS.with_mut(|current| {
+                                        current.ai_features_enabled = enabled;
+                                        if !enabled {
+                                            current.show_agent_panel = false;
+                                        }
+                                    });
+                                },
+                            }
+                            span { "Enable AI features (ACP panel, prompts, and SQL actions)" }
+                        }
+                        label {
+                            class: "settings-modal__toggle",
+                            input {
+                                r#type: "checkbox",
                                 checked: settings.restore_session_on_launch,
                                 oninput: move |event| {
                                     APP_UI_SETTINGS.with_mut(|current| {
@@ -206,6 +223,7 @@ pub fn SettingsModal() -> Element {
                             input {
                                 r#type: "checkbox",
                                 checked: settings.show_agent_panel,
+                                disabled: !settings.ai_features_enabled,
                                 oninput: move |event| {
                                     APP_UI_SETTINGS.with_mut(|current| {
                                         current.show_agent_panel = event.checked();

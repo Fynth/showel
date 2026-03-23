@@ -1,0 +1,380 @@
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use models::{AcpMessageKind, AcpUiMessage, ChatArtifact, ChatThreadSummary};
+use sqlx::{
+    Row, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
+};
+use tokio::{fs, sync::OnceCell};
+
+use crate::fs_store::chat_db_path;
+
+static CHAT_POOL: OnceCell<SqlitePool> = OnceCell::const_new();
+
+pub async fn load_chat_threads() -> Result<Vec<ChatThreadSummary>, String> {
+    let pool = chat_pool().await?;
+    let rows = sqlx::query(
+        r#"
+        select
+          t.id,
+          t.title,
+          t.connection_name,
+          t.created_at,
+          t.updated_at,
+          coalesce(
+            (
+              select m.text
+              from chat_messages m
+              where m.thread_id = t.id
+              order by m.position desc, m.id desc
+              limit 1
+            ),
+            ''
+          ) as last_message_preview
+        from chat_threads t
+        order by t.updated_at desc, t.id desc
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|err| format!("failed to load chat threads: {err}"))?;
+
+    rows.into_iter().map(row_to_thread_summary).collect()
+}
+
+pub async fn create_chat_thread(
+    connection_name: String,
+    title: Option<String>,
+) -> Result<ChatThreadSummary, String> {
+    let pool = chat_pool().await?;
+    let now = unix_timestamp();
+    let title = title
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "New chat".to_string());
+    let connection_name = normalized_connection_name(&connection_name);
+
+    let result = sqlx::query(
+        r#"
+        insert into chat_threads (title, connection_name, created_at, updated_at)
+        values (?1, ?2, ?3, ?4)
+        "#,
+    )
+    .bind(&title)
+    .bind(&connection_name)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to create chat thread: {err}"))?;
+
+    Ok(ChatThreadSummary {
+        id: result.last_insert_rowid(),
+        title,
+        connection_name,
+        created_at: now,
+        updated_at: now,
+        last_message_preview: String::new(),
+    })
+}
+
+pub async fn delete_chat_thread(thread_id: i64) -> Result<(), String> {
+    let pool = chat_pool().await?;
+    sqlx::query("delete from chat_threads where id = ?1")
+        .bind(thread_id)
+        .execute(pool)
+        .await
+        .map_err(|err| format!("failed to delete chat thread {thread_id}: {err}"))?;
+    Ok(())
+}
+
+pub async fn load_chat_thread_messages(thread_id: i64) -> Result<Vec<AcpUiMessage>, String> {
+    let pool = chat_pool().await?;
+    let rows = sqlx::query(
+        r#"
+        select id, kind, text, created_at, artifact_json
+        from chat_messages
+        where thread_id = ?1
+        order by position asc, id asc
+        "#,
+    )
+    .bind(thread_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|err| format!("failed to load chat thread {thread_id}: {err}"))?;
+
+    rows.into_iter().map(row_to_message).collect()
+}
+
+pub async fn save_chat_thread_snapshot(
+    thread_id: i64,
+    title: String,
+    connection_name: String,
+    messages: Vec<AcpUiMessage>,
+) -> Result<ChatThreadSummary, String> {
+    let pool = chat_pool().await?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|err| format!("failed to start chat transaction: {err}"))?;
+    let now = unix_timestamp();
+    let title = normalized_thread_title(&title);
+    let connection_name = normalized_connection_name(&connection_name);
+
+    sqlx::query(
+        r#"
+        update chat_threads
+        set title = ?1, connection_name = ?2, updated_at = ?3
+        where id = ?4
+        "#,
+    )
+    .bind(&title)
+    .bind(&connection_name)
+    .bind(now)
+    .bind(thread_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|err| format!("failed to update chat thread {thread_id}: {err}"))?;
+
+    sqlx::query("delete from chat_messages where thread_id = ?1")
+        .bind(thread_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|err| format!("failed to replace chat thread {thread_id}: {err}"))?;
+
+    for (position, message) in messages.iter().enumerate() {
+        let artifact_json = message
+            .artifact
+            .as_ref()
+            .map(|artifact| serde_json::to_string(artifact))
+            .transpose()
+            .map_err(|err| format!("failed to serialize chat artifact: {err}"))?;
+
+        sqlx::query(
+            r#"
+            insert into chat_messages (
+              thread_id,
+              position,
+              kind,
+              text,
+              created_at,
+              artifact_json
+            )
+            values (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(thread_id)
+        .bind(position as i64)
+        .bind(message_kind_to_db(&message.kind))
+        .bind(&message.text)
+        .bind(message.created_at)
+        .bind(artifact_json)
+        .execute(&mut *tx)
+        .await
+        .map_err(|err| format!("failed to store chat message: {err}"))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|err| format!("failed to commit chat transaction: {err}"))?;
+
+    let created_at =
+        sqlx::query_scalar::<_, i64>("select created_at from chat_threads where id = ?1 limit 1")
+            .bind(thread_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|err| format!("failed to reload chat thread {thread_id}: {err}"))?;
+
+    Ok(ChatThreadSummary {
+        id: thread_id,
+        title,
+        connection_name,
+        created_at,
+        updated_at: now,
+        last_message_preview: compact_preview(
+            messages
+                .last()
+                .map(|message| message.text.as_str())
+                .unwrap_or_default(),
+        ),
+    })
+}
+
+async fn chat_pool() -> Result<&'static SqlitePool, String> {
+    CHAT_POOL
+        .get_or_try_init(|| async {
+            let path = chat_db_path();
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .await
+                    .map_err(|err| format!("failed to create chat storage dir: {err}"))?;
+            }
+
+            let options = SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true)
+                .foreign_keys(true)
+                .busy_timeout(Duration::from_secs(5))
+                .journal_mode(SqliteJournalMode::Wal)
+                .synchronous(SqliteSynchronous::Normal);
+            let pool = SqlitePool::connect_with(options)
+                .await
+                .map_err(|err| format!("failed to open chat database {}: {err}", path.display()))?;
+
+            initialize_schema(&pool).await?;
+            Ok(pool)
+        })
+        .await
+}
+
+async fn initialize_schema(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query(
+        r#"
+        create table if not exists chat_threads (
+          id integer primary key autoincrement,
+          title text not null,
+          connection_name text not null,
+          created_at integer not null,
+          updated_at integer not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to initialize chat thread schema: {err}"))?;
+
+    sqlx::query(
+        r#"
+        create table if not exists chat_messages (
+          id integer primary key autoincrement,
+          thread_id integer not null,
+          position integer not null,
+          kind text not null,
+          text text not null,
+          created_at integer not null,
+          artifact_json text,
+          foreign key(thread_id) references chat_threads(id) on delete cascade
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to initialize chat message schema: {err}"))?;
+
+    sqlx::query(
+        "create index if not exists idx_chat_threads_updated_at on chat_threads(updated_at desc)",
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to initialize chat thread index: {err}"))?;
+
+    sqlx::query(
+        "create unique index if not exists idx_chat_messages_thread_position on chat_messages(thread_id, position)",
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to initialize chat message index: {err}"))?;
+
+    Ok(())
+}
+
+fn row_to_thread_summary(row: sqlx::sqlite::SqliteRow) -> Result<ChatThreadSummary, String> {
+    Ok(ChatThreadSummary {
+        id: row.try_get("id").map_err(db_read_error)?,
+        title: row.try_get("title").map_err(db_read_error)?,
+        connection_name: row.try_get("connection_name").map_err(db_read_error)?,
+        created_at: row.try_get("created_at").map_err(db_read_error)?,
+        updated_at: row.try_get("updated_at").map_err(db_read_error)?,
+        last_message_preview: compact_preview(
+            &row.try_get::<String, _>("last_message_preview")
+                .map_err(db_read_error)?,
+        ),
+    })
+}
+
+fn row_to_message(row: sqlx::sqlite::SqliteRow) -> Result<AcpUiMessage, String> {
+    let kind_raw = row.try_get::<String, _>("kind").map_err(db_read_error)?;
+    let artifact_json = row
+        .try_get::<Option<String>, _>("artifact_json")
+        .map_err(db_read_error)?;
+
+    let artifact = match artifact_json {
+        Some(json) if !json.trim().is_empty() => Some(
+            serde_json::from_str::<ChatArtifact>(&json)
+                .map_err(|err| format!("failed to parse stored chat artifact: {err}"))?,
+        ),
+        _ => None,
+    };
+
+    Ok(AcpUiMessage {
+        id: row.try_get::<i64, _>("id").map_err(db_read_error)? as u64,
+        kind: db_to_message_kind(&kind_raw)?,
+        text: row.try_get("text").map_err(db_read_error)?,
+        created_at: row.try_get("created_at").map_err(db_read_error)?,
+        artifact,
+    })
+}
+
+fn message_kind_to_db(kind: &AcpMessageKind) -> &'static str {
+    match kind {
+        AcpMessageKind::User => "user",
+        AcpMessageKind::Agent => "agent",
+        AcpMessageKind::Thought => "thought",
+        AcpMessageKind::Tool => "tool",
+        AcpMessageKind::System => "system",
+        AcpMessageKind::Error => "error",
+    }
+}
+
+fn db_to_message_kind(value: &str) -> Result<AcpMessageKind, String> {
+    match value {
+        "user" => Ok(AcpMessageKind::User),
+        "agent" => Ok(AcpMessageKind::Agent),
+        "thought" => Ok(AcpMessageKind::Thought),
+        "tool" => Ok(AcpMessageKind::Tool),
+        "system" => Ok(AcpMessageKind::System),
+        "error" => Ok(AcpMessageKind::Error),
+        other => Err(format!("unsupported stored chat message kind `{other}`")),
+    }
+}
+
+fn db_read_error(err: sqlx::Error) -> String {
+    format!("failed to read chat row: {err}")
+}
+
+fn normalized_thread_title(title: &str) -> String {
+    let title = title.trim();
+    if title.is_empty() {
+        "New chat".to_string()
+    } else {
+        title.to_string()
+    }
+}
+
+fn normalized_connection_name(connection_name: &str) -> String {
+    let connection_name = connection_name.trim();
+    if connection_name.is_empty() {
+        "No connection".to_string()
+    } else {
+        connection_name.to_string()
+    }
+}
+
+fn compact_preview(text: &str) -> String {
+    let preview = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    const MAX_PREVIEW_CHARS: usize = 100;
+
+    if preview.chars().count() <= MAX_PREVIEW_CHARS {
+        preview
+    } else {
+        let truncated = preview.chars().take(MAX_PREVIEW_CHARS).collect::<String>();
+        format!("{truncated}...")
+    }
+}
+
+fn unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
+}

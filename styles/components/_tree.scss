@@ -74,10 +74,14 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-panel-2) 68%, transparent),
+      color-mix(
+        in srgb,
+        var(--color-surface-contrast, var(--color-panel-2)) 74%,
+        transparent
+      ),
       transparent 140%
     ),
-    var(--color-panel);
+    var(--color-surface-elevated, var(--color-panel));
 }
 
 .tree__connection-header {

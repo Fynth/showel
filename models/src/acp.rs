@@ -1,3 +1,5 @@
+use crate::ChatArtifact;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AcpLaunchRequest {
     pub command: String,
@@ -43,6 +45,8 @@ pub struct AcpUiMessage {
     pub id: u64,
     pub kind: AcpMessageKind,
     pub text: String,
+    pub created_at: i64,
+    pub artifact: Option<ChatArtifact>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

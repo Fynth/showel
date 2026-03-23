@@ -12,6 +12,10 @@ pub(crate) fn saved_connections_path() -> PathBuf {
     storage_root().join("saved_connections.json")
 }
 
+pub(crate) fn chat_db_path() -> PathBuf {
+    storage_root().join("showel.db")
+}
+
 pub(crate) fn query_history_path() -> PathBuf {
     storage_root().join("query_history.json")
 }

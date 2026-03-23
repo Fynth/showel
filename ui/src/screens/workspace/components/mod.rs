@@ -10,7 +10,8 @@ mod sql_format_settings;
 mod tabs;
 
 pub(crate) use agent_panel::{
-    AcpAgentPanel, apply_acp_events, default_acp_panel_state, extract_sql_candidate,
+    AcpAgentPanel, AgentSqlExecutionMode, apply_acp_events, default_acp_panel_state,
+    execute_agent_sql_request, extract_sql_candidate, replace_messages,
 };
 pub use explorer::{ExplorerConnectionSection, SidebarConnectionTree};
 pub use history::QueryHistoryPanel;

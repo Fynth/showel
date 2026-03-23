@@ -24,10 +24,14 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-panel-2) 78%, transparent),
+      color-mix(
+        in srgb,
+        var(--color-surface-contrast, var(--color-panel-2)) 80%,
+        transparent
+      ),
       transparent 180px
     ),
-    var(--color-panel);
+    var(--color-surface-main, var(--color-panel));
   box-shadow: $shadow-lg;
 }
 
@@ -70,7 +74,11 @@
   padding: $spacing-md;
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--color-panel) 92%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-elevated, var(--color-panel)) 94%,
+    transparent
+  );
 }
 
 .settings-modal__section-header {
@@ -107,7 +115,11 @@
   padding: $spacing-sm;
   border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
   border-radius: $radius-md;
-  background: color-mix(in srgb, var(--color-panel-2) 74%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 76%,
+    transparent
+  );
 }
 
 .settings-modal__toggle {
@@ -118,7 +130,11 @@
   padding: $spacing-sm;
   border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
   border-radius: $radius-md;
-  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 74%,
+    transparent
+  );
   color: var(--color-text);
   font-size: $font-size-sm;
 }

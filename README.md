@@ -7,7 +7,7 @@
 <p align="center">
   A native desktop database client built with Rust and Dioxus.
   <br />
-  Fast query workflows, editable table results, and AI-assisted SQL through ACP.
+  Persistent database chat threads, fast query workflows, and AI-assisted SQL through ACP.
 </p>
 
 <p align="center">
@@ -27,6 +27,7 @@ Most database clients are either heavy, web-first, or overloaded with enterprise
 Showel is trying to be the opposite:
 
 - native desktop app, not a browser tab pretending to be one
+- chat-first database workflows with persistent threads
 - fast for daily SQL work
 - clear workspace with explorer, editor, results, history, and saved queries
 - direct support for local AI agents through ACP
@@ -38,6 +39,7 @@ It is built for people who want a responsive database tool that feels closer to 
 
 | Area | What you get |
 | --- | --- |
+| Chat | Persistent database chat threads, context-aware prompts, SQL generation, agent-guided execution |
 | Querying | Multi-tab SQL editor, query history, structure tabs, formatting, pagination |
 | Data exploration | Connection explorer, schemas, tables, views, column loading |
 | Result workflows | Sort, filter, inspect rows, JSON view, row details |

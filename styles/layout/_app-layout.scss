@@ -7,7 +7,7 @@
   min-height: 100dvh;
   display: grid;
   grid-template-rows: minmax($toolbar-height, auto) 1fr minmax($statusbar-height, auto);
-  background: var(--color-bg);
+  background: var(--color-surface-shell, var(--color-bg));
   color: var(--color-text);
   overflow: hidden;
   isolation: isolate;

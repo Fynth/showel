@@ -1,7 +1,7 @@
 pub use query_core::{
     delete_table_row, execute_query, execute_query_page, insert_table_row,
-    insert_table_row_with_values, load_table_preview_page, next_table_primary_key_id,
-    update_table_cell,
+    insert_table_row_with_values, is_read_only_sql, load_table_preview_page,
+    next_table_primary_key_id, update_table_cell,
 };
 pub use query_format::format_sql;
 pub use query_io::{

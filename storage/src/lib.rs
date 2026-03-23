@@ -1,8 +1,13 @@
+mod chat;
 mod fs_store;
 mod history;
 mod saved_queries;
 mod settings;
 
+pub use chat::{
+    create_chat_thread, delete_chat_thread, load_chat_thread_messages, load_chat_threads,
+    save_chat_thread_snapshot,
+};
 pub use history::{
     append_query_history, load_query_history, load_saved_connections, load_session_state,
     load_session_state_sync, save_connection_request, save_session_state, save_session_state_sync,

@@ -16,7 +16,12 @@
   padding: clamp($spacing-lg, 2.4vw, $spacing-2xl);
   border: 1px solid var(--color-border);
   border-radius: $radius-lg;
-  background: var(--color-panel);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, white 3%),
+      var(--color-surface-main, var(--color-panel))
+    );
   box-shadow: $shadow-md;
 }
 
@@ -41,10 +46,14 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-panel-2) 82%, transparent),
+      color-mix(
+        in srgb,
+        var(--color-surface-contrast, var(--color-panel-2)) 84%,
+        transparent
+      ),
       transparent 160px
     ),
-    color-mix(in srgb, var(--color-panel) 96%, transparent);
+    color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 96%, transparent);
 }
 
 .connect-screen__hero-topbar {
@@ -162,7 +171,11 @@
   padding: $spacing-md;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
-  background: color-mix(in srgb, var(--color-panel-2) 62%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 70%,
+    transparent
+  );
 }
 
 .connect-form__ssh-header {
@@ -188,7 +201,11 @@
   padding: $spacing-sm $spacing-md;
   border: 1px solid var(--color-border);
   border-radius: $radius-md;
-  background: color-mix(in srgb, var(--color-panel) 94%, var(--color-panel-2));
+  background: color-mix(
+    in srgb,
+    var(--color-surface-main, var(--color-panel)) 76%,
+    var(--color-surface-elevated, var(--color-panel-2))
+  );
 }
 
 .recent-connection__name {

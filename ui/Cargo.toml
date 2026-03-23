@@ -5,8 +5,9 @@ edition = "2024"
 
 [dependencies]
 acp.workspace = true
+arboard = "3.6.1"
 connection.workspace = true
-dioxus = "0.7.3"
+dioxus = { version = "0.7.3", features = ["desktop"] }
 explorer.workspace = true
 futures-util = "0.3.31"
 models.workspace = true

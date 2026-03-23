@@ -1,5 +1,6 @@
 mod acp;
 mod app;
+mod chat;
 mod connection;
 mod explorer;
 mod query;
@@ -8,6 +9,7 @@ mod settings;
 
 pub use acp::*;
 pub use app::*;
+pub use chat::*;
 pub use connection::*;
 pub use explorer::*;
 pub use query::*;

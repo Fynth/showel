@@ -1,44 +1,50 @@
 .theme-dark {
   color-scheme: dark;
 
-  --color-bg: #000000;
-  --color-panel: #050608;
-  --color-panel-2: #090b0e;
-  --color-panel-3: #101318;
-  --color-border: #1b222d;
-  --color-border-strong: #273140;
+  --color-bg: #11111b;
+  --color-surface-shell: #11111b;
+  --color-surface-sidebar: #181825;
+  --color-surface-main: #1e1e2e;
+  --color-surface-inspector: #171825;
+  --color-surface-elevated: #25273a;
+  --color-surface-contrast: #313244;
+  --color-panel: #1e1e2e;
+  --color-panel-2: #25273a;
+  --color-panel-3: #313244;
+  --color-border: #313244;
+  --color-border-strong: #45475a;
 
-  --color-text: #eef3fb;
-  --color-text-muted: #9aa8bb;
-  --color-text-dim: #6c798b;
+  --color-text: #cdd6f4;
+  --color-text-muted: #a6adc8;
+  --color-text-dim: #7f849c;
 
-  --color-primary: #2f7cff;
-  --color-primary-hover: #4a8dff;
-  --color-primary-active: #2169de;
-  --color-info: #5bb5ff;
-  --color-success: #31c38a;
-  --color-danger: #ef5f77;
-  --color-warning: #f0b248;
-  --color-focus: rgba(47, 124, 255, 0.45);
+  --color-primary: #89b4fa;
+  --color-primary-hover: #9cc3fb;
+  --color-primary-active: #74a7f8;
+  --color-info: #74c7ec;
+  --color-success: #a6e3a1;
+  --color-danger: #f38ba8;
+  --color-warning: #f9e2af;
+  --color-focus: rgba(137, 180, 250, 0.38);
 
-  --color-hover: rgba(255, 255, 255, 0.035);
-  --color-active: rgba(47, 124, 255, 0.18);
-  --color-backdrop: rgba(0, 0, 0, 0.78);
+  --color-hover: rgba(255, 255, 255, 0.045);
+  --color-active: rgba(137, 180, 250, 0.18);
+  --color-backdrop: rgba(17, 17, 27, 0.8);
 
-  --editor-bg: #020304;
-  --editor-overlay: rgba(255, 255, 255, 0.01);
-  --editor-line: rgba(255, 255, 255, 0.03);
-  --editor-token-plain: #dbe6f8;
-  --editor-token-keyword: #63a0ff;
-  --editor-token-string: #91d883;
-  --editor-token-number: #f5c06b;
-  --editor-token-comment: #667588;
-  --editor-token-function: #79cfff;
-  --editor-token-type: #b9a6ff;
-  --editor-token-identifier: #c8d5e8;
-  --editor-token-attribute: #ff96b0;
-  --editor-token-operator: #ff9a76;
-  --editor-token-punctuation: #7d8da3;
-  --grid-header: #06080b;
-  --grid-row-hover: rgba(47, 124, 255, 0.06);
+  --editor-bg: #161722;
+  --editor-overlay: rgba(255, 255, 255, 0.02);
+  --editor-line: rgba(255, 255, 255, 0.035);
+  --editor-token-plain: #cdd6f4;
+  --editor-token-keyword: #89b4fa;
+  --editor-token-string: #a6e3a1;
+  --editor-token-number: #f9e2af;
+  --editor-token-comment: #6c7086;
+  --editor-token-function: #89dceb;
+  --editor-token-type: #cba6f7;
+  --editor-token-identifier: #bac2de;
+  --editor-token-attribute: #f5c2e7;
+  --editor-token-operator: #fab387;
+  --editor-token-punctuation: #9399b2;
+  --grid-header: #25273a;
+  --grid-row-hover: rgba(137, 180, 250, 0.08);
 }

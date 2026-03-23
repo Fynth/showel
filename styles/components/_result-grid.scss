@@ -12,10 +12,14 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-panel-2) 20%, transparent),
+      color-mix(
+        in srgb,
+        var(--color-surface-contrast, var(--color-panel-2)) 28%,
+        transparent
+      ),
       transparent 120px
     ),
-    var(--color-panel);
+    var(--color-surface-elevated, var(--color-panel));
 }
 
 .results__layout {
@@ -45,7 +49,11 @@
   gap: 6px;
   padding: 4px 6px;
   border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 78%,
+    transparent
+  );
 }
 
 .results__toolbar-copy {
@@ -69,7 +77,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: color-mix(in srgb, var(--color-panel) 86%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-main, var(--color-panel)) 82%,
+    transparent
+  );
 }
 
 .results__toolbar-meta {
@@ -97,7 +109,11 @@
   gap: 3px;
   padding: 6px;
   border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 78%,
+    transparent
+  );
 }
 
 .results__filters-topbar {
@@ -139,7 +155,11 @@
   border: 1px dashed var(--color-border);
   border-radius: $radius-md;
   color: var(--color-text-muted);
-  background: color-mix(in srgb, var(--color-panel) 84%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-elevated, var(--color-panel)) 88%,
+    transparent
+  );
 }
 
 .results__summary {
@@ -188,7 +208,11 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-panel) 70%, transparent),
+      color-mix(
+        in srgb,
+        var(--color-surface-elevated, var(--color-panel)) 72%,
+        transparent
+      ),
       transparent 28px
     );
 }
@@ -202,7 +226,11 @@
   color: var(--color-text-muted);
   font-size: $font-size-sm;
   border-top: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
-  background: color-mix(in srgb, var(--color-panel-2) 58%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 64%,
+    transparent
+  );
 }
 
 .results__table {
@@ -211,7 +239,11 @@
   border-collapse: separate;
   border-spacing: 0;
   font-size: $font-size-sm;
-  background: color-mix(in srgb, var(--color-panel) 88%, var(--color-panel-2));
+  background: color-mix(
+    in srgb,
+    var(--color-surface-main, var(--color-panel)) 72%,
+    var(--color-surface-elevated, var(--color-panel-2))
+  );
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: $radius-md;
   overflow: hidden;
@@ -223,7 +255,11 @@
   top: 0;
   z-index: 1;
   padding: 0;
-  background: color-mix(in srgb, var(--grid-header) 88%, black 12%);
+  background: color-mix(
+    in srgb,
+    var(--grid-header) 90%,
+    var(--color-surface-main, var(--color-panel))
+  );
   border-bottom: 1px solid var(--color-border-strong);
   border-right: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
   text-align: left;
@@ -281,7 +317,11 @@
 }
 
 .results__row:nth-child(even) {
-  background: color-mix(in srgb, var(--color-panel-2) 34%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 30%,
+    transparent
+  );
 }
 
 .results__row--selected {
@@ -361,7 +401,11 @@
       color-mix(in srgb, var(--color-primary) 8%, transparent),
       transparent 140px
     ),
-    color-mix(in srgb, var(--color-panel-2) 74%, transparent);
+    color-mix(
+      in srgb,
+      var(--color-surface-inspector, var(--color-panel-2)) 82%,
+      transparent
+    );
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.02);
 }
 
@@ -421,7 +465,11 @@
   padding: 5px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: $radius-md;
-  background: color-mix(in srgb, var(--color-panel) 86%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-elevated, var(--color-panel)) 88%,
+    transparent
+  );
 }
 
 .results__details-label {

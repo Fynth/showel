@@ -11,7 +11,12 @@
   gap: $spacing-xs;
   padding: 3px 6px 0;
   margin-bottom: -1px;
-  background: var(--color-panel);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 90%, white 2%),
+      var(--color-surface-main, var(--color-panel))
+    );
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -36,7 +41,9 @@
   border-color: var(--color-border);
   border-bottom-color: transparent;
   color: var(--color-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 -8px 18px rgba(0, 0, 0, 0.1);
 }
 
 .tabbar__tab {
@@ -45,7 +52,8 @@
   gap: 6px;
   max-width: clamp(140px, 18vw, 220px);
   min-width: 0;
-  background: var(--color-panel-2);
+  background: var(--color-surface-elevated, var(--color-panel-2));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .tabbar__copy {

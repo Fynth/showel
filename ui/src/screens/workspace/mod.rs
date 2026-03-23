@@ -5,8 +5,8 @@ use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connec
 use dioxus::{html::input_data::MouseButton, prelude::*};
 use futures_util::future::join_all;
 use models::{
-    QueryHistoryItem, QueryTabState, SavedQuery, WorkspaceToolDock, WorkspaceToolLayout,
-    WorkspaceToolPanel,
+    AcpPanelState, AcpUiMessage, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery,
+    WorkspaceToolDock, WorkspaceToolLayout, WorkspaceToolPanel,
 };
 use std::collections::HashSet;
 use std::time::Duration;
@@ -14,9 +14,10 @@ use std::time::Duration;
 use self::{
     actions::{new_query_tab, update_active_tab_sql},
     components::{
-        AcpAgentPanel, ActionIcon, ExplorerConnectionSection, IconButton, QueryHistoryPanel,
-        SavedQueriesPanel, SessionRail, SidebarConnectionTree, TabsManager, apply_acp_events,
-        default_acp_panel_state, extract_sql_candidate,
+        AcpAgentPanel, ActionIcon, AgentSqlExecutionMode, ExplorerConnectionSection, IconButton,
+        QueryHistoryPanel, SavedQueriesPanel, SessionRail, SidebarConnectionTree, TabsManager,
+        apply_acp_events, default_acp_panel_state, execute_agent_sql_request,
+        extract_sql_candidate, replace_messages,
     },
 };
 
@@ -77,13 +78,14 @@ fn is_tool_panel_visible(
     show_explorer: bool,
     show_history: bool,
     show_agent_panel: bool,
+    ai_features_enabled: bool,
 ) -> bool {
     match panel {
         WorkspaceToolPanel::Connections => show_connections,
         WorkspaceToolPanel::Explorer => show_explorer,
         WorkspaceToolPanel::SavedQueries => true,
         WorkspaceToolPanel::History => show_history,
-        WorkspaceToolPanel::Agent => show_agent_panel,
+        WorkspaceToolPanel::Agent => ai_features_enabled && show_agent_panel,
     }
 }
 
@@ -93,6 +95,7 @@ fn visible_tool_panels(
     show_explorer: bool,
     show_history: bool,
     show_agent_panel: bool,
+    ai_features_enabled: bool,
 ) -> Vec<WorkspaceToolPanel> {
     panels
         .iter()
@@ -104,6 +107,7 @@ fn visible_tool_panels(
                 show_explorer,
                 show_history,
                 show_agent_panel,
+                ai_features_enabled,
             )
         })
         .collect()
@@ -116,6 +120,7 @@ fn visible_insert_index(
     show_explorer: bool,
     show_history: bool,
     show_agent_panel: bool,
+    ai_features_enabled: bool,
 ) -> usize {
     if !panels.iter().any(|panel| {
         is_tool_panel_visible(
@@ -124,6 +129,7 @@ fn visible_insert_index(
             show_explorer,
             show_history,
             show_agent_panel,
+            ai_features_enabled,
         )
     }) {
         return 0;
@@ -137,6 +143,7 @@ fn visible_insert_index(
             show_explorer,
             show_history,
             show_agent_panel,
+            ai_features_enabled,
         ) {
             continue;
         }
@@ -159,6 +166,7 @@ fn move_tool_panel_layout(
     show_explorer: bool,
     show_history: bool,
     show_agent_panel: bool,
+    ai_features_enabled: bool,
 ) {
     let mut normalized = layout.normalized();
     normalized.sidebar.retain(|existing| *existing != panel);
@@ -175,6 +183,7 @@ fn move_tool_panel_layout(
         show_explorer,
         show_history,
         show_agent_panel,
+        ai_features_enabled,
     )
     .min(target_panels.len());
     target_panels.insert(insert_at, panel);
@@ -190,6 +199,7 @@ fn apply_tool_panel_drop(
     show_explorer: bool,
     show_history: bool,
     show_agent_panel: bool,
+    ai_features_enabled: bool,
 ) {
     if let Some(panel) = dragging_panel() {
         APP_UI_SETTINGS.with_mut(|settings| {
@@ -201,12 +211,158 @@ fn apply_tool_panel_drop(
                 show_explorer,
                 show_history,
                 show_agent_panel,
+                ai_features_enabled,
             );
         });
     }
 
     dragging_panel.set(None);
     drop_target.set(None);
+}
+
+fn compact_chat_title(text: &str, max_chars: usize) -> String {
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.is_empty() {
+        return "New chat".to_string();
+    }
+
+    let count = compact.chars().count();
+    if count <= max_chars {
+        compact
+    } else {
+        format!("{}...", compact.chars().take(max_chars).collect::<String>())
+    }
+}
+
+fn derive_chat_thread_title(
+    current_title: Option<&str>,
+    messages: &[AcpUiMessage],
+    connection_label: &str,
+) -> String {
+    if let Some(current_title) = current_title
+        .map(str::trim)
+        .filter(|title| !title.is_empty() && *title != "New chat")
+    {
+        return current_title.to_string();
+    }
+
+    if let Some(first_user_message) = messages
+        .iter()
+        .find(|message| matches!(message.kind, models::AcpMessageKind::User))
+        .map(|message| {
+            message
+                .text
+                .strip_prefix("Generate SQL:")
+                .unwrap_or(&message.text)
+                .trim()
+        })
+        .filter(|text| !text.is_empty())
+    {
+        return compact_chat_title(first_user_message, 56);
+    }
+
+    format!("New chat · {}", compact_chat_title(connection_label, 28))
+}
+
+fn upsert_chat_thread_summary(threads: &mut Vec<ChatThreadSummary>, summary: ChatThreadSummary) {
+    if let Some(existing) = threads.iter_mut().find(|thread| thread.id == summary.id) {
+        *existing = summary;
+    } else {
+        threads.push(summary);
+    }
+
+    threads.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.id.cmp(&left.id))
+    });
+}
+
+fn reset_panel_for_thread(state: &mut AcpPanelState, title: &str, messages: Vec<AcpUiMessage>) {
+    let launch = state.launch.clone();
+    let ollama = state.ollama.clone();
+    *state = AcpPanelState::new(launch, ollama);
+    replace_messages(state, messages);
+    state.status = if title.trim().is_empty() {
+        "Chat ready. Connect an agent to continue.".to_string()
+    } else {
+        format!("{title} is ready. Connect an agent to continue.")
+    };
+}
+
+fn create_chat_thread(
+    mut chat_threads: Signal<Vec<ChatThreadSummary>>,
+    mut active_chat_thread_id: Signal<Option<i64>>,
+    connection_name: String,
+) {
+    let _ = acp::disconnect_acp_agent();
+    spawn(async move {
+        match storage::create_chat_thread(connection_name, Some("New chat".to_string())).await {
+            Ok(thread) => {
+                chat_threads
+                    .with_mut(|threads| upsert_chat_thread_summary(threads, thread.clone()));
+                active_chat_thread_id.set(Some(thread.id));
+            }
+            Err(err) => {
+                eprintln!("Failed to create chat thread: {err}");
+            }
+        }
+    });
+}
+
+fn select_chat_thread(mut active_chat_thread_id: Signal<Option<i64>>, thread_id: i64) {
+    if active_chat_thread_id() == Some(thread_id) {
+        return;
+    }
+
+    let _ = acp::disconnect_acp_agent();
+    active_chat_thread_id.set(Some(thread_id));
+}
+
+fn delete_chat_thread(
+    mut chat_threads: Signal<Vec<ChatThreadSummary>>,
+    mut active_chat_thread_id: Signal<Option<i64>>,
+    connection_name: String,
+    thread_id: i64,
+) {
+    let was_active = active_chat_thread_id() == Some(thread_id);
+    let fallback_active = active_chat_thread_id();
+
+    spawn(async move {
+        if let Err(err) = storage::delete_chat_thread(thread_id).await {
+            eprintln!("Failed to delete chat thread {thread_id}: {err}");
+            return;
+        }
+
+        let mut next_thread_id = fallback_active.filter(|current| *current != thread_id);
+        chat_threads.with_mut(|threads| {
+            threads.retain(|thread| thread.id != thread_id);
+            if was_active {
+                next_thread_id = threads.first().map(|thread| thread.id);
+            }
+        });
+
+        if was_active {
+            let _ = acp::disconnect_acp_agent();
+        }
+
+        if let Some(next_thread_id) = next_thread_id {
+            active_chat_thread_id.set(Some(next_thread_id));
+            return;
+        }
+
+        match storage::create_chat_thread(connection_name, Some("New chat".to_string())).await {
+            Ok(thread) => {
+                chat_threads
+                    .with_mut(|threads| upsert_chat_thread_summary(threads, thread.clone()));
+                active_chat_thread_id.set(Some(thread.id));
+            }
+            Err(err) => {
+                eprintln!("Failed to recreate chat thread after delete: {err}");
+            }
+        }
+    });
 }
 
 #[component]
@@ -231,8 +387,20 @@ pub fn Workspace() -> Element {
     let mut show_connections = use_signal(|| APP_UI_SETTINGS().show_connections);
     let mut show_explorer = use_signal(|| APP_UI_SETTINGS().show_explorer);
     let mut show_sql_editor = use_signal(|| APP_UI_SETTINGS().show_sql_editor);
+    let mut ai_features_enabled = use_signal(|| APP_UI_SETTINGS().ai_features_enabled);
     let mut show_agent_panel = use_signal(|| APP_UI_SETTINGS().show_agent_panel);
+    let allow_agent_db_read = use_signal(|| false);
+    let allow_agent_read_sql_run = use_signal(|| false);
+    let allow_agent_write_sql_run = use_signal(|| false);
+    let allow_agent_tool_run = use_signal(|| false);
     let mut acp_panel_state = use_signal(default_acp_panel_state);
+    let mut chat_threads = use_signal(Vec::<ChatThreadSummary>::new);
+    let mut active_chat_thread_id = use_signal(|| None::<i64>);
+    let mut chat_revision = use_signal(|| 0_u64);
+    let mut handled_agent_sql_message_id = use_signal(|| 0_u64);
+    let mut ai_disable_applied = use_signal(|| false);
+    let mut chat_threads_loaded = use_signal(|| false);
+    let mut chat_bootstrap_inflight = use_signal(|| false);
     let mut sidebar_width = use_signal(|| 320.0);
     let mut inspector_width = use_signal(|| 360.0);
     let mut sidebar_resize = use_signal(|| None::<ColumnResizeState>);
@@ -247,6 +415,10 @@ pub fn Workspace() -> Element {
         use_resource(
             move || async move { storage::load_saved_queries().await.unwrap_or_default() },
         );
+    let persisted_chat_threads =
+        use_resource(move || async move { storage::load_chat_threads().await.unwrap_or_default() });
+    let chat_bootstrap_connection_label = connection_label.clone();
+    let chat_persist_connection_label = connection_label.clone();
 
     use_effect(move || {
         let reload_tick = tree_reload();
@@ -354,12 +526,107 @@ pub fn Workspace() -> Element {
     });
 
     use_effect(move || {
+        let Some(items) = persisted_chat_threads() else {
+            return;
+        };
+        if chat_threads_loaded() {
+            return;
+        }
+
+        if items.is_empty() {
+            if chat_bootstrap_inflight() {
+                return;
+            }
+
+            chat_bootstrap_inflight.set(true);
+            let default_connection = chat_bootstrap_connection_label.clone();
+            spawn(async move {
+                match storage::create_chat_thread(
+                    default_connection.clone(),
+                    Some("New chat".to_string()),
+                )
+                .await
+                {
+                    Ok(thread) => {
+                        chat_threads.set(vec![thread.clone()]);
+                        active_chat_thread_id.set(Some(thread.id));
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to create default chat thread: {err}");
+                    }
+                }
+
+                chat_threads_loaded.set(true);
+                chat_bootstrap_inflight.set(false);
+            });
+            return;
+        }
+
+        chat_threads.set(items.clone());
+        active_chat_thread_id.set(Some(items[0].id));
+        chat_threads_loaded.set(true);
+    });
+
+    use_effect(move || {
+        let Some(thread_id) = active_chat_thread_id() else {
+            return;
+        };
+
+        spawn(async move {
+            let thread_title = chat_threads
+                .read()
+                .iter()
+                .find(|thread| thread.id == thread_id)
+                .map(|thread| thread.title.clone())
+                .unwrap_or_else(|| "New chat".to_string());
+            let messages = match storage::load_chat_thread_messages(thread_id).await {
+                Ok(messages) => messages,
+                Err(err) => {
+                    eprintln!("Failed to load chat thread {thread_id}: {err}");
+                    Vec::new()
+                }
+            };
+            let last_message_id = messages.iter().map(|message| message.id).max().unwrap_or(0);
+
+            let _ = acp::disconnect_acp_agent();
+            handled_agent_sql_message_id.set(last_message_id);
+            acp_panel_state
+                .with_mut(|state| reset_panel_for_thread(state, &thread_title, messages));
+        });
+    });
+
+    use_effect(move || {
         let settings = APP_UI_SETTINGS();
         show_connections.set(settings.show_connections);
         show_explorer.set(settings.show_explorer);
         show_sql_editor.set(settings.show_sql_editor);
-        show_agent_panel.set(settings.show_agent_panel);
+        ai_features_enabled.set(settings.ai_features_enabled);
+        show_agent_panel.set(settings.ai_features_enabled && settings.show_agent_panel);
         *APP_SHOW_HISTORY.write() = settings.show_history;
+    });
+
+    use_effect(move || {
+        if ai_features_enabled() {
+            if ai_disable_applied() {
+                ai_disable_applied.set(false);
+            }
+            return;
+        }
+
+        if ai_disable_applied() {
+            return;
+        }
+
+        ai_disable_applied.set(true);
+        let _ = acp::disconnect_acp_agent();
+        acp_panel_state.with_mut(|state| {
+            let launch = state.launch.clone();
+            let ollama = state.ollama.clone();
+            let existing_messages = state.messages.clone();
+            *state = AcpPanelState::new(launch, ollama);
+            replace_messages(state, existing_messages);
+            state.status = "AI features are disabled.".to_string();
+        });
     });
 
     use_effect(move || {
@@ -372,41 +639,102 @@ pub fn Workspace() -> Element {
     });
 
     use_effect(move || {
+        let revision = chat_revision();
+        if revision == 0 {
+            return;
+        }
+
+        let connection_name = chat_persist_connection_label.clone();
+        spawn(async move {
+            let Some(thread_id) = active_chat_thread_id() else {
+                return;
+            };
+
+            let messages = acp_panel_state().messages.clone();
+            let current_title = chat_threads
+                .read()
+                .iter()
+                .find(|thread| thread.id == thread_id)
+                .map(|thread| thread.title.clone());
+            let next_title =
+                derive_chat_thread_title(current_title.as_deref(), &messages, &connection_name);
+
+            match storage::save_chat_thread_snapshot(
+                thread_id,
+                next_title,
+                connection_name.clone(),
+                messages,
+            )
+            .await
+            {
+                Ok(summary) => {
+                    chat_threads.with_mut(|threads| upsert_chat_thread_summary(threads, summary));
+                }
+                Err(err) => {
+                    eprintln!("Failed to persist chat thread {thread_id}: {err}");
+                }
+            }
+        });
+    });
+
+    use_effect(move || {
         spawn(async move {
             loop {
+                if !ai_features_enabled() {
+                    let _ = acp::drain_acp_events();
+                    tokio::time::sleep(Duration::from_millis(120)).await;
+                    continue;
+                }
+
                 let events = acp::drain_acp_events();
                 if !events.is_empty() {
                     acp_panel_state.with_mut(|state| apply_acp_events(state, events));
+                    chat_revision += 1;
 
-                    let sql_to_insert = {
+                    let pending_agent_sql = {
                         let panel_state = acp_panel_state();
-                        if panel_state.pending_sql_insert {
-                            panel_state.messages.iter().rev().find_map(|message| {
-                                match message.kind {
-                                    models::AcpMessageKind::Agent => {
-                                        extract_sql_candidate(&message.text)
-                                    }
-                                    _ => None,
+                        let handled_message_id = handled_agent_sql_message_id();
+                        panel_state
+                            .messages
+                            .iter()
+                            .filter(|message| message.id > handled_message_id)
+                            .find_map(|message| match message.kind {
+                                models::AcpMessageKind::Agent => {
+                                    extract_sql_candidate(&message.text).map(|sql| {
+                                        (message.id, sql, panel_state.pending_sql_insert)
+                                    })
                                 }
+                                _ => None,
                             })
-                        } else {
-                            None
-                        }
                     };
 
-                    if let Some(sql) = sql_to_insert {
-                        show_sql_editor.set(true);
-                        update_active_tab_sql(
-                            tabs,
-                            active_tab_id(),
-                            sql,
-                            "SQL generated by ACP agent".to_string(),
-                        );
-                        acp_panel_state.with_mut(|state| {
-                            state.pending_sql_insert = false;
-                            state.status =
-                                "Inserted generated SQL into the active editor.".to_string();
-                        });
+                    if let Some((message_id, sql, pending_sql_insert)) = pending_agent_sql {
+                        handled_agent_sql_message_id.set(message_id);
+
+                        if query::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
+                            execute_agent_sql_request(
+                                acp_panel_state,
+                                tabs,
+                                active_tab_id(),
+                                show_sql_editor,
+                                chat_revision,
+                                sql,
+                                AgentSqlExecutionMode::AutoReadOnly,
+                            );
+                        } else if pending_sql_insert {
+                            show_sql_editor.set(true);
+                            update_active_tab_sql(
+                                tabs,
+                                active_tab_id(),
+                                sql,
+                                "SQL generated by ACP agent".to_string(),
+                            );
+                            acp_panel_state.with_mut(|state| {
+                                state.pending_sql_insert = false;
+                                state.status =
+                                    "Inserted generated SQL into the active editor.".to_string();
+                            });
+                        }
                     }
                 }
 
@@ -422,6 +750,7 @@ pub fn Workspace() -> Element {
         show_explorer(),
         show_history,
         show_agent_panel(),
+        ai_features_enabled(),
     );
     let inspector_panels = visible_tool_panels(
         &tool_panel_layout.inspector,
@@ -429,9 +758,26 @@ pub fn Workspace() -> Element {
         show_explorer(),
         show_history,
         show_agent_panel(),
+        ai_features_enabled(),
     );
     let show_sidebar = !sidebar_panels.is_empty() || dragging_panel().is_some();
     let show_inspector = !inspector_panels.is_empty() || dragging_panel().is_some();
+    let active_chat_thread = chat_threads
+        .read()
+        .iter()
+        .find(|thread| Some(thread.id) == active_chat_thread_id())
+        .cloned();
+    let active_chat_thread_title = active_chat_thread
+        .as_ref()
+        .map(|thread| thread.title.clone())
+        .unwrap_or_else(|| "New chat".to_string());
+    let active_chat_thread_connection = active_chat_thread
+        .as_ref()
+        .map(|thread| thread.connection_name.clone())
+        .unwrap_or_else(|| connection_label.clone());
+    let inspector_connection_label = connection_label.clone();
+    let create_thread_connection_label = connection_label.clone();
+    let delete_thread_connection_label = connection_label.clone();
 
     let render_drop_slot = move |dock: WorkspaceToolDock, index: usize, empty: bool| -> Element {
         let target = DockDropTarget { dock, index };
@@ -471,6 +817,11 @@ pub fn Workspace() -> Element {
             let mut class_name = "workspace__tool-panel".to_string();
             let panel_key = panel.label();
             let target = DockDropTarget { dock, index };
+            let agent_thread_title = active_chat_thread_title.clone();
+            let agent_thread_connection = active_chat_thread_connection.clone();
+            let agent_sql_connection_label = inspector_connection_label.clone();
+            let agent_create_connection_label = create_thread_connection_label.clone();
+            let agent_delete_connection_label = delete_thread_connection_label.clone();
             class_name.push_str(match panel {
                 WorkspaceToolPanel::Connections => " workspace__tool-panel--connections",
                 WorkspaceToolPanel::Explorer => " workspace__tool-panel--explorer",
@@ -569,7 +920,34 @@ pub fn Workspace() -> Element {
                                 tabs,
                                 active_tab_id,
                                 show_sql_editor,
-                                sql_connection_label: connection_label.clone(),
+                                chat_revision,
+                                allow_agent_db_read,
+                                allow_agent_read_sql_run,
+                                allow_agent_write_sql_run,
+                                allow_agent_tool_run,
+                                chat_threads: chat_threads(),
+                                active_thread_id: active_chat_thread_id(),
+                                thread_title: agent_thread_title,
+                                thread_connection_name: agent_thread_connection,
+                                sql_connection_label: agent_sql_connection_label,
+                                on_new_thread: move |_| {
+                                    create_chat_thread(
+                                        chat_threads,
+                                        active_chat_thread_id,
+                                        agent_create_connection_label.clone(),
+                                    );
+                                },
+                                on_select_thread: move |thread_id| {
+                                    select_chat_thread(active_chat_thread_id, thread_id);
+                                },
+                                on_delete_thread: move |thread_id| {
+                                    delete_chat_thread(
+                                        chat_threads,
+                                        active_chat_thread_id,
+                                        agent_delete_connection_label.clone(),
+                                        thread_id,
+                                    );
+                                },
                             }
                         },
                     }}
@@ -643,6 +1021,7 @@ pub fn Workspace() -> Element {
                         show_explorer(),
                         APP_SHOW_HISTORY(),
                         show_agent_panel(),
+                        ai_features_enabled(),
                     );
                 } else {
                     dragging_panel.set(None);
@@ -765,22 +1144,24 @@ pub fn Workspace() -> Element {
                                 });
                             },
                         }
-                        IconButton {
-                            icon: ActionIcon::Agent,
-                            label: if show_agent_panel() {
-                                "Hide agent panel".to_string()
-                            } else {
-                                "Show agent panel".to_string()
-                            },
-                            active: show_agent_panel(),
-                            small: true,
-                            onclick: move |_| {
-                                let next = !show_agent_panel();
-                                show_agent_panel.set(next);
-                                APP_UI_SETTINGS.with_mut(|settings| {
-                                    settings.show_agent_panel = next;
-                                });
-                            },
+                        if ai_features_enabled() {
+                            IconButton {
+                                icon: ActionIcon::Agent,
+                                label: if show_agent_panel() {
+                                    "Hide agent panel".to_string()
+                                } else {
+                                    "Show agent panel".to_string()
+                                },
+                                active: show_agent_panel(),
+                                small: true,
+                                onclick: move |_| {
+                                    let next = !show_agent_panel();
+                                    show_agent_panel.set(next);
+                                    APP_UI_SETTINGS.with_mut(|settings| {
+                                        settings.show_agent_panel = next;
+                                    });
+                                },
+                            }
                         }
                         IconButton {
                             icon: ActionIcon::Refresh,

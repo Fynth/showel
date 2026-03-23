@@ -56,47 +56,59 @@ textarea {
 
 .theme-dark {
   color-scheme: dark;
-  --color-bg: #000000;
-  --color-panel: #050608;
-  --color-panel-2: #090b0e;
-  --color-panel-3: #101318;
-  --color-border: #1b222d;
-  --color-border-strong: #273140;
-  --color-text: #eef3fb;
-  --color-text-muted: #9aa8bb;
-  --color-text-dim: #6c798b;
-  --color-primary: #2f7cff;
-  --color-primary-hover: #4a8dff;
-  --color-primary-active: #2169de;
-  --color-info: #5bb5ff;
-  --color-success: #31c38a;
-  --color-danger: #ef5f77;
-  --color-warning: #f0b248;
-  --color-focus: rgba(47, 124, 255, 0.45);
-  --color-hover: rgba(255, 255, 255, 0.035);
-  --color-active: rgba(47, 124, 255, 0.18);
-  --color-backdrop: rgba(0, 0, 0, 0.78);
-  --editor-bg: #020304;
-  --editor-overlay: rgba(255, 255, 255, 0.01);
-  --editor-line: rgba(255, 255, 255, 0.03);
-  --editor-token-plain: #dbe6f8;
-  --editor-token-keyword: #63a0ff;
-  --editor-token-string: #91d883;
-  --editor-token-number: #f5c06b;
-  --editor-token-comment: #667588;
-  --editor-token-function: #79cfff;
-  --editor-token-type: #b9a6ff;
-  --editor-token-identifier: #c8d5e8;
-  --editor-token-attribute: #ff96b0;
-  --editor-token-operator: #ff9a76;
-  --editor-token-punctuation: #7d8da3;
-  --grid-header: #06080b;
-  --grid-row-hover: rgba(47, 124, 255, 0.06);
+  --color-bg: #11111b;
+  --color-surface-shell: #11111b;
+  --color-surface-sidebar: #181825;
+  --color-surface-main: #1e1e2e;
+  --color-surface-inspector: #171825;
+  --color-surface-elevated: #25273a;
+  --color-surface-contrast: #313244;
+  --color-panel: #1e1e2e;
+  --color-panel-2: #25273a;
+  --color-panel-3: #313244;
+  --color-border: #313244;
+  --color-border-strong: #45475a;
+  --color-text: #cdd6f4;
+  --color-text-muted: #a6adc8;
+  --color-text-dim: #7f849c;
+  --color-primary: #89b4fa;
+  --color-primary-hover: #9cc3fb;
+  --color-primary-active: #74a7f8;
+  --color-info: #74c7ec;
+  --color-success: #a6e3a1;
+  --color-danger: #f38ba8;
+  --color-warning: #f9e2af;
+  --color-focus: rgba(137, 180, 250, 0.38);
+  --color-hover: rgba(255, 255, 255, 0.045);
+  --color-active: rgba(137, 180, 250, 0.18);
+  --color-backdrop: rgba(17, 17, 27, 0.8);
+  --editor-bg: #161722;
+  --editor-overlay: rgba(255, 255, 255, 0.02);
+  --editor-line: rgba(255, 255, 255, 0.035);
+  --editor-token-plain: #cdd6f4;
+  --editor-token-keyword: #89b4fa;
+  --editor-token-string: #a6e3a1;
+  --editor-token-number: #f9e2af;
+  --editor-token-comment: #6c7086;
+  --editor-token-function: #89dceb;
+  --editor-token-type: #cba6f7;
+  --editor-token-identifier: #bac2de;
+  --editor-token-attribute: #f5c2e7;
+  --editor-token-operator: #fab387;
+  --editor-token-punctuation: #9399b2;
+  --grid-header: #25273a;
+  --grid-row-hover: rgba(137, 180, 250, 0.08);
 }
 
 .theme-light {
   color-scheme: light;
   --color-bg: #f3f6fb;
+  --color-surface-shell: #edf1f7;
+  --color-surface-sidebar: #f4f7fb;
+  --color-surface-main: #ffffff;
+  --color-surface-inspector: #f7f9fd;
+  --color-surface-elevated: #f9fbfe;
+  --color-surface-contrast: #eef3f9;
   --color-panel: #ffffff;
   --color-panel-2: #f9fbfe;
   --color-panel-3: #eef3f9;
@@ -141,7 +153,7 @@ textarea {
   min-height: 100dvh;
   display: grid;
   grid-template-rows: minmax(44px, auto) 1fr minmax(26px, auto);
-  background: var(--color-bg);
+  background: var(--color-surface-shell, var(--color-bg));
   color: var(--color-text);
   overflow: hidden;
   isolation: isolate;
@@ -178,7 +190,7 @@ textarea {
   grid-template-columns: minmax(220px, var(--workspace-sidebar-width, clamp(240px, 21vw, 320px))) 10px minmax(0, 1fr);
   gap: 6px;
   padding: 6px;
-  background: var(--color-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 90%, black 10%), var(--color-surface-shell, var(--color-bg)));
   overflow: hidden;
 }
 
@@ -192,7 +204,8 @@ textarea {
   flex-direction: column;
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 90%, white 2%), var(--color-surface-sidebar, var(--color-panel)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 14px 28px rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 
@@ -282,7 +295,8 @@ textarea {
   grid-template-rows: auto 1fr;
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: var(--color-panel);
+  background: var(--color-surface-main, var(--color-panel));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 18px 36px rgba(0, 0, 0, 0.16);
   overflow: hidden;
 }
 
@@ -315,7 +329,8 @@ textarea {
   gap: 3px;
   padding: 3px;
   border-left: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-panel-2) 46%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-inspector, var(--color-panel-2)) 88%, white 2%), var(--color-surface-inspector, var(--color-panel-2)));
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.02);
 }
 
 .workspace__header {
@@ -325,7 +340,7 @@ textarea {
   gap: 6px;
   padding: 3px 6px;
   border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-panel-2) 56%, transparent);
+  background: color-mix(in srgb, var(--color-surface-inspector, var(--color-panel-2)) 82%, var(--color-surface-contrast, var(--color-panel-3)));
 }
 
 .workspace__toolbar {
@@ -346,7 +361,7 @@ textarea {
   gap: 3px;
   padding: 0 3px 3px;
   border-top: 1px solid var(--color-border);
-  background: var(--color-panel);
+  background: var(--color-surface-elevated, var(--color-panel));
   overflow: auto;
 }
 
@@ -363,14 +378,15 @@ textarea {
   padding: 3px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-panel);
+  background: var(--color-surface-elevated, var(--color-panel));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
 .workspace__panel--history {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-2) 68%, transparent), transparent 160px), var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 72%, transparent), transparent 160px), var(--color-surface-elevated, var(--color-panel));
 }
 
 .workspace__tool-panel {
@@ -568,7 +584,8 @@ textarea {
   gap: 10px;
   padding: 0 clamp(6px, 1vw, 8px);
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 94%, white 2%), var(--color-surface-sidebar, var(--color-panel)));
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.02);
   min-width: 0;
   overflow: hidden;
 }
@@ -670,7 +687,8 @@ textarea {
   gap: 12px;
   padding: 0 8px;
   border-top: 1px solid var(--color-border);
-  background: var(--color-panel-2);
+  background: color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 86%, var(--color-surface-sidebar, var(--color-panel-2)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   color: var(--color-text-muted);
   font-size: 12px;
   min-width: 0;
@@ -702,11 +720,12 @@ textarea {
   gap: 4px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-panel-2);
+  background: var(--color-surface-contrast, var(--color-panel-2));
   color: var(--color-text);
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 .button:hover:not(:disabled) {
@@ -729,32 +748,33 @@ textarea {
 }
 
 .button--primary {
-  border-color: transparent;
-  background: var(--color-primary);
-  color: white;
+  border-color: color-mix(in srgb, var(--color-primary) 26%, var(--color-border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 26%, var(--color-surface-contrast, var(--color-panel-2))), color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-elevated, var(--color-panel))));
+  color: color-mix(in srgb, var(--color-text) 92%, white 8%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 0 0 1px color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 .button--primary:not(:disabled):hover {
-  border-color: transparent;
-  background: var(--color-primary-hover);
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border-strong));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 32%, var(--color-surface-contrast, var(--color-panel-2))), color-mix(in srgb, var(--color-primary) 22%, var(--color-surface-elevated, var(--color-panel))));
 }
 .button--primary:not(:disabled):active {
-  background: var(--color-primary-active);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 36%, var(--color-surface-contrast, var(--color-panel-2))), color-mix(in srgb, var(--color-primary) 24%, var(--color-surface-elevated, var(--color-panel))));
 }
 
 .button--ghost {
-  background: transparent;
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 44%, transparent);
 }
 
 .button--active {
   border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-panel-2));
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface-contrast, var(--color-panel-2)));
 }
 .button--active:not(:disabled):hover {
   border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 24%, var(--color-panel-2));
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface-contrast, var(--color-panel-2)));
 }
 .button--active:not(:disabled):active {
-  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-panel-2));
+  background: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface-contrast, var(--color-panel-2)));
 }
 
 .button--small {
@@ -847,8 +867,9 @@ textarea {
   padding: 0 10px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-panel-2);
+  background: var(--color-surface-elevated, var(--color-panel-2));
   color: var(--color-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
   transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
 .input::placeholder {
@@ -909,7 +930,7 @@ select.input:focus-visible {
   padding: clamp(12px, 2vw, 16px);
   border: 1px solid var(--color-border-strong);
   border-radius: 18px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-2) 78%, transparent), transparent 180px), var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 80%, transparent), transparent 180px), var(--color-surface-main, var(--color-panel));
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.24);
 }
 
@@ -952,7 +973,7 @@ select.input:focus-visible {
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--color-panel) 92%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 94%, transparent);
 }
 
 .settings-modal__section-header {
@@ -989,7 +1010,7 @@ select.input:focus-visible {
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-panel-2) 74%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 76%, transparent);
 }
 
 .settings-modal__toggle {
@@ -1000,7 +1021,7 @@ select.input:focus-visible {
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 74%, transparent);
   color: var(--color-text);
   font-size: 12px;
 }
@@ -1047,7 +1068,7 @@ select.input:focus-visible {
   padding: clamp(16px, 2.4vw, 32px);
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, white 3%), var(--color-surface-main, var(--color-panel)));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
@@ -1069,7 +1090,7 @@ select.input:focus-visible {
   padding: clamp(12px, 1.6vw, 16px);
   border: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
   border-radius: 14px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-2) 82%, transparent), transparent 160px), color-mix(in srgb, var(--color-panel) 96%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 84%, transparent), transparent 160px), color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 96%, transparent);
 }
 
 .connect-screen__hero-topbar {
@@ -1187,7 +1208,7 @@ select.input:focus-visible {
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-panel-2) 62%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 70%, transparent);
 }
 
 .connect-form__ssh-header {
@@ -1213,7 +1234,7 @@ select.input:focus-visible {
   padding: 8px 12px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-panel) 94%, var(--color-panel-2));
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 76%, var(--color-surface-elevated, var(--color-panel-2)));
 }
 
 .recent-connection__name {
@@ -1283,7 +1304,7 @@ select.input:focus-visible {
   gap: 4px;
   padding: 3px 6px 0;
   margin-bottom: -1px;
-  background: var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 90%, white 2%), var(--color-surface-main, var(--color-panel)));
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -1321,7 +1342,7 @@ select.input:focus-visible {
   border-color: var(--color-border);
   border-bottom-color: transparent;
   color: var(--color-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 -8px 18px rgba(0, 0, 0, 0.1);
 }
 
 .tabbar__tab {
@@ -1330,7 +1351,8 @@ select.input:focus-visible {
   gap: 6px;
   max-width: clamp(140px, 18vw, 220px);
   min-width: 0;
-  background: var(--color-panel-2);
+  background: var(--color-surface-elevated, var(--color-panel-2));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .tabbar__copy {
@@ -1453,7 +1475,7 @@ select.input:focus-visible {
   padding: 4px;
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: 10px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-2) 68%, transparent), transparent 140%), var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 74%, transparent), transparent 140%), var(--color-surface-elevated, var(--color-panel));
 }
 
 .tree__connection-header {
@@ -2101,7 +2123,7 @@ select.input:focus-visible {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-panel);
+  background: var(--color-surface-main, var(--color-panel));
   overflow: hidden;
 }
 
@@ -2114,7 +2136,8 @@ select.input:focus-visible {
   flex: 0 0 var(--editor-pane-height, clamp(160px, 30vh, 260px));
   min-height: 120px;
   padding: 6px;
-  background: var(--color-panel);
+  background: var(--color-surface-elevated, var(--color-panel));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   min-width: 0;
   overflow: hidden;
 }
@@ -2162,7 +2185,7 @@ select.input:focus-visible {
   gap: 6px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-panel);
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 86%, var(--color-surface-contrast, var(--color-panel-2)));
 }
 
 .editor__toolbar-main {
@@ -2198,7 +2221,7 @@ select.input:focus-visible {
   flex-wrap: wrap;
   padding: 4px 6px;
   border-top: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-panel-2) 64%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 72%, transparent);
 }
 
 .editor__pagination-meta {
@@ -2220,7 +2243,7 @@ select.input:focus-visible {
   padding: 6px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: var(--color-panel);
+  background: var(--color-surface-elevated, var(--color-panel));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
@@ -2285,7 +2308,7 @@ select.input:focus-visible {
   height: 100%;
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: var(--editor-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--editor-bg) 94%, white 2%), var(--editor-bg));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   overflow: hidden;
 }
@@ -2481,6 +2504,7 @@ select.input:focus-visible {
 }
 
 .agent-panel {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -2490,7 +2514,8 @@ select.input:focus-visible {
   padding: clamp(3px, 0.8vw, 6px);
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 92%, white 2%), var(--color-surface-elevated, var(--color-panel)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 14px 28px rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 
@@ -2521,6 +2546,109 @@ select.input:focus-visible {
   flex-wrap: wrap;
 }
 
+.agent-panel__dialogs-popover {
+  position: absolute;
+  top: 52px;
+  right: 6px;
+  z-index: 20;
+  width: min(360px, 100% - 12px);
+  max-height: min(420px, 100% - 60px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-3)) 92%, black 8%);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+}
+
+.agent-panel__dialogs-header,
+.agent-panel__dialog-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.agent-panel__dialogs-header {
+  justify-content: space-between;
+}
+
+.agent-panel__dialogs-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-panel__dialogs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.agent-panel__dialog-item {
+  border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel-2)) 76%, transparent);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.agent-panel__dialog-item:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+  transform: translateY(-1px);
+}
+
+.agent-panel__dialog-item--active {
+  border-color: color-mix(in srgb, var(--color-primary) 54%, white 8%);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-panel));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.agent-panel__dialog-main,
+.agent-panel__dialog-delete {
+  color: inherit;
+}
+
+.agent-panel__dialog-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px;
+  text-align: left;
+}
+
+.agent-panel__dialog-delete {
+  flex: 0 0 auto;
+  padding: 8px;
+  color: var(--color-text-dim);
+}
+
+.agent-panel__dialog-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-panel__dialog-title {
+  font-weight: 600;
+}
+
+.agent-panel__dialog-meta,
+.agent-panel__dialog-preview {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.agent-panel__dialog-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .agent-panel__title {
   font-size: 14px;
   font-weight: 600;
@@ -2537,7 +2665,7 @@ select.input:focus-visible {
   padding: 3px 6px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-panel-2);
+  background: var(--color-surface-contrast, var(--color-panel-2));
   font-size: 12px;
   white-space: nowrap;
 }
@@ -2547,6 +2675,20 @@ select.input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.agent-panel__permissions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-panel__permission-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .agent-panel__session {
@@ -2599,7 +2741,7 @@ select.input:focus-visible {
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-panel-2) 76%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 78%, transparent);
 }
 
 .agent-panel__section-header,
@@ -2655,7 +2797,7 @@ select.input:focus-visible {
   padding: 6px;
   border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-panel));
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-elevated, var(--color-panel)));
 }
 
 .agent-panel__permission-copy {
@@ -2709,28 +2851,34 @@ select.input:focus-visible {
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel-2)) 68%, var(--color-surface-elevated, var(--color-panel)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
 }
 
 .agent-panel__message--user {
   border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface-main, var(--color-panel)));
 }
 
 .agent-panel__message--agent {
   border-color: color-mix(in srgb, var(--color-info) 18%, var(--color-border));
+  background: color-mix(in srgb, var(--color-info) 6%, var(--color-surface-elevated, var(--color-panel)));
 }
 
 .agent-panel__message--thought {
   border-color: color-mix(in srgb, var(--color-warning) 20%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 7%, var(--color-surface-elevated, var(--color-panel)));
 }
 
 .agent-panel__message--tool,
 .agent-panel__message--system {
   border-color: color-mix(in srgb, var(--color-border-strong) 70%, var(--color-border));
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 72%, var(--color-surface-main, var(--color-panel)));
 }
 
 .agent-panel__message--error {
   border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface-main, var(--color-panel)));
 }
 
 .agent-panel__message-role {
@@ -2740,7 +2888,7 @@ select.input:focus-visible {
   padding: 2px 6px;
   border: 1px solid color-mix(in srgb, var(--color-border-strong) 72%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-panel) 88%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 74%, transparent);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -2755,6 +2903,123 @@ select.input:focus-visible {
   font-family: "JetBrains Mono", "Cascadia Code", monospace;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.agent-panel__message-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--color-text);
+}
+
+.agent-panel__inline-code {
+  display: inline;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 76%, black 24%);
+  color: color-mix(in srgb, var(--color-text) 96%, white 4%);
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 0.95em;
+}
+
+.agent-panel__code-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 7%, var(--color-surface-contrast, var(--color-panel-2))) 0%, color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 92%, black 8%) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+}
+
+.agent-panel__code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-panel__code-language {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 74%, transparent);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-panel__code-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-panel__code-body {
+  margin: 0;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 55%, transparent);
+  background: color-mix(in srgb, black 22%, var(--color-surface-main, var(--color-panel)));
+  color: color-mix(in srgb, var(--color-text) 96%, white 4%);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.agent-panel__artifact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 64%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 74%, transparent);
+}
+
+.agent-panel__artifact-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-panel__artifact-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-panel__artifact-label {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agent-panel__artifact-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .agent-panel__message-actions {
@@ -2828,7 +3093,7 @@ select.input:focus-visible {
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-2) 20%, transparent), transparent 120px), var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 28%, transparent), transparent 120px), var(--color-surface-elevated, var(--color-panel));
 }
 
 .results__layout {
@@ -2858,7 +3123,7 @@ select.input:focus-visible {
   gap: 6px;
   padding: 4px 6px;
   border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 78%, transparent);
 }
 
 .results__toolbar-copy {
@@ -2882,7 +3147,7 @@ select.input:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: color-mix(in srgb, var(--color-panel) 86%, transparent);
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 82%, transparent);
 }
 
 .results__toolbar-meta {
@@ -2910,7 +3175,7 @@ select.input:focus-visible {
   gap: 3px;
   padding: 6px;
   border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-panel-2) 72%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 78%, transparent);
 }
 
 .results__filters-topbar {
@@ -2952,7 +3217,7 @@ select.input:focus-visible {
   border: 1px dashed var(--color-border);
   border-radius: 8px;
   color: var(--color-text-muted);
-  background: color-mix(in srgb, var(--color-panel) 84%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 88%, transparent);
 }
 
 .results__summary {
@@ -2998,7 +3263,7 @@ select.input:focus-visible {
   padding: 0 3px 3px;
   scrollbar-gutter: stable both-edges;
   overscroll-behavior: contain;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel) 70%, transparent), transparent 28px);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 72%, transparent), transparent 28px);
 }
 
 .results__load-more {
@@ -3010,7 +3275,7 @@ select.input:focus-visible {
   color: var(--color-text-muted);
   font-size: 12px;
   border-top: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
-  background: color-mix(in srgb, var(--color-panel-2) 58%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 64%, transparent);
 }
 
 .results__table {
@@ -3019,7 +3284,7 @@ select.input:focus-visible {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 12px;
-  background: color-mix(in srgb, var(--color-panel) 88%, var(--color-panel-2));
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 72%, var(--color-surface-elevated, var(--color-panel-2)));
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: 8px;
   overflow: hidden;
@@ -3031,7 +3296,7 @@ select.input:focus-visible {
   top: 0;
   z-index: 1;
   padding: 0;
-  background: color-mix(in srgb, var(--grid-header) 88%, black 12%);
+  background: color-mix(in srgb, var(--grid-header) 90%, var(--color-surface-main, var(--color-panel)));
   border-bottom: 1px solid var(--color-border-strong);
   border-right: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
   text-align: left;
@@ -3089,7 +3354,7 @@ select.input:focus-visible {
 }
 
 .results__row:nth-child(even) {
-  background: color-mix(in srgb, var(--color-panel-2) 34%, transparent);
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 30%, transparent);
 }
 
 .results__row--selected {
@@ -3163,7 +3428,7 @@ select.input:focus-visible {
   flex-direction: column;
   overflow: hidden;
   border-left: 1px solid var(--color-border);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 140px), color-mix(in srgb, var(--color-panel-2) 74%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 140px), color-mix(in srgb, var(--color-surface-inspector, var(--color-panel-2)) 82%, transparent);
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.02);
 }
 
@@ -3223,7 +3488,7 @@ select.input:focus-visible {
   padding: 5px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-panel) 86%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 88%, transparent);
 }
 
 .results__details-label {
@@ -3287,7 +3552,7 @@ select.input:focus-visible {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-border-strong) 86%, transparent) color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+  scrollbar-color: color-mix(in srgb, var(--color-border-strong) 86%, transparent) color-mix(in srgb, var(--color-surface-main, var(--color-panel-2)) 92%, transparent);
 }
 
 *::-webkit-scrollbar {
@@ -3296,11 +3561,11 @@ select.input:focus-visible {
 }
 
 *::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel-2)) 92%, transparent);
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 2px solid color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-surface-main, var(--color-panel-2)) 92%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-border-strong) 86%, transparent);
 }

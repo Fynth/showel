@@ -45,6 +45,13 @@ pub async fn execute_query(
     execute_query_page(connection, sql, 100, 0, None, None).await
 }
 
+pub fn is_read_only_sql(sql: &str) -> bool {
+    matches!(
+        leading_sql_keyword(sql).as_deref(),
+        Some("select" | "with" | "show" | "describe" | "explain" | "pragma")
+    )
+}
+
 pub async fn load_table_preview_page(
     connection: DatabaseConnection,
     source: TablePreviewSource,
@@ -662,14 +669,19 @@ pub async fn execute_query_page(
 }
 
 fn is_tabular_query(sql: &str) -> bool {
-    matches!(
-        sql.split_whitespace().next(),
-        Some("select" | "with" | "show" | "describe" | "explain" | "pragma")
-    )
+    is_read_only_sql(sql)
 }
 
 fn is_paginated_query(sql: &str) -> bool {
-    matches!(sql.split_whitespace().next(), Some("select" | "with"))
+    matches!(leading_sql_keyword(sql).as_deref(), Some("select" | "with"))
+}
+
+fn leading_sql_keyword(sql: &str) -> Option<String> {
+    sql.split_whitespace()
+        .next()
+        .map(|keyword| keyword.trim_matches(|ch: char| matches!(ch, '(' | ';')))
+        .filter(|keyword| !keyword.is_empty())
+        .map(str::to_ascii_lowercase)
 }
 
 fn build_insert_row_sql(source: &TablePreviewSource, column_values: &[(String, String)]) -> String {
@@ -789,9 +801,21 @@ async fn postgres_single_primary_key_column(
 
 #[cfg(test)]
 mod tests {
-    use super::execute_query_page;
+    use super::{execute_query_page, is_read_only_sql};
     use models::{DatabaseConnection, QueryOutput};
     use sqlx::SqlitePool;
+
+    #[test]
+    fn read_only_sql_detection_matches_supported_queries() {
+        assert!(is_read_only_sql("select * from products"));
+        assert!(is_read_only_sql(
+            "WITH recent AS (select 1) select * from recent"
+        ));
+        assert!(is_read_only_sql("show tables"));
+        assert!(is_read_only_sql("pragma table_info(products)"));
+        assert!(!is_read_only_sql("update products set price = 10"));
+        assert!(!is_read_only_sql("delete from products"));
+    }
 
     #[tokio::test]
     async fn execute_query_page_supports_quoted_sqlite_table_names() {

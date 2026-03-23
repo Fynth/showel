@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use models::{
-    AcpMessageKind, AcpPanelState, QueryOutput, QueryPage, QueryTabState, TablePreviewSource,
+    AcpMessageKind, AcpPanelState, AcpUiMessage, QueryOutput, QueryPage, QueryTabState,
+    TablePreviewSource,
 };
 
 use crate::{app_state::session_connection, screens::workspace::actions::update_active_tab_sql};
@@ -56,11 +57,17 @@ pub(super) fn build_sql_generation_prompt(
     request: &str,
     db_context: Option<String>,
     active_tab_context: Option<String>,
+    thread_history: Option<String>,
 ) -> String {
     let mut prompt = format!(
         "You are generating SQL for the active database connection.\n\
 Database context: {connection_label}\n"
     );
+    if let Some(thread_history) = thread_history {
+        prompt.push_str("Use this recent chat history for follow-up intent:\n");
+        prompt.push_str(&thread_history);
+        prompt.push('\n');
+    }
     if let Some(active_tab_context) = active_tab_context {
         prompt.push_str("Use this active editor context too:\n");
         prompt.push_str(&active_tab_context);
@@ -122,11 +129,17 @@ pub(super) fn build_chat_prompt(
     prompt: &str,
     db_context: Option<String>,
     active_tab_context: Option<String>,
+    thread_history: Option<String>,
 ) -> String {
     let mut message = format!(
         "You are helping with the active database connection.\n\
 Database context: {connection_label}\n"
     );
+    if let Some(thread_history) = thread_history {
+        message.push_str("Use this recent chat history for follow-up context:\n");
+        message.push_str(&thread_history);
+        message.push('\n');
+    }
     if let Some(active_tab_context) = active_tab_context {
         message.push_str("Use this active editor context when it is relevant:\n");
         message.push_str(&active_tab_context);
@@ -140,7 +153,7 @@ Database context: {connection_label}\n"
     message.push_str(
         "Always answer in English.\n\
 Snapshot rows are previews only. Never infer total row counts, aggregates, or full-table statistics unless a query result explicitly provides them.\n\
-If the available context is insufficient, say exactly what is unknown and give the SQL needed to verify it.\n\
+If the available context is insufficient, say what is unknown and include exactly one read-only SQL query inside a single ```sql``` block so the app can verify it automatically.\n\
 Use the ongoing ACP session history for follow-up questions, but do not invent facts that were not established earlier in the session.\n\
 Prefer facts from the active editor context over generic assumptions.\n\
 If you propose schema creation, always use an auto-generated primary key `id`.\n\
@@ -148,6 +161,37 @@ If you propose inserts, omit `id` unless the user explicitly asks for manual ids
     );
     message.push_str(&format!("User request: {prompt}"));
     message
+}
+
+pub(super) fn build_thread_history_context(messages: &[AcpUiMessage]) -> Option<String> {
+    const MAX_THREAD_MESSAGES: usize = 12;
+
+    let transcript = messages
+        .iter()
+        .filter(|message| {
+            !matches!(message.kind, AcpMessageKind::Thought | AcpMessageKind::Tool)
+                && !message.text.trim().is_empty()
+                && !message.text.starts_with("Connected to ")
+        })
+        .rev()
+        .take(MAX_THREAD_MESSAGES)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|message| {
+            format!(
+                "{}: {}",
+                thread_role_label(&message.kind),
+                message.text.trim()
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if transcript.is_empty() {
+        None
+    } else {
+        Some(transcript.join("\n"))
+    }
 }
 
 pub(super) fn active_editor_prompt_context(
@@ -212,6 +256,17 @@ fn build_result_context(result: &QueryOutput) -> String {
     }
 }
 
+fn thread_role_label(kind: &AcpMessageKind) -> &'static str {
+    match kind {
+        AcpMessageKind::User => "User",
+        AcpMessageKind::Agent => "Assistant",
+        AcpMessageKind::Thought => "Thought",
+        AcpMessageKind::Tool => "Tool",
+        AcpMessageKind::System => "System",
+        AcpMessageKind::Error => "Error",
+    }
+}
+
 fn build_page_result_context(page: &QueryPage) -> String {
     if page.columns.is_empty() && page.rows.is_empty() {
         return "Active tab result: the query returned no rows.".to_string();
@@ -266,10 +321,13 @@ mod tests {
             "Summarize products",
             Some("preview".to_string()),
             Some("editor".to_string()),
+            None,
         );
         assert!(prompt.contains("Always answer in English."));
         assert!(prompt.contains("Never infer total row counts"));
         assert!(prompt.contains("Use this active editor context"));
+        assert!(prompt.contains("single ```sql``` block"));
+        assert!(prompt.contains("verify it automatically"));
     }
 
     #[test]
@@ -279,6 +337,7 @@ mod tests {
             "Count products",
             Some("preview".to_string()),
             Some("editor".to_string()),
+            None,
         );
         assert!(prompt.contains("Snapshot rows are previews only."));
         assert!(prompt.contains("Never infer total row counts"));

@@ -1,7 +1,7 @@
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-border-strong) 86%, transparent)
-    color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+    color-mix(in srgb, var(--color-surface-main, var(--color-panel-2)) 92%, transparent);
 }
 
 *::-webkit-scrollbar {
@@ -10,11 +10,16 @@
 }
 
 *::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-main, var(--color-panel-2)) 92%,
+    transparent
+  );
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 2px solid color-mix(in srgb, var(--color-panel-2) 92%, transparent);
+  border: 2px solid
+    color-mix(in srgb, var(--color-surface-main, var(--color-panel-2)) 92%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-border-strong) 86%, transparent);
 }

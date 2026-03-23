@@ -118,6 +118,7 @@ impl AppThemePreference {
 #[serde(default)]
 pub struct AppUiSettings {
     pub theme: AppThemePreference,
+    pub ai_features_enabled: bool,
     pub restore_session_on_launch: bool,
     pub show_connections: bool,
     pub show_explorer: bool,
@@ -132,6 +133,7 @@ impl Default for AppUiSettings {
     fn default() -> Self {
         Self {
             theme: AppThemePreference::Dark,
+            ai_features_enabled: true,
             restore_session_on_launch: true,
             show_connections: false,
             show_explorer: true,
