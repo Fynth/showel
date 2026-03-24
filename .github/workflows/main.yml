@@ -2,7 +2,6 @@ name: Build Windows Packages
 
 on:
   push:
-    branches: [main, master]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -16,6 +15,10 @@ on:
           - exe
           - msi
           - both
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-windows:

@@ -2,11 +2,14 @@ name: Build Linux Desktop
 
 on:
   push:
-    branches: [main, master]
     tags:
       - 'v*'
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-linux:
@@ -32,9 +35,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libjavascriptcoregtk-4.1-dev \
             libsoup-3.0-dev \
-            libayatana-appindicator3-dev \
-            libxdo-dev \
-            librsvg2-dev
+            libxdo-dev
 
       - name: Build Linux release binary
         run: cargo build --locked --release -p app --features desktop
@@ -51,6 +52,13 @@ jobs:
           cp README.md bundle/README.md
           tar -C bundle -czf showel-linux-x86_64.tar.gz .
 
+      - name: Write release metadata
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          mkdir -p release-metadata
+          printf 'version=%s\n' "${GITHUB_REF_NAME#v}" > release-metadata/version.env
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
@@ -58,6 +66,15 @@ jobs:
           path: showel-linux-x86_64.tar.gz
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload Linux release metadata artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: showel-release-metadata
+          path: release-metadata/version.env
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Publish Linux release assets
         if: startsWith(github.ref, 'refs/tags/v')

@@ -15,13 +15,25 @@ source_sha="${5:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 template="${project_root}/packaging/aur/showel-bin/PKGBUILD.in"
+wait_seconds="${SHOWEL_BINARY_ASSET_WAIT_SECONDS:-900}"
+wait_interval="${SHOWEL_BINARY_ASSET_WAIT_INTERVAL:-15}"
 
 if [[ -z "${source_sha}" ]]; then
   source_url="https://github.com/${owner}/${repo}/releases/download/v${version}/showel-linux-x86_64.tar.gz"
   archive_file="$(mktemp)"
   trap 'rm -f "${archive_file}"' EXIT
 
-  curl -fsSL "${source_url}" -o "${archive_file}"
+  deadline="$(( $(date +%s) + wait_seconds ))"
+  while ! curl -fsSL "${source_url}" -o "${archive_file}"; do
+    if (( $(date +%s) >= deadline )); then
+      echo "failed to download ${source_url} after waiting ${wait_seconds}s" >&2
+      exit 1
+    fi
+
+    echo "waiting for release asset ${source_url}" >&2
+    sleep "${wait_interval}"
+  done
+
   source_sha="$(sha256sum "${archive_file}" | awk '{print $1}')"
 fi
 

@@ -1,9 +1,11 @@
-name: Publish AUR Source Package
+name: Publish AUR Binary Package
 
 on:
-  release:
+  workflow_run:
+    workflows:
+      - Build Linux Desktop
     types:
-      - published
+      - completed
   workflow_dispatch:
     inputs:
       version:
@@ -12,18 +14,44 @@ on:
         type: string
 
 concurrency:
-  group: aur-publish-${{ github.event.release.tag_name || github.ref }}
+  group: aur-publish-bin-${{ github.event.workflow_run.id || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
-  publish-aur:
+  publish-aur-bin:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'
+      )
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
 
     steps:
-      - name: Checkout code
+      - name: Checkout code for triggering workflow
+        if: github.event_name == 'workflow_run'
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Checkout code
+        if: github.event_name != 'workflow_run'
+        uses: actions/checkout@v4
+
+      - name: Download release metadata artifact
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: showel-release-metadata
+          path: ${{ runner.temp }}/release-metadata
 
       - name: Install AUR publish dependencies
         shell: bash
@@ -40,8 +68,7 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             version="${{ github.event.inputs.version }}"
           else
-            version="${{ github.event.release.tag_name }}"
-            version="${version#v}"
+            source "${RUNNER_TEMP}/release-metadata/version.env"
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
@@ -55,12 +82,15 @@ jobs:
           fi
           chown -R builder:builder "${GITHUB_WORKSPACE}"
 
-      - name: Render AUR source package files
+      - name: Render AUR binary package files
+        env:
+          SHOWEL_BINARY_ASSET_WAIT_SECONDS: 300
+          SHOWEL_BINARY_ASSET_WAIT_INTERVAL: 10
         shell: bash
         run: |
           set -euo pipefail
-          stable_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel"
-          su builder -c "cd '${GITHUB_WORKSPACE}' && ./scripts/render-aur-release-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${stable_dir}' && bash ./scripts/update-aur-srcinfo.sh '${stable_dir}'"
+          binary_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOWEL_BINARY_ASSET_WAIT_SECONDS='${SHOWEL_BINARY_ASSET_WAIT_SECONDS}' SHOWEL_BINARY_ASSET_WAIT_INTERVAL='${SHOWEL_BINARY_ASSET_WAIT_INTERVAL}' ./scripts/render-aur-binary-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${binary_dir}' && bash ./scripts/update-aur-srcinfo.sh '${binary_dir}'"
 
       - name: Configure SSH for AUR
         env:
@@ -97,7 +127,7 @@ jobs:
             -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
             aur@aur.archlinux.org help
 
-      - name: Push source package to AUR
+      - name: Push binary package to AUR
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         shell: bash
@@ -107,6 +137,6 @@ jobs:
           ssh_dir="${RUNNER_TEMP}/aur-ssh"
           export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts"
           ./scripts/publish-aur-package.sh \
-            "showel" \
-            "${GITHUB_WORKSPACE}/packaging/aur/generated-showel" \
+            "showel-bin" \
+            "${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin" \
             "${VERSION}"

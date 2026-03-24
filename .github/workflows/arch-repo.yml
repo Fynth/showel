@@ -15,6 +15,10 @@ on:
         required: false
         type: string
 
+concurrency:
+  group: arch-repo-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 

@@ -2,9 +2,12 @@ name: Validate AUR Package
 
 on:
   push:
+    branches:
+      - main
     paths:
       - '.github/workflows/aur-check.yml'
       - '.github/workflows/aur-publish.yml'
+      - '.github/workflows/aur-publish-bin.yml'
       - 'packaging/aur/**'
       - 'packaging/arch/showel.desktop'
       - 'scripts/publish-aur-package.sh'
@@ -16,6 +19,7 @@ on:
     paths:
       - '.github/workflows/aur-check.yml'
       - '.github/workflows/aur-publish.yml'
+      - '.github/workflows/aur-publish-bin.yml'
       - 'packaging/aur/**'
       - 'packaging/arch/showel.desktop'
       - 'scripts/publish-aur-package.sh'
@@ -23,6 +27,10 @@ on:
       - 'scripts/render-aur-release-package.sh'
       - 'scripts/update-aur-srcinfo.sh'
       - 'app/Cargo.toml'
+
+concurrency:
+  group: aur-check-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-aur:
@@ -49,12 +57,16 @@ jobs:
           fi
           chown -R builder:builder "${GITHUB_WORKSPACE}"
 
-      - name: Regenerate .SRCINFO
+      - name: Regenerate .SRCINFO in temp directory
         shell: bash
         run: |
           set -euo pipefail
-          su builder -c "cd '${GITHUB_WORKSPACE}' && bash ./scripts/update-aur-srcinfo.sh && cp packaging/aur/showel-git/.SRCINFO packaging/aur/showel-git/.SRCINFO.generated"
-          git -C "${GITHUB_WORKSPACE}" checkout -- packaging/aur/showel-git/.SRCINFO
+          temp_dir="${RUNNER_TEMP}/aur-check-showel-git"
+          rm -rf "${temp_dir}"
+          install -d -m 755 "${temp_dir}"
+          cp "${GITHUB_WORKSPACE}/packaging/aur/showel-git/PKGBUILD" "${temp_dir}/PKGBUILD"
+          chown -R builder:builder "${temp_dir}"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && bash ./scripts/update-aur-srcinfo.sh '${temp_dir}'"
 
       - name: Verify tracked .SRCINFO
         shell: bash
@@ -62,7 +74,7 @@ jobs:
           set -euo pipefail
           diff -u \
             "${GITHUB_WORKSPACE}/packaging/aur/showel-git/.SRCINFO" \
-            "${GITHUB_WORKSPACE}/packaging/aur/showel-git/.SRCINFO.generated"
+            "${RUNNER_TEMP}/aur-check-showel-git/.SRCINFO"
 
       - name: Render stable AUR package metadata
         shell: bash
