@@ -32,6 +32,7 @@ use ui::App as UiApp;
 use dioxus::desktop::tao::platform::unix::EventLoopBuilderExtUnix;
 
 const APP_ICON_RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app_icon.rgba"));
+const APP_CSS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/app.css"));
 
 fn main() {
     if let Some(result) = try_run_embedded_acp_agent() {
@@ -96,8 +97,8 @@ fn load_app_icon() -> TaoIcon {
 #[component]
 fn Root() -> Element {
     rsx! {
-        document::Stylesheet {
-            href: asset!("/assets/app.css"),
+        document::Style {
+            "{APP_CSS}"
         }
         UiApp {}
     }
