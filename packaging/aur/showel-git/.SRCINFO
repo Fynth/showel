@@ -1,7 +1,7 @@
 pkgbase = showel-git
 	pkgdesc = Fast native desktop database client built with Rust and Dioxus
 	pkgver = 0.1.0.r0.g0000000
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/Fynth/showel
 	arch = x86_64
 	license = unknown

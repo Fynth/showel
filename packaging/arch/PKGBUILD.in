@@ -1,6 +1,6 @@
 pkgname=showel
 pkgver=__PKGVER__
-pkgrel=1
+pkgrel=__PKGREL__
 pkgdesc="Fast native desktop database client built with Rust and Dioxus"
 arch=('x86_64')
 options=('!debug' '!lto')

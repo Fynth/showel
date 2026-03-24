@@ -38,11 +38,14 @@ jobs:
         if: github.event_name == 'workflow_run'
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Checkout code
         if: github.event_name != 'workflow_run'
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download release metadata artifact
         if: github.event_name == 'workflow_run'

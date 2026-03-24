@@ -15,6 +15,7 @@ source_sha="${5:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 template="${project_root}/packaging/aur/showel/PKGBUILD.in"
+pkgrel="$("${script_dir}/resolve-pkgrel.sh" "${version}" aur-source)"
 
 if [[ -z "${source_sha}" ]]; then
   source_url="https://github.com/${owner}/${repo}/archive/refs/tags/v${version}.tar.gz"
@@ -29,6 +30,7 @@ mkdir -p "${output_dir}"
 
 sed \
   -e "s/__PKGVER__/${version}/g" \
+  -e "s/__PKGREL__/${pkgrel}/g" \
   -e "s/__OWNER__/${owner}/g" \
   -e "s/__REPO__/${repo}/g" \
   -e "s/__SOURCE_SHA256__/${source_sha}/g" \

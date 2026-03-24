@@ -16,6 +16,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 template="${project_root}/packaging/arch/PKGBUILD.in"
 desktop_file="${project_root}/packaging/arch/showel.desktop"
+pkgrel="$("${script_dir}/resolve-pkgrel.sh" "${version}" arch)"
 
 mkdir -p "${output_dir}"
 cp "${desktop_file}" "${output_dir}/showel.desktop"
@@ -24,6 +25,7 @@ desktop_sha="$(sha256sum "${desktop_file}" | awk '{print $1}')"
 
 sed \
   -e "s/__PKGVER__/${version}/g" \
+  -e "s/__PKGREL__/${pkgrel}/g" \
   -e "s/__OWNER__/${owner}/g" \
   -e "s/__REPO__/${repo}/g" \
   -e "s/__SOURCE_SELECTOR__/${source_selector}/g" \
