@@ -43,6 +43,7 @@ package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
   install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/showel"
+  install -Dm644 "app/assets/app.css" "${pkgdir}/usr/lib/showel/assets/app.css"
   install -Dm644 "packaging/arch/showel.desktop" "${pkgdir}/usr/share/applications/showel.desktop"
   install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/showel.svg"
   install -Dm644 "README.md" "${pkgdir}/usr/share/doc/showel/README.md"

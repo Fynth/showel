@@ -44,9 +44,11 @@ jobs:
         run: |
           rm -rf bundle
           mkdir -p bundle/bin
+          mkdir -p bundle/lib/showel/assets
           mkdir -p bundle/share/applications
           mkdir -p bundle/share/icons/hicolor/scalable/apps
           cp target/release/app bundle/bin/showel
+          cp app/assets/app.css bundle/lib/showel/assets/app.css
           cp packaging/arch/showel.desktop bundle/share/applications/showel.desktop
           cp app/assets/icon.svg bundle/share/icons/hicolor/scalable/apps/showel.svg
           cp README.md bundle/README.md
