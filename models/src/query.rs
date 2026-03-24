@@ -96,11 +96,14 @@ pub struct PendingTableChanges {
     pub next_insert_id: u64,
     pub inserted_rows: Vec<PendingInsertRow>,
     pub updated_cells: Vec<PendingCellChange>,
+    pub deleted_rows: Vec<PendingDeleteRow>,
 }
 
 impl PendingTableChanges {
     pub fn is_empty(&self) -> bool {
-        self.inserted_rows.is_empty() && self.updated_cells.is_empty()
+        self.inserted_rows.is_empty()
+            && self.updated_cells.is_empty()
+            && self.deleted_rows.is_empty()
     }
 }
 
@@ -115,6 +118,11 @@ pub struct PendingCellChange {
     pub locator: String,
     pub column_name: String,
     pub value: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingDeleteRow {
+    pub locator: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]

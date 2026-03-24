@@ -5,8 +5,9 @@ use crate::screens::workspace::actions::{
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
 use models::{
-    EditableTableContext, PendingCellChange, PendingInsertRow, PendingTableChanges, QueryFilter,
-    QueryFilterMode, QueryFilterOperator, QueryFilterRule, QueryOutput, QuerySort, QueryTabState,
+    EditableTableContext, PendingCellChange, PendingDeleteRow, PendingInsertRow,
+    PendingTableChanges, QueryFilter, QueryFilterMode, QueryFilterOperator, QueryFilterRule,
+    QueryOutput, QuerySort, QueryTabState,
 };
 use serde_json::{Map, Value};
 
@@ -51,6 +52,8 @@ pub fn ResultTable(
     let mut selected_row_sync_key = use_signal(String::new);
     let mut show_row_details = use_signal(|| true);
     let mut row_details_view = use_signal(|| RowDetailsView::Fields);
+    let mut editing_row_values = use_signal(Vec::<(usize, String)>::new);
+    let mut editing_row_ref = use_signal(|| None::<EditableRowRef>);
 
     let current_editing = editing_cell();
     let active_tab = tabs
@@ -109,6 +112,7 @@ pub fn ResultTable(
                         .map(|row| (index, row))
                 });
                 let details_visible = show_row_details() && selected_row.is_some();
+                let has_selected_row = selected_row.is_some();
                 let selected_row_label = selected_row
                     .as_ref()
                     .map(|(row_index, row)| display_row_label(page.offset, draft_rows, *row_index, row));
@@ -224,7 +228,7 @@ pub fn ResultTable(
                                                 icon: ActionIcon::Delete,
                                                 label: "Delete selected row".to_string(),
                                                 small: true,
-                                                disabled: selected_row.is_none(),
+                                                disabled: !has_selected_row,
                                                 onclick: {
                                                     let selected_row_index = selected_row_index();
                                                     move |_| {
@@ -244,7 +248,7 @@ pub fn ResultTable(
                                             },
                                             active: details_visible,
                                             small: true,
-                                            disabled: selected_row.is_none(),
+                                            disabled: !has_selected_row,
                                             onclick: move |_| show_row_details.toggle(),
                                         }
                                     }
@@ -431,9 +435,20 @@ pub fn ResultTable(
                                                     tr {
                                                         class: row_class(selected_row_index() == Some(row_index), &row),
                                                         key: "{display_row_key(&row)}",
-                                                        onclick: move |_| {
-                                                            selected_row_index.set(Some(row_index));
-                                                            show_row_details.set(true);
+                                                        onclick: {
+                                                            let rows = display_rows.clone();
+                                                            move |_| {
+                                                                selected_row_index.set(Some(row_index));
+                                                                show_row_details.set(true);
+                                                                if let Some(row) = rows.get(row_index).cloned() {
+                                                                    let values: Vec<(usize, String)> = row.values.iter()
+                                                                        .enumerate()
+                                                                        .map(|(i, v): (usize, &String)| (i, v.clone()))
+                                                                        .collect();
+                                                                    editing_row_values.set(values);
+                                                                    editing_row_ref.set(Some(row.row_ref.clone()));
+                                                                }
+                                                            }
                                                         },
                                                         for (col_index, cell) in row.values.iter().cloned().enumerate() {
                                                             td {
@@ -572,19 +587,48 @@ pub fn ResultTable(
                                                 onclick: move |_| row_details_view.set(RowDetailsView::Json),
                                                 "JSON"
                                             }
+                                            button {
+                                                class: "button button--primary button--small",
+                                                onclick: move |_| {
+                                                    let editing_values = editing_row_values();
+                                                    let editing_ref = editing_row_ref();
+                                                    if let Some(row_ref) = editing_ref.clone() {
+                                                        for (col_index, value) in editing_values.iter().cloned() {
+                                                            let cell_edit = EditingCell {
+                                                                row_ref: row_ref.clone(),
+                                                                col_index,
+                                                                value: value.clone(),
+                                                            };
+                                                            commit_cell_edit(
+                                                                editing_cell,
+                                                                tabs,
+                                                                active_tab_id,
+                                                                cell_edit,
+                                                            );
+                                                        }
+                                                    }
+                                                },
+                                                "Save"
+                                            }
                                         }
-                                        if let Some((_, ref row)) = selected_row {
+                                        if let Some((_, _row)) = selected_row.as_ref() {
                                             if row_details_view() == RowDetailsView::Fields {
                                                 div {
                                                     class: "results__details-list",
-                                                    for (column, value) in page.columns.iter().zip(row.values.iter()) {
+                                                    for (col_index, value) in editing_row_values().iter().cloned() {
                                                         div {
                                                             class: "results__details-field",
-                                                            p { class: "results__details-label", "{column}" }
-                                                            pre {
-                                                                class: "results__details-value",
-                                                                title: "{value}",
-                                                                "{format_detail_value(value)}"
+                                                            p { class: "results__details-label", "{page.columns.get(col_index).unwrap_or(&\"?\".to_string())}" }
+                                                            input {
+                                                                class: "input results__details-input",
+                                                                value: "{value}",
+                                                                oninput: move |event| {
+                                                                    editing_row_values.with_mut(|values| {
+                                                                        if let Some(v) = values.iter_mut().find(|(i, _)| *i == col_index) {
+                                                                            v.1 = event.value();
+                                                                        }
+                                                                    });
+                                                                },
                                                             }
                                                         }
                                                     }
@@ -710,32 +754,43 @@ fn materialize_display_rows(
         .collect::<Vec<_>>();
 
     if let Some(editable) = page.editable.as_ref() {
-        rows.extend(page.rows.iter().enumerate().map(|(row_index, row)| {
-            DisplayRow {
-                row_ref: EditableRowRef::Existing(
-                    editable
+        rows.extend(
+            page.rows
+                .iter()
+                .enumerate()
+                .filter_map(|(row_index, row)| {
+                    let locator = editable
                         .row_locators
                         .get(row_index)
                         .cloned()
-                        .unwrap_or_default(),
-                ),
-                values: page
-                    .columns
-                    .iter()
-                    .enumerate()
-                    .map(|(col_index, column_name)| {
-                        existing_cell_value(
-                            pending_changes,
-                            editable,
-                            row_index,
-                            col_index,
-                            column_name,
-                            row,
-                        )
+                        .unwrap_or_default();
+                    if pending_changes
+                        .deleted_rows
+                        .iter()
+                        .any(|d| d.locator == locator)
+                    {
+                        return None;
+                    }
+                    Some(DisplayRow {
+                        row_ref: EditableRowRef::Existing(locator),
+                        values: page
+                            .columns
+                            .iter()
+                            .enumerate()
+                            .map(|(col_index, column_name)| {
+                                existing_cell_value(
+                                    pending_changes,
+                                    editable,
+                                    row_index,
+                                    col_index,
+                                    column_name,
+                                    row,
+                                )
+                            })
+                            .collect(),
                     })
-                    .collect(),
-            }
-        }));
+                }),
+        );
     } else {
         rows.extend(
             page.rows
@@ -825,14 +880,33 @@ fn cell_class(
 fn pending_changes_summary(pending_changes: &PendingTableChanges) -> String {
     let inserts = pending_changes.inserted_rows.len();
     let updates = pending_changes.updated_cells.len();
-    match (inserts, updates) {
-        (0, 0) => "No pending changes".to_string(),
-        (0, 1) => "1 pending field change".to_string(),
-        (0, updates) => format!("{updates} pending field changes"),
-        (1, 0) => "1 pending row insert".to_string(),
-        (inserts, 0) => format!("{inserts} pending row inserts"),
-        (1, 1) => "1 pending row insert and 1 field change".to_string(),
-        (inserts, updates) => format!("{inserts} pending row inserts and {updates} field changes"),
+    let deletes = pending_changes.deleted_rows.len();
+    let mut parts = Vec::new();
+    if inserts > 0 {
+        parts.push(if inserts == 1 {
+            "1 insert".to_string()
+        } else {
+            format!("{inserts} inserts")
+        });
+    }
+    if updates > 0 {
+        parts.push(if updates == 1 {
+            "1 update".to_string()
+        } else {
+            format!("{updates} updates")
+        });
+    }
+    if deletes > 0 {
+        parts.push(if deletes == 1 {
+            "1 delete".to_string()
+        } else {
+            format!("{deletes} deletes")
+        });
+    }
+    if parts.is_empty() {
+        "No pending changes".to_string()
+    } else {
+        format!("{} pending", parts.join(", "))
     }
 }
 
@@ -1036,17 +1110,6 @@ fn parse_filter_operator(value: &str) -> QueryFilterOperator {
         "is_not_null" => QueryFilterOperator::IsNotNull,
         _ => QueryFilterOperator::Contains,
     }
-}
-
-fn format_detail_value(value: &str) -> String {
-    let trimmed = value.trim();
-    let looks_like_json = (trimmed.starts_with('{') && trimmed.ends_with('}'))
-        || (trimmed.starts_with('[') && trimmed.ends_with(']'));
-    if looks_like_json && let Ok(json) = serde_json::from_str::<Value>(trimmed) {
-        return serde_json::to_string_pretty(&json).unwrap_or_else(|_| value.to_string());
-    }
-
-    value.to_string()
 }
 
 fn format_row_json(columns: &[String], row: &[String]) -> String {
@@ -1317,6 +1380,19 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
             }
         }
 
+        for delete in pending_changes.deleted_rows {
+            if let Err(err) = query::delete_table_row(
+                connection.clone(),
+                editable.source.clone(),
+                delete.locator,
+            )
+            .await
+            {
+                set_active_tab_status(tabs, current_id, format!("Row delete error: {err:?}"));
+                return;
+            }
+        }
+
         let mut updated_tab = None;
         tabs.with_mut(|all_tabs| {
             if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
@@ -1356,7 +1432,7 @@ fn delete_selected_row(
         set_active_tab_status(tabs, current_id, "No editable table is open".to_string());
         return;
     };
-    let Some(editable) = page.editable.clone() else {
+    let Some(_editable) = page.editable.clone() else {
         set_active_tab_status(
             tabs,
             current_id,
@@ -1389,45 +1465,18 @@ fn delete_selected_row(
     let EditableRowRef::Existing(locator) = row.row_ref else {
         return;
     };
-    let Some(connection) = tab_connection_or_error(tabs, current_id, current_tab.session_id) else {
-        return;
-    };
 
-    let reload_offset =
-        if page.rows.len() == 1 && current_tab.current_offset >= current_tab.page_size as u64 {
-            current_tab
-                .current_offset
-                .saturating_sub(current_tab.page_size as u64)
-        } else {
-            current_tab.current_offset
-        };
-
-    set_active_tab_status(
-        tabs,
-        current_id,
-        format!(
-            "Deleting row {}...",
-            current_tab.current_offset + row_index as u64 + 1
-        ),
-    );
-
-    spawn(async move {
-        match query::delete_table_row(connection, editable.source.clone(), locator).await {
-            Ok(_) => {
-                set_active_tab_status(
-                    tabs,
-                    current_id,
-                    format!("Deleted row from {}", editable.source.table_name),
-                );
-                let updated_tab = tabs.read().iter().find(|tab| tab.id == current_id).cloned();
-                if let Some(mut updated_tab) = updated_tab {
-                    updated_tab.current_offset = reload_offset;
-                    load_tab_page(tabs, updated_tab, reload_offset);
-                }
-            }
-            Err(err) => {
-                set_active_tab_status(tabs, current_id, format!("Row delete error: {err:?}"));
-            }
+    tabs.with_mut(|all_tabs| {
+        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
+            tab.pending_table_changes
+                .deleted_rows
+                .push(PendingDeleteRow {
+                    locator: locator.clone(),
+                });
+            tab.pending_table_changes
+                .updated_cells
+                .retain(|change| change.locator != locator);
+            tab.status = pending_changes_summary(&tab.pending_table_changes);
         }
     });
 }

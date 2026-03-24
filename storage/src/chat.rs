@@ -146,7 +146,7 @@ pub async fn save_chat_thread_snapshot(
         let artifact_json = message
             .artifact
             .as_ref()
-            .map(|artifact| serde_json::to_string(artifact))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|err| format!("failed to serialize chat artifact: {err}"))?;
 
