@@ -11,7 +11,7 @@ version="$1"
 package_kind="$2"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
-tag="v${version}"
+tag="$("${script_dir}/resolve-release-tag.sh" "${version}")"
 
 if [[ -n "${SHOWEL_PKGREL_OVERRIDE:-}" ]]; then
   echo "${SHOWEL_PKGREL_OVERRIDE}"

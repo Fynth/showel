@@ -65,10 +65,11 @@ pub fn TabsManager(
     let active_explorer_nodes = active_tab
         .as_ref()
         .and_then(|tab| {
-            explorer_sections()
-                .into_iter()
+            explorer_sections
+                .read()
+                .iter()
                 .find(|section| section.session_id == tab.session_id)
-                .map(|section| section.nodes)
+                .map(|section| section.nodes.clone())
         })
         .unwrap_or_default();
 

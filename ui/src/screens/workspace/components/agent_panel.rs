@@ -37,8 +37,10 @@ fn send_chat_prompt_request(
     connection_label: String,
     mut chat_revision: Signal<u64>,
     allow_db_read: bool,
+    prompt: String,
+    mut prompt_draft: Signal<String>,
 ) {
-    let prompt = panel_state().prompt.trim().to_string();
+    let prompt = prompt.trim().to_string();
     if prompt.is_empty() || panel_state().busy {
         return;
     }
@@ -109,12 +111,114 @@ fn send_chat_prompt_request(
                     state.pending_sql_insert = false;
                     state.status = "Waiting for agent response...".to_string();
                 });
+                prompt_draft.set(String::new());
                 chat_revision += 1;
             }
             Err(err) => {
                 panel_state.with_mut(|state| {
                     state.status = err.clone();
                     state.busy = false;
+                    push_message(state, AcpMessageKind::Error, err);
+                });
+                chat_revision += 1;
+            }
+        }
+    });
+}
+
+fn send_sql_generation_request(
+    mut panel_state: Signal<AcpPanelState>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    connection_label: String,
+    mut chat_revision: Signal<u64>,
+    allow_db_read: bool,
+    prompt: String,
+    mut prompt_draft: Signal<String>,
+) {
+    let request = prompt.trim().to_string();
+    if request.is_empty() || panel_state().busy {
+        return;
+    }
+
+    let connection = if allow_db_read {
+        active_editor_connection(tabs, active_tab_id)
+    } else {
+        None
+    };
+    let focus_source = active_editor_focus_source(tabs, active_tab_id);
+    let active_tab_context = if allow_db_read {
+        active_editor_prompt_context(tabs, active_tab_id)
+    } else {
+        None
+    };
+    let thread_history = build_thread_history_context(&panel_state().messages);
+    panel_state.with_mut(|state| {
+        state.busy = true;
+        state.pending_sql_insert = true;
+        state.status = if allow_db_read {
+            "Preparing connected database context for the agent...".to_string()
+        } else {
+            "Preparing prompt for the agent...".to_string()
+        };
+    });
+
+    spawn(async move {
+        let prompt = match connection {
+            Some(connection) => {
+                match acp::build_acp_database_context(
+                    connection,
+                    connection_label.clone(),
+                    focus_source,
+                )
+                .await
+                {
+                    Ok(db_context) => build_sql_generation_prompt(
+                        &connection_label,
+                        &request,
+                        Some(db_context),
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                    Err(_) => build_sql_generation_prompt(
+                        &connection_label,
+                        &request,
+                        None,
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                }
+            }
+            None => build_sql_generation_prompt(
+                &connection_label,
+                &request,
+                None,
+                active_tab_context.clone(),
+                thread_history.clone(),
+            ),
+        };
+
+        match acp::send_acp_prompt(prompt) {
+            Ok(()) => {
+                panel_state.with_mut(|state| {
+                    push_message(
+                        state,
+                        AcpMessageKind::User,
+                        format!("Generate SQL: {request}"),
+                    );
+                    state.prompt.clear();
+                    state.busy = true;
+                    state.pending_sql_insert = true;
+                    state.status = "Waiting for agent SQL to insert into the editor...".to_string();
+                });
+                prompt_draft.set(String::new());
+                chat_revision += 1;
+            }
+            Err(err) => {
+                panel_state.with_mut(|state| {
+                    state.status = err.clone();
+                    state.busy = false;
+                    state.pending_sql_insert = false;
                     push_message(state, AcpMessageKind::Error, err);
                 });
                 chat_revision += 1;
@@ -360,6 +464,141 @@ fn copy_text_to_clipboard(mut panel_state: Signal<AcpPanelState>, text: String, 
     });
 }
 
+#[component]
+fn AgentComposer(
+    panel_state: Signal<AcpPanelState>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    show_sql_editor: Signal<bool>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: Signal<bool>,
+    allow_agent_read_sql_run: Signal<bool>,
+    allow_agent_write_sql_run: Signal<bool>,
+    allow_agent_tool_run: Signal<bool>,
+    busy: bool,
+    connection_label: String,
+    reset_key: String,
+) -> Element {
+    let mut prompt_draft = use_signal(String::new);
+
+    use_effect(move || {
+        let _ = reset_key.as_str();
+        prompt_draft.set(String::new());
+    });
+
+    let prompt_is_empty = prompt_draft().trim().is_empty();
+    let enter_chat_label = connection_label.clone();
+    let generate_sql_label = connection_label.clone();
+    let chat_label = connection_label.clone();
+
+    rsx! {
+        div { class: "agent-panel__composer",
+            div { class: "agent-panel__permissions",
+                label { class: "agent-panel__permission-toggle",
+                    input {
+                        r#type: "checkbox",
+                        checked: allow_agent_db_read(),
+                        onchange: move |event| {
+                            allow_agent_db_read.set(event.checked());
+                        }
+                    }
+                    span { "Allow ACP to read database context" }
+                }
+                label { class: "agent-panel__permission-toggle",
+                    input {
+                        r#type: "checkbox",
+                        checked: allow_agent_read_sql_run(),
+                        onchange: move |event| {
+                            allow_agent_read_sql_run.set(event.checked());
+                        }
+                    }
+                    span { "Allow ACP to execute read-only SQL in the active tab" }
+                }
+                label { class: "agent-panel__permission-toggle",
+                    input {
+                        r#type: "checkbox",
+                        checked: allow_agent_write_sql_run(),
+                        onchange: move |event| {
+                            allow_agent_write_sql_run.set(event.checked());
+                        }
+                    }
+                    span { "Allow ACP to execute write SQL in the active tab" }
+                }
+                label { class: "agent-panel__permission-toggle",
+                    input {
+                        r#type: "checkbox",
+                        checked: allow_agent_tool_run(),
+                        onchange: move |event| {
+                            allow_agent_tool_run.set(event.checked());
+                        }
+                    }
+                    span { "Allow ACP tools and code execution" }
+                }
+            }
+            textarea {
+                class: "input agent-panel__prompt",
+                value: "{prompt_draft}",
+                placeholder: "For example: show active users created today",
+                oninput: move |event| prompt_draft.set(event.value()),
+                onkeydown: move |event| {
+                    if event.key() != Key::Enter
+                        || event.modifiers().contains(Modifiers::SHIFT)
+                    {
+                        return;
+                    }
+                    event.prevent_default();
+                    send_chat_prompt_request(
+                        panel_state,
+                        tabs,
+                        active_tab_id(),
+                        enter_chat_label.clone(),
+                        chat_revision,
+                        allow_agent_db_read(),
+                        prompt_draft(),
+                        prompt_draft,
+                    );
+                }
+            }
+            div { class: "agent-panel__composer-actions",
+                button {
+                    class: "button button--ghost button--small",
+                    disabled: busy || prompt_is_empty,
+                    onclick: move |_| {
+                        send_sql_generation_request(
+                            panel_state,
+                            tabs,
+                            active_tab_id(),
+                            generate_sql_label.clone(),
+                            chat_revision,
+                            allow_agent_db_read(),
+                            prompt_draft(),
+                            prompt_draft,
+                        );
+                    },
+                    "Generate SQL"
+                }
+                button {
+                    class: "button button--primary button--small",
+                    disabled: busy || prompt_is_empty,
+                    onclick: move |_| {
+                        send_chat_prompt_request(
+                            panel_state,
+                            tabs,
+                            active_tab_id(),
+                            chat_label.clone(),
+                            chat_revision,
+                            allow_agent_db_read(),
+                            prompt_draft(),
+                            prompt_draft,
+                        );
+                    },
+                    "Send"
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AgentSqlExecutionMode {
     Manual,
@@ -368,6 +607,7 @@ pub(crate) enum AgentSqlExecutionMode {
 
 const OPENCODE_REGISTRY_AGENT_ID: &str = "opencode";
 const CODEX_REGISTRY_AGENT_ID: &str = "codex-acp";
+const AGENT_MESSAGE_BATCH: usize = 32;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AgentSetupMode {
@@ -456,9 +696,7 @@ pub fn AcpAgentPanel(
     } else {
         format!("{} · {}", thread_connection_name.trim(), state.status)
     };
-    let sql_generation_label = sql_connection_label.clone();
     let chat_label = sql_connection_label.clone();
-    let enter_chat_label = chat_label.clone();
     let mut setup_mode = use_signal(|| AgentSetupMode::Ollama);
     let mut show_dialogs = use_signal(|| false);
     let mut registry_busy = use_signal(|| false);
@@ -482,6 +720,19 @@ pub fn AcpAgentPanel(
         .into_iter()
         .filter(|message| is_visible_message(&message.kind, &message.text))
         .collect::<Vec<_>>();
+    let visible_message_total = visible_messages.len();
+    let mut message_limit = use_signal(|| AGENT_MESSAGE_BATCH);
+    let hidden_message_count = visible_message_total.saturating_sub(message_limit());
+    let rendered_messages = visible_messages
+        .iter()
+        .skip(hidden_message_count)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    use_effect(move || {
+        let _ = active_thread_id;
+        message_limit.set(AGENT_MESSAGE_BATCH);
+    });
 
     use_effect(move || {
         let Some(permission_request) = panel_state().pending_permission.clone() else {
@@ -655,7 +906,26 @@ pub fn AcpAgentPanel(
                         if visible_messages.is_empty() {
                             p { class: "empty-state", "Ask for SQL, schema, or data help." }
                         } else {
-                            for message in visible_messages {
+                            if hidden_message_count > 0 {
+                                div { class: "agent-panel__message-actions",
+                                    button {
+                                        class: "button button--ghost button--small",
+                                        onclick: move |_| {
+                                            message_limit.set(
+                                                (message_limit() + AGENT_MESSAGE_BATCH)
+                                                    .min(visible_message_total),
+                                            );
+                                        },
+                                        "Show {hidden_message_count.min(AGENT_MESSAGE_BATCH)} older messages"
+                                    }
+                                    button {
+                                        class: "button button--ghost button--small",
+                                        onclick: move |_| message_limit.set(visible_message_total),
+                                        "Show all"
+                                    }
+                                }
+                            }
+                            for message in rendered_messages {
                                 {
                                     let message_chunks = parse_message_chunks(&message.text);
                                     let has_sql_chunk =
@@ -1026,191 +1296,20 @@ pub fn AcpAgentPanel(
                         }
                     }
 
-                    div { class: "agent-panel__composer",
-                        div { class: "agent-panel__permissions",
-                            label { class: "agent-panel__permission-toggle",
-                                input {
-                                    r#type: "checkbox",
-                                    checked: allow_agent_db_read(),
-                                    onchange: move |event| {
-                                        allow_agent_db_read.set(event.checked());
-                                    }
-                                }
-                                span { "Allow ACP to read database context" }
-                            }
-                            label { class: "agent-panel__permission-toggle",
-                                input {
-                                    r#type: "checkbox",
-                                    checked: allow_agent_read_sql_run(),
-                                    onchange: move |event| {
-                                        allow_agent_read_sql_run.set(event.checked());
-                                    }
-                                }
-                                span { "Allow ACP to execute read-only SQL in the active tab" }
-                            }
-                            label { class: "agent-panel__permission-toggle",
-                                input {
-                                    r#type: "checkbox",
-                                    checked: allow_agent_write_sql_run(),
-                                    onchange: move |event| {
-                                        allow_agent_write_sql_run.set(event.checked());
-                                    }
-                                }
-                                span { "Allow ACP to execute write SQL in the active tab" }
-                            }
-                            label { class: "agent-panel__permission-toggle",
-                                input {
-                                    r#type: "checkbox",
-                                    checked: allow_agent_tool_run(),
-                                    onchange: move |event| {
-                                        allow_agent_tool_run.set(event.checked());
-                                    }
-                                }
-                                span { "Allow ACP tools and code execution" }
-                            }
-                        }
-                        textarea {
-                            class: "input agent-panel__prompt",
-                            value: "{state.prompt}",
-                            placeholder: "For example: show active users created today",
-                            oninput: move |event| {
-                                let value = event.value();
-                                panel_state.with_mut(|state| state.prompt = value);
-                            },
-                            onkeydown: move |event| {
-                                if event.key() != Key::Enter
-                                    || event.modifiers().contains(Modifiers::SHIFT)
-                                {
-                                    return;
-                                }
-                                event.prevent_default();
-                                send_chat_prompt_request(
-                                    panel_state,
-                                    tabs,
-                                    active_tab_id(),
-                                    enter_chat_label.clone(),
-                                    chat_revision,
-                                    allow_agent_db_read(),
-                                );
-                            }
-                        }
-                        div { class: "agent-panel__composer-actions",
-                            button {
-                                class: "button button--ghost button--small",
-                                disabled: state.busy || state.prompt.trim().is_empty(),
-                                onclick: move |_| {
-                                    let request = panel_state().prompt.trim().to_string();
-                                if request.is_empty() {
-                                        return;
-                                }
-                                let connection = if allow_agent_db_read() {
-                                    active_editor_connection(tabs, active_tab_id())
-                                } else {
-                                    None
-                                };
-                                let focus_source =
-                                    active_editor_focus_source(tabs, active_tab_id());
-                                let active_tab_context = if allow_agent_db_read() {
-                                    active_editor_prompt_context(tabs, active_tab_id())
-                                } else {
-                                    None
-                                };
-                                let thread_history =
-                                    build_thread_history_context(&panel_state().messages);
-                                let connection_label = sql_generation_label.clone();
-                                    panel_state.with_mut(|state| {
-                                    state.busy = true;
-                                        state.pending_sql_insert = true;
-                                        state.status =
-                                            if allow_agent_db_read() {
-                                                "Preparing connected database context for the agent..."
-                                                    .to_string()
-                                            } else {
-                                                "Preparing prompt for the agent...".to_string()
-                                            };
-                                    });
-                                    spawn(async move {
-                                        let prompt = match connection {
-                                            Some(connection) => {
-                                                match acp::build_acp_database_context(
-                                                    connection,
-                                                    connection_label.clone(),
-                                                    focus_source,
-                                                )
-                                            .await
-                                            {
-                                                Ok(db_context) => build_sql_generation_prompt(
-                                                    &connection_label,
-                                                    &request,
-                                                    Some(db_context),
-                                                    active_tab_context.clone(),
-                                                    thread_history.clone(),
-                                                ),
-                                                Err(_) => build_sql_generation_prompt(
-                                                    &connection_label,
-                                                    &request,
-                                                    None,
-                                                    active_tab_context.clone(),
-                                                    thread_history.clone(),
-                                                ),
-                                            }
-                                        }
-                                        None => build_sql_generation_prompt(
-                                            &connection_label,
-                                            &request,
-                                            None,
-                                            active_tab_context.clone(),
-                                            thread_history.clone(),
-                                        ),
-                                    };
-
-                                        match acp::send_acp_prompt(prompt) {
-                                            Ok(()) => {
-                                                panel_state.with_mut(|state| {
-                                                    push_message(
-                                                        state,
-                                                        AcpMessageKind::User,
-                                                        format!("Generate SQL: {request}"),
-                                                    );
-                                                    state.prompt.clear();
-                                                    state.busy = true;
-                                                    state.pending_sql_insert = true;
-                                                    state.status =
-                                                        "Waiting for agent SQL to insert into the editor..."
-                                                            .to_string();
-                                                });
-                                                chat_revision += 1;
-                                            }
-                                            Err(err) => {
-                                                panel_state.with_mut(|state| {
-                                                    state.status = err.clone();
-                                                    state.busy = false;
-                                                    state.pending_sql_insert = false;
-                                                    push_message(state, AcpMessageKind::Error, err);
-                                                });
-                                                chat_revision += 1;
-                                            }
-                                        }
-                                    });
-                                },
-                                "Generate SQL"
-                            }
-                            button {
-                                class: "button button--primary button--small",
-                                disabled: state.busy || state.prompt.trim().is_empty(),
-                                onclick: move |_| {
-                                    send_chat_prompt_request(
-                                        panel_state,
-                                        tabs,
-                                        active_tab_id(),
-                                        chat_label.clone(),
-                                        chat_revision,
-                                        allow_agent_db_read(),
-                                    );
-                                },
-                                "Send"
-                            }
-                        }
+                    AgentComposer {
+                        key: format!("{:?}-{}", active_thread_id, state.connected),
+                        panel_state,
+                        tabs,
+                        active_tab_id,
+                        show_sql_editor,
+                        chat_revision,
+                        allow_agent_db_read,
+                        allow_agent_read_sql_run,
+                        allow_agent_write_sql_run,
+                        allow_agent_tool_run,
+                        busy: state.busy,
+                        connection_label: chat_label.clone(),
+                        reset_key: format!("{:?}-{}", active_thread_id, state.connected),
                     }
                 }
             } else {

@@ -1,14 +1,19 @@
 name: Build Linux Desktop
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types:
+      - published
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to upload assets into; optional'
+        required: false
+        type: string
 
 concurrency:
-  group: linux-${{ github.ref }}
+  group: linux-${{ github.event.release.tag_name || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,6 +26,29 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
+
+      - name: Resolve workflow metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_tag=""
+          version=""
+
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            release_tag="${{ github.event.release.tag_name }}"
+            version="${release_tag#v}"
+          elif [[ -n "${{ github.event.inputs.release_tag }}" ]]; then
+            release_tag="${{ github.event.inputs.release_tag }}"
+            version="${release_tag#v}"
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -55,11 +83,12 @@ jobs:
           tar -C bundle -czf showel-linux-x86_64.tar.gz .
 
       - name: Write release metadata
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.meta.outputs.release_tag != ''
         run: |
           set -euo pipefail
           mkdir -p release-metadata
-          printf 'version=%s\n' "${GITHUB_REF_NAME#v}" > release-metadata/version.env
+          printf 'version=%s\n' "${{ steps.meta.outputs.version }}" > release-metadata/version.env
+          printf 'tag_name=%s\n' "${{ steps.meta.outputs.release_tag }}" >> release-metadata/version.env
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -70,7 +99,7 @@ jobs:
           retention-days: 30
 
       - name: Upload Linux release metadata artifact
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.meta.outputs.release_tag != ''
         uses: actions/upload-artifact@v4
         with:
           name: showel-release-metadata
@@ -79,9 +108,9 @@ jobs:
           retention-days: 7
 
       - name: Publish Linux release assets
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.meta.outputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.meta.outputs.release_tag }}
           files: |
             showel-linux-x86_64.tar.gz

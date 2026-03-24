@@ -16,9 +16,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 template="${project_root}/packaging/aur/showel/PKGBUILD.in"
 pkgrel="$("${script_dir}/resolve-pkgrel.sh" "${version}" aur-source)"
+tag_name="$("${script_dir}/resolve-release-tag.sh" "${version}")"
 
 if [[ -z "${source_sha}" ]]; then
-  source_url="https://github.com/${owner}/${repo}/archive/refs/tags/v${version}.tar.gz"
+  source_url="https://github.com/${owner}/${repo}/archive/refs/tags/${tag_name}.tar.gz"
   archive_file="$(mktemp)"
   trap 'rm -f "${archive_file}"' EXIT
 
@@ -31,6 +32,7 @@ mkdir -p "${output_dir}"
 sed \
   -e "s/__PKGVER__/${version}/g" \
   -e "s/__PKGREL__/${pkgrel}/g" \
+  -e "s/__TAG_NAME__/${tag_name}/g" \
   -e "s/__OWNER__/${owner}/g" \
   -e "s/__REPO__/${repo}/g" \
   -e "s/__SOURCE_SHA256__/${source_sha}/g" \

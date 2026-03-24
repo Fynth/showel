@@ -70,7 +70,10 @@ fn launch_app() {
                 .with_menu(None)
                 .with_disable_context_menu(true)
                 .with_disable_drag_drop_handler(true)
-                .with_disable_dma_buf_on_wayland(true)
+                // Prefer the native Wayland DMA-BUF path instead of forcing an X11 fallback.
+                // This is the only practical GPU-backed improvement available in the current
+                // Dioxus desktop/webview renderer without rewriting the app around WGPU/Freya.
+                .with_disable_dma_buf_on_wayland(should_disable_wayland_dma_buf())
                 .with_window(
                     WindowBuilder::new()
                         .with_title("Showel")
@@ -81,6 +84,28 @@ fn launch_app() {
                 ),
         )
         .launch(Root);
+}
+
+fn env_flag(name: &str) -> bool {
+    matches!(
+        std::env::var(name)
+            .ok()
+            .map(|value| value.trim().to_ascii_lowercase()),
+        Some(value)
+            if matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
+fn should_disable_wayland_dma_buf() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        env_flag("SHOWEL_DISABLE_WAYLAND_GPU")
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 fn load_app_icon() -> TaoIcon {

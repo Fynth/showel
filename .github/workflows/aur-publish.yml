@@ -41,12 +41,14 @@ jobs:
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             version="${{ github.event.inputs.version }}"
+            tag_name="$version"
           else
-            version="${{ github.event.release.tag_name }}"
-            version="${version#v}"
+            tag_name="${{ github.event.release.tag_name }}"
+            version="${tag_name#v}"
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
 
       - name: Prepare non-root AUR user
         shell: bash
@@ -62,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           stable_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel"
-          su builder -c "cd '${GITHUB_WORKSPACE}' && ./scripts/render-aur-release-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${stable_dir}' && bash ./scripts/update-aur-srcinfo.sh '${stable_dir}'"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOWEL_TAG_OVERRIDE='${{ steps.meta.outputs.tag_name }}' ./scripts/render-aur-release-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${stable_dir}' && bash ./scripts/update-aur-srcinfo.sh '${stable_dir}'"
 
       - name: Configure SSH for AUR
         env:

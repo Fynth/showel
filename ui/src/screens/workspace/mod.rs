@@ -24,17 +24,77 @@ const SIDEBAR_MIN_WIDTH: f64 = 240.0;
 const SIDEBAR_MAX_WIDTH: f64 = 560.0;
 const INSPECTOR_MIN_WIDTH: f64 = 260.0;
 const INSPECTOR_MAX_WIDTH: f64 = 640.0;
-
-#[derive(Clone, Copy, PartialEq)]
-struct ColumnResizeState {
-    start_x: f64,
-    start_width: f64,
-}
+const WORKSPACE_ROOT_ID: &str = "workspace-root";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct DockDropTarget {
     dock: WorkspaceToolDock,
     index: usize,
+}
+
+fn workspace_resize_script(
+    width_var: &str,
+    start_x: f64,
+    start_width: f64,
+    min_width: f64,
+    max_width: f64,
+    invert_delta: bool,
+) -> String {
+    let delta_factor = if invert_delta { -1.0 } else { 1.0 };
+    format!(
+        r#"
+        (() => {{
+            const workspace = document.getElementById({WORKSPACE_ROOT_ID:?});
+            if (!workspace) {{
+                return {start_width};
+            }}
+
+            const startX = {start_x};
+            const startWidth = {start_width};
+            const minWidth = {min_width};
+            const maxWidth = {max_width};
+            const deltaFactor = {delta_factor};
+            let finished = false;
+            let lastWidth = startWidth;
+
+            const clampWidth = (clientX) => {{
+                const delta = (clientX - startX) * deltaFactor;
+                return Math.min(maxWidth, Math.max(minWidth, startWidth + delta));
+            }};
+
+            return new Promise((resolve) => {{
+                const finish = (clientX) => {{
+                    if (finished) {{
+                        return;
+                    }}
+                    finished = true;
+                    const width = clientX == null ? lastWidth : clampWidth(clientX);
+                    workspace.style.setProperty({width_var:?}, `${{Math.round(width)}}px`);
+                    workspace.classList.remove("workspace--resizing");
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                    window.removeEventListener("blur", onBlur);
+                    resolve(width);
+                }};
+
+                const onMove = (event) => {{
+                    const width = clampWidth(event.clientX);
+                    lastWidth = width;
+                    workspace.style.setProperty({width_var:?}, `${{Math.round(width)}}px`);
+                }};
+
+                const onUp = (event) => finish(event.clientX);
+                const onBlur = () => finish(startX);
+
+                workspace.classList.add("workspace--resizing");
+                window.addEventListener("mousemove", onMove, {{ passive: true }});
+                window.addEventListener("mouseup", onUp);
+                window.addEventListener("blur", onBlur);
+                onMove({{ clientX: startX }});
+            }});
+        }})()
+        "#
+    )
 }
 
 async fn load_explorer_section(
@@ -385,6 +445,718 @@ fn delete_chat_thread(
     });
 }
 
+fn tool_panel_class(panel: WorkspaceToolPanel) -> &'static str {
+    match panel {
+        WorkspaceToolPanel::Connections => " workspace__tool-panel--connections",
+        WorkspaceToolPanel::Explorer => " workspace__tool-panel--explorer",
+        WorkspaceToolPanel::SavedQueries => " workspace__tool-panel--saved",
+        WorkspaceToolPanel::History => " workspace__tool-panel--history",
+        WorkspaceToolPanel::Agent => " workspace__tool-panel--agent",
+    }
+}
+
+#[component]
+fn WorkspaceDropSlot(
+    dock: WorkspaceToolDock,
+    index: usize,
+    empty: bool,
+    dragging_panel: Signal<Option<WorkspaceToolPanel>>,
+    mut drop_target: Signal<Option<DockDropTarget>>,
+) -> Element {
+    let target = DockDropTarget { dock, index };
+    let mut class_name = "workspace__dock-dropzone".to_string();
+    if empty {
+        class_name.push_str(" workspace__dock-dropzone--empty");
+    }
+    if drop_target() == Some(target) {
+        class_name.push_str(" workspace__dock-dropzone--active");
+    }
+
+    rsx! {
+        div {
+            class: class_name,
+            onmousemove: move |event| {
+                if dragging_panel().is_none() {
+                    return;
+                }
+
+                if event.held_buttons().is_empty() {
+                    return;
+                }
+
+                if drop_target() != Some(target) {
+                    drop_target.set(Some(target));
+                }
+            },
+            if empty {
+                span { class: "workspace__dock-dropzone-copy", "Drop panel here" }
+            }
+        }
+    }
+}
+
+#[component]
+fn ExplorerToolPanel(
+    tree_status: Signal<String>,
+    tree_sections: Signal<Vec<ExplorerConnectionSection>>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+) -> Element {
+    rsx! {
+        div {
+            class: "workspace__panel",
+            div {
+                class: "workspace__panel-header",
+                h2 { class: "workspace__section-title", "Explorer" }
+                p { class: "workspace__hint", "{tree_status()}" }
+            }
+            SidebarConnectionTree {
+                sections: tree_sections(),
+                tabs,
+                active_tab_id,
+                next_tab_id,
+            }
+        }
+    }
+}
+
+#[component]
+fn AgentToolPanel(
+    mut acp_panel_state: Signal<AcpPanelState>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    show_sql_editor: Signal<bool>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: Signal<bool>,
+    allow_agent_read_sql_run: Signal<bool>,
+    allow_agent_write_sql_run: Signal<bool>,
+    allow_agent_tool_run: Signal<bool>,
+    chat_threads: Signal<Vec<ChatThreadSummary>>,
+    mut active_chat_thread_id: Signal<Option<i64>>,
+    connection_label: String,
+) -> Element {
+    let active_chat_thread = chat_threads
+        .read()
+        .iter()
+        .find(|thread| Some(thread.id) == active_chat_thread_id())
+        .cloned();
+    let thread_title = active_chat_thread
+        .as_ref()
+        .map(|thread| thread.title.clone())
+        .unwrap_or_else(|| "New chat".to_string());
+    let thread_connection_name = active_chat_thread
+        .as_ref()
+        .map(|thread| thread.connection_name.clone())
+        .unwrap_or_else(|| connection_label.clone());
+    let new_thread_connection = connection_label.clone();
+    let delete_thread_connection = connection_label.clone();
+    let sql_connection_label = connection_label.clone();
+
+    rsx! {
+        AcpAgentPanel {
+            panel_state: acp_panel_state,
+            tabs,
+            active_tab_id,
+            show_sql_editor,
+            chat_revision,
+            allow_agent_db_read,
+            allow_agent_read_sql_run,
+            allow_agent_write_sql_run,
+            allow_agent_tool_run,
+            chat_threads: chat_threads(),
+            active_thread_id: active_chat_thread_id(),
+            thread_title,
+            thread_connection_name,
+            sql_connection_label,
+            on_new_thread: move |_| {
+                create_chat_thread(
+                    chat_threads,
+                    active_chat_thread_id,
+                    new_thread_connection.clone(),
+                );
+            },
+            on_select_thread: move |thread_id| {
+                select_chat_thread(active_chat_thread_id, thread_id);
+            },
+            on_delete_thread: move |thread_id| {
+                delete_chat_thread(
+                    chat_threads,
+                    active_chat_thread_id,
+                    delete_thread_connection.clone(),
+                    thread_id,
+                );
+            },
+        }
+    }
+}
+
+#[component]
+fn WorkspacePanelContent(
+    panel: WorkspaceToolPanel,
+    tree_status: Signal<String>,
+    tree_sections: Signal<Vec<ExplorerConnectionSection>>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    history: Signal<Vec<QueryHistoryItem>>,
+    saved_queries: Signal<Vec<SavedQuery>>,
+    next_saved_query_id: Signal<u64>,
+    show_sql_editor: Signal<bool>,
+    acp_panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: Signal<bool>,
+    allow_agent_read_sql_run: Signal<bool>,
+    allow_agent_write_sql_run: Signal<bool>,
+    allow_agent_tool_run: Signal<bool>,
+    chat_threads: Signal<Vec<ChatThreadSummary>>,
+    active_chat_thread_id: Signal<Option<i64>>,
+    connection_label: String,
+) -> Element {
+    match panel {
+        WorkspaceToolPanel::Connections => rsx! {
+            div {
+                class: "workspace__panel",
+                SessionRail {
+                    tabs,
+                    active_tab_id,
+                }
+            }
+        },
+        WorkspaceToolPanel::Explorer => rsx! {
+            ExplorerToolPanel {
+                tree_status,
+                tree_sections,
+                tabs,
+                active_tab_id,
+                next_tab_id,
+            }
+        },
+        WorkspaceToolPanel::SavedQueries => rsx! {
+            SavedQueriesPanel {
+                saved_queries: saved_queries(),
+                saved_queries_signal: saved_queries,
+                next_saved_query_id,
+                tabs,
+                active_tab_id,
+                next_tab_id,
+            }
+        },
+        WorkspaceToolPanel::History => rsx! {
+            div {
+                class: "workspace__panel workspace__panel--history",
+                QueryHistoryPanel {
+                    history: history(),
+                    tabs,
+                    active_tab_id,
+                }
+            }
+        },
+        WorkspaceToolPanel::Agent => rsx! {
+            AgentToolPanel {
+                acp_panel_state,
+                tabs,
+                active_tab_id,
+                show_sql_editor,
+                chat_revision,
+                allow_agent_db_read,
+                allow_agent_read_sql_run,
+                allow_agent_write_sql_run,
+                allow_agent_tool_run,
+                chat_threads,
+                active_chat_thread_id,
+                connection_label,
+            }
+        },
+    }
+}
+
+#[component]
+fn WorkspaceDockPanel(
+    panel: WorkspaceToolPanel,
+    dock: WorkspaceToolDock,
+    index: usize,
+    dragging_panel: Signal<Option<WorkspaceToolPanel>>,
+    mut drop_target: Signal<Option<DockDropTarget>>,
+    tree_status: Signal<String>,
+    tree_sections: Signal<Vec<ExplorerConnectionSection>>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    history: Signal<Vec<QueryHistoryItem>>,
+    saved_queries: Signal<Vec<SavedQuery>>,
+    next_saved_query_id: Signal<u64>,
+    show_sql_editor: Signal<bool>,
+    acp_panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: Signal<bool>,
+    allow_agent_read_sql_run: Signal<bool>,
+    allow_agent_write_sql_run: Signal<bool>,
+    allow_agent_tool_run: Signal<bool>,
+    chat_threads: Signal<Vec<ChatThreadSummary>>,
+    active_chat_thread_id: Signal<Option<i64>>,
+    connection_label: String,
+) -> Element {
+    let target = DockDropTarget { dock, index };
+    let mut class_name = "workspace__tool-panel".to_string();
+    class_name.push_str(tool_panel_class(panel));
+    if dragging_panel() == Some(panel) {
+        class_name.push_str(" workspace__tool-panel--dragging");
+    }
+    if drop_target() == Some(target) {
+        class_name.push_str(" workspace__tool-panel--drop-target");
+    }
+
+    rsx! {
+        div {
+            key: "{panel.label()}",
+            class: class_name,
+            onmousemove: move |event| {
+                if dragging_panel().is_none() {
+                    return;
+                }
+
+                if event.held_buttons().is_empty() {
+                    return;
+                }
+
+                if drop_target() != Some(target) {
+                    drop_target.set(Some(target));
+                }
+            },
+            div {
+                class: "workspace__tool-panel-grip",
+                title: format!("Drag {} panel", panel.label()),
+                onmousedown: move |event| {
+                    if event.trigger_button() != Some(MouseButton::Primary) {
+                        return;
+                    }
+
+                    event.prevent_default();
+                    event.stop_propagation();
+                    dragging_panel.set(Some(panel));
+                    drop_target.set(None);
+                },
+                span { class: "workspace__tool-panel-grip-dots" }
+            }
+            WorkspacePanelContent {
+                panel,
+                tree_status,
+                tree_sections,
+                tabs,
+                active_tab_id,
+                next_tab_id,
+                history,
+                saved_queries,
+                next_saved_query_id,
+                show_sql_editor,
+                acp_panel_state,
+                chat_revision,
+                allow_agent_db_read,
+                allow_agent_read_sql_run,
+                allow_agent_write_sql_run,
+                allow_agent_tool_run,
+                chat_threads,
+                active_chat_thread_id,
+                connection_label,
+            }
+        }
+    }
+}
+
+#[component]
+fn WorkspaceDock(
+    dock: WorkspaceToolDock,
+    panels: Vec<WorkspaceToolPanel>,
+    dragging_panel: Signal<Option<WorkspaceToolPanel>>,
+    drop_target: Signal<Option<DockDropTarget>>,
+    tree_status: Signal<String>,
+    tree_sections: Signal<Vec<ExplorerConnectionSection>>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    history: Signal<Vec<QueryHistoryItem>>,
+    saved_queries: Signal<Vec<SavedQuery>>,
+    next_saved_query_id: Signal<u64>,
+    show_sql_editor: Signal<bool>,
+    acp_panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: Signal<bool>,
+    allow_agent_read_sql_run: Signal<bool>,
+    allow_agent_write_sql_run: Signal<bool>,
+    allow_agent_tool_run: Signal<bool>,
+    chat_threads: Signal<Vec<ChatThreadSummary>>,
+    active_chat_thread_id: Signal<Option<i64>>,
+    connection_label: String,
+) -> Element {
+    rsx! {
+        if panels.is_empty() {
+            WorkspaceDropSlot {
+                dock,
+                index: 0,
+                empty: true,
+                dragging_panel,
+                drop_target,
+            }
+        } else {
+            for (index, panel) in panels.iter().copied().enumerate() {
+                WorkspaceDropSlot {
+                    dock,
+                    index,
+                    empty: false,
+                    dragging_panel,
+                    drop_target,
+                }
+                WorkspaceDockPanel {
+                    panel,
+                    dock,
+                    index,
+                    dragging_panel,
+                    drop_target,
+                    tree_status,
+                    tree_sections,
+                    tabs,
+                    active_tab_id,
+                    next_tab_id,
+                    history,
+                    saved_queries,
+                    next_saved_query_id,
+                    show_sql_editor,
+                    acp_panel_state,
+                    chat_revision,
+                    allow_agent_db_read,
+                    allow_agent_read_sql_run,
+                    allow_agent_write_sql_run,
+                    allow_agent_tool_run,
+                    chat_threads,
+                    active_chat_thread_id,
+                    connection_label: connection_label.clone(),
+                }
+            }
+            WorkspaceDropSlot {
+                dock,
+                index: panels.len(),
+                empty: false,
+                dragging_panel,
+                drop_target,
+            }
+        }
+    }
+}
+
+#[component]
+fn WorkspaceBody(
+    show_sidebar: bool,
+    show_inspector: bool,
+    sidebar_panels: Vec<WorkspaceToolPanel>,
+    inspector_panels: Vec<WorkspaceToolPanel>,
+    sidebar_width: Signal<f64>,
+    mut sidebar_resize_active: Signal<bool>,
+    inspector_width: Signal<f64>,
+    mut inspector_resize_active: Signal<bool>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
+    next_tab_id: Signal<u64>,
+    history: Signal<Vec<QueryHistoryItem>>,
+    next_history_id: Signal<u64>,
+    saved_queries: Signal<Vec<SavedQuery>>,
+    next_saved_query_id: Signal<u64>,
+    tree_status: Signal<String>,
+    tree_sections: Signal<Vec<ExplorerConnectionSection>>,
+    show_connections: Signal<bool>,
+    show_explorer: Signal<bool>,
+    show_sql_editor: Signal<bool>,
+    ai_features_enabled: Signal<bool>,
+    show_agent_panel: Signal<bool>,
+    show_history: bool,
+    tree_reload: Signal<u64>,
+    dragging_panel: Signal<Option<WorkspaceToolPanel>>,
+    drop_target: Signal<Option<DockDropTarget>>,
+    acp_panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: Signal<bool>,
+    allow_agent_read_sql_run: Signal<bool>,
+    allow_agent_write_sql_run: Signal<bool>,
+    allow_agent_tool_run: Signal<bool>,
+    chat_threads: Signal<Vec<ChatThreadSummary>>,
+    active_chat_thread_id: Signal<Option<i64>>,
+    connection_label: String,
+) -> Element {
+    rsx! {
+        if show_sidebar {
+            aside {
+                class: "workspace__sidebar",
+                div {
+                    class: "workspace__sidebar-body",
+                    WorkspaceDock {
+                        dock: WorkspaceToolDock::Sidebar,
+                        panels: sidebar_panels.clone(),
+                        dragging_panel,
+                        drop_target,
+                        tree_status,
+                        tree_sections,
+                        tabs,
+                        active_tab_id,
+                        next_tab_id,
+                        history,
+                        saved_queries,
+                        next_saved_query_id,
+                        show_sql_editor,
+                        acp_panel_state,
+                        chat_revision,
+                        allow_agent_db_read,
+                        allow_agent_read_sql_run,
+                        allow_agent_write_sql_run,
+                        allow_agent_tool_run,
+                        chat_threads,
+                        active_chat_thread_id,
+                        connection_label: connection_label.clone(),
+                    }
+                }
+            }
+            div {
+                class: if sidebar_resize_active() {
+                    "workspace__resize-handle workspace__resize-handle--active"
+                } else {
+                    "workspace__resize-handle"
+                },
+                onmousedown: move |event| {
+                    if event.trigger_button() != Some(MouseButton::Primary) {
+                        return;
+                    }
+
+                    event.prevent_default();
+                    event.stop_propagation();
+
+                    let start_x = event.client_coordinates().x;
+                    let start_width = sidebar_width();
+                    sidebar_resize_active.set(true);
+                    spawn(async move {
+                        let result = document::eval(&workspace_resize_script(
+                            "--workspace-sidebar-width",
+                            start_x,
+                            start_width,
+                            SIDEBAR_MIN_WIDTH,
+                            SIDEBAR_MAX_WIDTH,
+                            false,
+                        ))
+                        .join::<f64>()
+                        .await;
+
+                        match result {
+                            Ok(width) => sidebar_width.set(width),
+                            Err(err) => {
+                                eprintln!("Failed to resize workspace sidebar: {err:?}");
+                            }
+                        }
+
+                        sidebar_resize_active.set(false);
+                    });
+                }
+            }
+        }
+        section {
+            class: "workspace__main",
+            header {
+                class: "workspace__header",
+                div {
+                    class: "workspace__toolbar",
+                    IconButton {
+                        icon: ActionIcon::Connections,
+                        label: if show_connections() {
+                            "Hide connections".to_string()
+                        } else {
+                            "Show connections".to_string()
+                        },
+                        active: show_connections(),
+                        small: true,
+                        onclick: move |_| {
+                            let next = !show_connections();
+                            show_connections.set(next);
+                            APP_UI_SETTINGS.with_mut(|settings| {
+                                settings.show_connections = next;
+                            });
+                        },
+                    }
+                    IconButton {
+                        icon: ActionIcon::Explorer,
+                        label: if show_explorer() {
+                            "Hide explorer".to_string()
+                        } else {
+                            "Show explorer".to_string()
+                        },
+                        active: show_explorer(),
+                        small: true,
+                        onclick: move |_| {
+                            let next = !show_explorer();
+                            show_explorer.set(next);
+                            APP_UI_SETTINGS.with_mut(|settings| {
+                                settings.show_explorer = next;
+                            });
+                        },
+                    }
+                    IconButton {
+                        icon: ActionIcon::History,
+                        label: if show_history {
+                            "Hide history".to_string()
+                        } else {
+                            "Show history".to_string()
+                        },
+                        active: show_history,
+                        small: true,
+                        onclick: move |_| {
+                            let next = !APP_SHOW_HISTORY();
+                            *APP_SHOW_HISTORY.write() = next;
+                            APP_UI_SETTINGS.with_mut(|settings| {
+                                settings.show_history = next;
+                            });
+                        },
+                    }
+                    IconButton {
+                        icon: ActionIcon::SqlEditor,
+                        label: if show_sql_editor() {
+                            "Hide SQL editor".to_string()
+                        } else {
+                            "Show SQL editor".to_string()
+                        },
+                        active: show_sql_editor(),
+                        small: true,
+                        onclick: move |_| {
+                            let next = !show_sql_editor();
+                            show_sql_editor.set(next);
+                            APP_UI_SETTINGS.with_mut(|settings| {
+                                settings.show_sql_editor = next;
+                            });
+                        },
+                    }
+                    if ai_features_enabled() {
+                        IconButton {
+                            icon: ActionIcon::Agent,
+                            label: if show_agent_panel() {
+                                "Hide agent panel".to_string()
+                            } else {
+                                "Show agent panel".to_string()
+                            },
+                            active: show_agent_panel(),
+                            small: true,
+                            onclick: move |_| {
+                                let next = !show_agent_panel();
+                                show_agent_panel.set(next);
+                                APP_UI_SETTINGS.with_mut(|settings| {
+                                    settings.show_agent_panel = next;
+                                });
+                            },
+                        }
+                    }
+                    IconButton {
+                        icon: ActionIcon::Refresh,
+                        label: "Refresh explorer".to_string(),
+                        small: true,
+                        onclick: move |_| tree_reload += 1,
+                    }
+                    IconButton {
+                        icon: ActionIcon::NewConnection,
+                        label: "New connection".to_string(),
+                        primary: true,
+                        small: true,
+                        onclick: move |_| open_connection_screen(),
+                    }
+                }
+            }
+            div {
+                class: if show_inspector {
+                    "workspace__content workspace__content--with-inspector"
+                } else {
+                    "workspace__content"
+                },
+                div {
+                    class: "workspace__canvas",
+                    TabsManager {
+                        tabs,
+                        active_tab_id,
+                        next_tab_id,
+                        history,
+                        next_history_id,
+                        show_sql_editor,
+                        explorer_sections: tree_sections,
+                    }
+                }
+                if show_inspector {
+                    div {
+                        class: if inspector_resize_active() {
+                            "workspace__resize-handle workspace__resize-handle--inspector workspace__resize-handle--active"
+                        } else {
+                            "workspace__resize-handle workspace__resize-handle--inspector"
+                        },
+                        onmousedown: move |event| {
+                            if event.trigger_button() != Some(MouseButton::Primary) {
+                                return;
+                            }
+
+                            event.prevent_default();
+                            event.stop_propagation();
+
+                            let start_x = event.client_coordinates().x;
+                            let start_width = inspector_width();
+                            inspector_resize_active.set(true);
+                            spawn(async move {
+                                let result = document::eval(&workspace_resize_script(
+                                    "--workspace-inspector-width",
+                                    start_x,
+                                    start_width,
+                                    INSPECTOR_MIN_WIDTH,
+                                    INSPECTOR_MAX_WIDTH,
+                                    true,
+                                ))
+                                .join::<f64>()
+                                .await;
+
+                                match result {
+                                    Ok(width) => inspector_width.set(width),
+                                    Err(err) => {
+                                        eprintln!(
+                                            "Failed to resize workspace inspector: {err:?}"
+                                        );
+                                    }
+                                }
+
+                                inspector_resize_active.set(false);
+                            });
+                        }
+                    }
+                    aside {
+                        class: "workspace__inspector",
+                        WorkspaceDock {
+                            dock: WorkspaceToolDock::Inspector,
+                            panels: inspector_panels,
+                            dragging_panel,
+                            drop_target,
+                            tree_status,
+                            tree_sections,
+                            tabs,
+                            active_tab_id,
+                            next_tab_id,
+                            history,
+                            saved_queries,
+                            next_saved_query_id,
+                            show_sql_editor,
+                            acp_panel_state,
+                            chat_revision,
+                            allow_agent_db_read,
+                            allow_agent_read_sql_run,
+                            allow_agent_write_sql_run,
+                            allow_agent_tool_run,
+                            chat_threads,
+                            active_chat_thread_id,
+                            connection_label: connection_label.clone(),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 pub fn Workspace() -> Element {
     let active_session = { APP_STATE.read().active_session().cloned() };
@@ -396,7 +1168,7 @@ pub fn Workspace() -> Element {
 
     let mut tree_status = use_signal(|| "Loading explorer...".to_string());
     let mut tree_sections = use_signal(Vec::<ExplorerConnectionSection>::new);
-    let mut tree_reload = use_signal(|| 0_u64);
+    let tree_reload = use_signal(|| 0_u64);
     let mut next_tab_id = use_signal(|| 1_u64);
     let mut next_history_id = use_signal(|| 1_u64);
     let mut next_saved_query_id = use_signal(|| 1_u64);
@@ -421,10 +1193,10 @@ pub fn Workspace() -> Element {
     let mut ai_disable_applied = use_signal(|| false);
     let mut chat_threads_loaded = use_signal(|| false);
     let mut chat_bootstrap_inflight = use_signal(|| false);
-    let mut sidebar_width = use_signal(|| 320.0);
-    let mut inspector_width = use_signal(|| 360.0);
-    let mut sidebar_resize = use_signal(|| None::<ColumnResizeState>);
-    let mut inspector_resize = use_signal(|| None::<ColumnResizeState>);
+    let sidebar_width = use_signal(|| 320.0);
+    let sidebar_resize_active = use_signal(|| false);
+    let inspector_width = use_signal(|| 360.0);
+    let inspector_resize_active = use_signal(|| false);
     let mut dragging_panel = use_signal(|| None::<WorkspaceToolPanel>);
     let mut drop_target = use_signal(|| None::<DockDropTarget>);
     let persisted_history =
@@ -812,201 +1584,10 @@ pub fn Workspace() -> Element {
     );
     let show_sidebar = !sidebar_panels.is_empty() || dragging_panel().is_some();
     let show_inspector = !inspector_panels.is_empty() || dragging_panel().is_some();
-    let active_chat_thread = chat_threads
-        .read()
-        .iter()
-        .find(|thread| Some(thread.id) == active_chat_thread_id())
-        .cloned();
-    let active_chat_thread_title = active_chat_thread
-        .as_ref()
-        .map(|thread| thread.title.clone())
-        .unwrap_or_else(|| "New chat".to_string());
-    let active_chat_thread_connection = active_chat_thread
-        .as_ref()
-        .map(|thread| thread.connection_name.clone())
-        .unwrap_or_else(|| connection_label.clone());
-    let inspector_connection_label = connection_label.clone();
-    let create_thread_connection_label = connection_label.clone();
-    let delete_thread_connection_label = connection_label.clone();
-
-    let render_drop_slot = move |dock: WorkspaceToolDock, index: usize, empty: bool| -> Element {
-        let target = DockDropTarget { dock, index };
-        let mut class_name = "workspace__dock-dropzone".to_string();
-        if empty {
-            class_name.push_str(" workspace__dock-dropzone--empty");
-        }
-        if drop_target() == Some(target) {
-            class_name.push_str(" workspace__dock-dropzone--active");
-        }
-
-        rsx! {
-            div {
-                class: class_name,
-                onmousemove: move |event| {
-                    if dragging_panel().is_none() {
-                        return;
-                    }
-
-                    if event.held_buttons().is_empty() {
-                        return;
-                    }
-
-                    if drop_target() != Some(target) {
-                        drop_target.set(Some(target));
-                    }
-                },
-                if empty {
-                    span { class: "workspace__dock-dropzone-copy", "Drop panel here" }
-                }
-            }
-        }
-    };
-
-    let render_tool_panel =
-        move |panel: WorkspaceToolPanel, dock: WorkspaceToolDock, index: usize| -> Element {
-            let mut class_name = "workspace__tool-panel".to_string();
-            let panel_key = panel.label();
-            let target = DockDropTarget { dock, index };
-            let agent_thread_title = active_chat_thread_title.clone();
-            let agent_thread_connection = active_chat_thread_connection.clone();
-            let agent_sql_connection_label = inspector_connection_label.clone();
-            let agent_create_connection_label = create_thread_connection_label.clone();
-            let agent_delete_connection_label = delete_thread_connection_label.clone();
-            class_name.push_str(match panel {
-                WorkspaceToolPanel::Connections => " workspace__tool-panel--connections",
-                WorkspaceToolPanel::Explorer => " workspace__tool-panel--explorer",
-                WorkspaceToolPanel::SavedQueries => " workspace__tool-panel--saved",
-                WorkspaceToolPanel::History => " workspace__tool-panel--history",
-                WorkspaceToolPanel::Agent => " workspace__tool-panel--agent",
-            });
-            if dragging_panel() == Some(panel) {
-                class_name.push_str(" workspace__tool-panel--dragging");
-            }
-            if drop_target() == Some(target) {
-                class_name.push_str(" workspace__tool-panel--drop-target");
-            }
-
-            rsx! {
-            div {
-                key: "{panel_key}",
-                class: class_name,
-                onmousemove: move |event| {
-                    if dragging_panel().is_none() {
-                        return;
-                    }
-
-                    if event.held_buttons().is_empty() {
-                        return;
-                    }
-
-                    if drop_target() != Some(target) {
-                        drop_target.set(Some(target));
-                    }
-                },
-                div {
-                    class: "workspace__tool-panel-grip",
-                    title: format!("Drag {} panel", panel.label()),
-                    onmousedown: move |event| {
-                        if event.trigger_button() != Some(MouseButton::Primary) {
-                            return;
-                        }
-
-                        event.prevent_default();
-                        event.stop_propagation();
-                        dragging_panel.set(Some(panel));
-                        drop_target.set(None);
-                    },
-                    span { class: "workspace__tool-panel-grip-dots" }
-                }
-                    {match panel {
-                        WorkspaceToolPanel::Connections => rsx! {
-                            div {
-                                class: "workspace__panel",
-                                SessionRail {
-                                    tabs,
-                                    active_tab_id,
-                                }
-                            }
-                        },
-                        WorkspaceToolPanel::Explorer => rsx! {
-                            div {
-                                class: "workspace__panel",
-                                div {
-                                    class: "workspace__panel-header",
-                                    h2 { class: "workspace__section-title", "Explorer" }
-                                    p { class: "workspace__hint", "{tree_status}" }
-                                }
-                                SidebarConnectionTree {
-                                    sections: tree_sections(),
-                                    tabs,
-                                    active_tab_id,
-                                    next_tab_id,
-                                }
-                            }
-                        },
-                        WorkspaceToolPanel::SavedQueries => rsx! {
-                            SavedQueriesPanel {
-                                saved_queries: saved_queries(),
-                                saved_queries_signal: saved_queries,
-                                next_saved_query_id,
-                                tabs,
-                                active_tab_id,
-                                next_tab_id,
-                            }
-                        },
-                        WorkspaceToolPanel::History => rsx! {
-                            div {
-                                class: "workspace__panel workspace__panel--history",
-                                QueryHistoryPanel {
-                                    history: history(),
-                                    tabs,
-                                    active_tab_id,
-                                }
-                            }
-                        },
-                        WorkspaceToolPanel::Agent => rsx! {
-                            AcpAgentPanel {
-                                panel_state: acp_panel_state,
-                                tabs,
-                                active_tab_id,
-                                show_sql_editor,
-                                chat_revision,
-                                allow_agent_db_read,
-                                allow_agent_read_sql_run,
-                                allow_agent_write_sql_run,
-                                allow_agent_tool_run,
-                                chat_threads: chat_threads(),
-                                active_thread_id: active_chat_thread_id(),
-                                thread_title: agent_thread_title,
-                                thread_connection_name: agent_thread_connection,
-                                sql_connection_label: agent_sql_connection_label,
-                                on_new_thread: move |_| {
-                                    create_chat_thread(
-                                        chat_threads,
-                                        active_chat_thread_id,
-                                        agent_create_connection_label.clone(),
-                                    );
-                                },
-                                on_select_thread: move |thread_id| {
-                                    select_chat_thread(active_chat_thread_id, thread_id);
-                                },
-                                on_delete_thread: move |thread_id| {
-                                    delete_chat_thread(
-                                        chat_threads,
-                                        active_chat_thread_id,
-                                        agent_delete_connection_label.clone(),
-                                        thread_id,
-                                    );
-                                },
-                            }
-                        },
-                    }}
-                }
-            }
-        };
 
     rsx! {
         div {
+            id: WORKSPACE_ROOT_ID,
             class: {
                 let mut class_name = if show_sidebar {
                     "workspace".to_string()
@@ -1014,10 +1595,7 @@ pub fn Workspace() -> Element {
                     "workspace workspace--sidebar-hidden".to_string()
                 };
 
-                if sidebar_resize().is_some() {
-                    class_name.push_str(" workspace--resizing");
-                }
-                if inspector_resize().is_some() {
+                if sidebar_resize_active() || inspector_resize_active() {
                     class_name.push_str(" workspace--resizing");
                 }
                 if dragging_panel().is_some() {
@@ -1031,37 +1609,7 @@ pub fn Workspace() -> Element {
                 sidebar_width(),
                 inspector_width(),
             ),
-            onmousemove: move |event| {
-                if let Some(resize) = sidebar_resize() {
-                    if event.held_buttons().is_empty() {
-                        sidebar_resize.set(None);
-                        return;
-                    }
-
-                    let delta_x = event.client_coordinates().x - resize.start_x;
-                    let next_width =
-                        (resize.start_width + delta_x).clamp(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
-                    sidebar_width.set(next_width);
-                    return;
-                }
-
-                let Some(resize) = inspector_resize() else {
-                    return;
-                };
-
-                if event.held_buttons().is_empty() {
-                    inspector_resize.set(None);
-                    return;
-                }
-
-                let delta_x = event.client_coordinates().x - resize.start_x;
-                let next_width =
-                    (resize.start_width - delta_x).clamp(INSPECTOR_MIN_WIDTH, INSPECTOR_MAX_WIDTH);
-                inspector_width.set(next_width);
-            },
             onmouseup: move |_| {
-                sidebar_resize.set(None);
-                inspector_resize.set(None);
                 if let Some(target) = drop_target() {
                     apply_tool_panel_drop(
                         dragging_panel,
@@ -1079,206 +1627,46 @@ pub fn Workspace() -> Element {
                 }
             },
             onmouseleave: move |_| {
-                sidebar_resize.set(None);
-                inspector_resize.set(None);
                 if dragging_panel().is_some() {
                     drop_target.set(None);
                 }
             },
-            if show_sidebar {
-                aside {
-                    class: "workspace__sidebar",
-                    div {
-                        class: "workspace__sidebar-body",
-                        if sidebar_panels.is_empty() {
-                            {render_drop_slot(WorkspaceToolDock::Sidebar, 0, true)}
-                        } else {
-                            for (index, panel) in sidebar_panels.iter().copied().enumerate() {
-                                {render_drop_slot(WorkspaceToolDock::Sidebar, index, false)}
-                                {render_tool_panel(panel, WorkspaceToolDock::Sidebar, index)}
-                            }
-                            {render_drop_slot(
-                                WorkspaceToolDock::Sidebar,
-                                sidebar_panels.len(),
-                                false,
-                            )}
-                        }
-                    }
-                }
-                div {
-                    class: if sidebar_resize().is_some() {
-                        "workspace__resize-handle workspace__resize-handle--active"
-                    } else {
-                        "workspace__resize-handle"
-                    },
-                    onmousedown: move |event| {
-                        event.prevent_default();
-                        sidebar_resize.set(Some(ColumnResizeState {
-                            start_x: event.client_coordinates().x,
-                            start_width: sidebar_width(),
-                        }));
-                    }
-                }
-            }
-            section {
-                class: "workspace__main",
-                header {
-                    class: "workspace__header",
-                    div {
-                        class: "workspace__toolbar",
-                        IconButton {
-                            icon: ActionIcon::Connections,
-                            label: if show_connections() {
-                                "Hide connections".to_string()
-                            } else {
-                                "Show connections".to_string()
-                            },
-                            active: show_connections(),
-                            small: true,
-                            onclick: move |_| {
-                                let next = !show_connections();
-                                show_connections.set(next);
-                                APP_UI_SETTINGS.with_mut(|settings| {
-                                    settings.show_connections = next;
-                                });
-                            },
-                        }
-                        IconButton {
-                            icon: ActionIcon::Explorer,
-                            label: if show_explorer() {
-                                "Hide explorer".to_string()
-                            } else {
-                                "Show explorer".to_string()
-                            },
-                            active: show_explorer(),
-                            small: true,
-                            onclick: move |_| {
-                                let next = !show_explorer();
-                                show_explorer.set(next);
-                                APP_UI_SETTINGS.with_mut(|settings| {
-                                    settings.show_explorer = next;
-                                });
-                            },
-                        }
-                        IconButton {
-                            icon: ActionIcon::History,
-                            label: if show_history {
-                                "Hide history".to_string()
-                            } else {
-                                "Show history".to_string()
-                            },
-                            active: show_history,
-                            small: true,
-                            onclick: move |_| {
-                                let next = !APP_SHOW_HISTORY();
-                                *APP_SHOW_HISTORY.write() = next;
-                                APP_UI_SETTINGS.with_mut(|settings| {
-                                    settings.show_history = next;
-                                });
-                            },
-                        }
-                        IconButton {
-                            icon: ActionIcon::SqlEditor,
-                            label: if show_sql_editor() {
-                                "Hide SQL editor".to_string()
-                            } else {
-                                "Show SQL editor".to_string()
-                            },
-                            active: show_sql_editor(),
-                            small: true,
-                            onclick: move |_| {
-                                let next = !show_sql_editor();
-                                show_sql_editor.set(next);
-                                APP_UI_SETTINGS.with_mut(|settings| {
-                                    settings.show_sql_editor = next;
-                                });
-                            },
-                        }
-                        if ai_features_enabled() {
-                            IconButton {
-                                icon: ActionIcon::Agent,
-                                label: if show_agent_panel() {
-                                    "Hide agent panel".to_string()
-                                } else {
-                                    "Show agent panel".to_string()
-                                },
-                                active: show_agent_panel(),
-                                small: true,
-                                onclick: move |_| {
-                                    let next = !show_agent_panel();
-                                    show_agent_panel.set(next);
-                                    APP_UI_SETTINGS.with_mut(|settings| {
-                                        settings.show_agent_panel = next;
-                                    });
-                                },
-                            }
-                        }
-                        IconButton {
-                            icon: ActionIcon::Refresh,
-                            label: "Refresh explorer".to_string(),
-                            small: true,
-                            onclick: move |_| tree_reload += 1,
-                        }
-                        IconButton {
-                            icon: ActionIcon::NewConnection,
-                            label: "New connection".to_string(),
-                            primary: true,
-                            small: true,
-                            onclick: move |_| open_connection_screen(),
-                        }
-                    }
-                }
-                div {
-                    class: if show_inspector {
-                        "workspace__content workspace__content--with-inspector"
-                    } else {
-                        "workspace__content"
-                    },
-                    div {
-                        class: "workspace__canvas",
-                        TabsManager {
-                            tabs,
-                            active_tab_id,
-                            next_tab_id,
-                            history,
-                            next_history_id,
-                            show_sql_editor,
-                            explorer_sections: tree_sections,
-                        }
-                    }
-                    if show_inspector {
-                        div {
-                            class: if inspector_resize().is_some() {
-                                "workspace__resize-handle workspace__resize-handle--inspector workspace__resize-handle--active"
-                            } else {
-                                "workspace__resize-handle workspace__resize-handle--inspector"
-                            },
-                            onmousedown: move |event| {
-                                event.prevent_default();
-                                inspector_resize.set(Some(ColumnResizeState {
-                                    start_x: event.client_coordinates().x,
-                                    start_width: inspector_width(),
-                                }));
-                            }
-                        }
-                        aside {
-                            class: "workspace__inspector",
-                            if inspector_panels.is_empty() {
-                                {render_drop_slot(WorkspaceToolDock::Inspector, 0, true)}
-                            } else {
-                                for (index, panel) in inspector_panels.iter().copied().enumerate() {
-                                    {render_drop_slot(WorkspaceToolDock::Inspector, index, false)}
-                                    {render_tool_panel(panel, WorkspaceToolDock::Inspector, index)}
-                                }
-                                {render_drop_slot(
-                                    WorkspaceToolDock::Inspector,
-                                    inspector_panels.len(),
-                                    false,
-                                )}
-                            }
-                        }
-                    }
-                }
+            WorkspaceBody {
+                show_sidebar,
+                show_inspector,
+                sidebar_panels,
+                inspector_panels,
+                sidebar_width,
+                sidebar_resize_active,
+                inspector_width,
+                inspector_resize_active,
+                tabs,
+                active_tab_id,
+                next_tab_id,
+                history,
+                next_history_id,
+                saved_queries,
+                next_saved_query_id,
+                tree_status,
+                tree_sections,
+                show_connections,
+                show_explorer,
+                show_sql_editor,
+                ai_features_enabled,
+                show_agent_panel,
+                show_history,
+                tree_reload,
+                dragging_panel,
+                drop_target,
+                acp_panel_state,
+                chat_revision,
+                allow_agent_db_read,
+                allow_agent_read_sql_run,
+                allow_agent_write_sql_run,
+                allow_agent_tool_run,
+                chat_threads,
+                active_chat_thread_id,
+                connection_label: connection_label.clone(),
             }
         }
     }

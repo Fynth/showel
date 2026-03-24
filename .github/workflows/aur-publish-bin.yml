@@ -27,7 +27,10 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (
         github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push'
+        (
+          github.event.workflow_run.event == 'push' ||
+          github.event.workflow_run.event == 'release'
+        )
       )
     runs-on: ubuntu-latest
     container:
@@ -70,11 +73,13 @@ jobs:
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             version="${{ github.event.inputs.version }}"
+            tag_name="${version}"
           else
             source "${RUNNER_TEMP}/release-metadata/version.env"
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
 
       - name: Prepare non-root AUR user
         shell: bash
@@ -93,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           binary_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin"
-          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOWEL_BINARY_ASSET_WAIT_SECONDS='${SHOWEL_BINARY_ASSET_WAIT_SECONDS}' SHOWEL_BINARY_ASSET_WAIT_INTERVAL='${SHOWEL_BINARY_ASSET_WAIT_INTERVAL}' ./scripts/render-aur-binary-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${binary_dir}' && bash ./scripts/update-aur-srcinfo.sh '${binary_dir}'"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOWEL_TAG_OVERRIDE='${{ steps.meta.outputs.tag_name }}' SHOWEL_BINARY_ASSET_WAIT_SECONDS='${SHOWEL_BINARY_ASSET_WAIT_SECONDS}' SHOWEL_BINARY_ASSET_WAIT_INTERVAL='${SHOWEL_BINARY_ASSET_WAIT_INTERVAL}' ./scripts/render-aur-binary-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${binary_dir}' && bash ./scripts/update-aur-srcinfo.sh '${binary_dir}'"
 
       - name: Configure SSH for AUR
         env:

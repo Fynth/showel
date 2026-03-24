@@ -5,10 +5,11 @@ mod highlight;
 #[path = "sql_editor/selection.rs"]
 mod selection;
 
-use crate::{app_state::session_connection, screens::workspace::actions::update_active_tab_sql};
+use crate::{app_state::session_connection, screens::workspace::actions::replace_active_tab_sql};
 use dioxus::prelude::*;
 use models::{ExplorerNode, QueryTabState};
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
 use self::{
     autocomplete::{
@@ -31,15 +32,20 @@ pub fn SqlEditor(
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
 ) -> Element {
+    let active_tab_id_value = active_tab.id;
+    let synced_tab_sql = active_tab.sql.clone();
     let mut scroll_top = use_signal(|| 0.0_f64);
     let mut scroll_left = use_signal(|| 0.0_f64);
     let mut autocomplete_open = use_signal(|| false);
     let mut force_autocomplete = use_signal(|| false);
     let mut selected_suggestion = use_signal(|| 0usize);
     let mut suggestion_key = use_signal(String::new);
+    let mut draft_sql = use_signal(|| sql.clone());
     let mut editor_selection = use_signal(|| EditorSelection::collapsed(sql.len()));
     let mut pending_cursor_position = use_signal(|| None::<usize>);
+    let mut sync_revision = use_signal(|| 0_u64);
     let column_cache = use_signal(HashMap::<String, Vec<String>>::new);
+    let current_sql = draft_sql();
 
     let editor_offset = format!(
         "transform: translate(-{}px, -{}px);",
@@ -47,40 +53,63 @@ pub fn SqlEditor(
         scroll_top()
     );
 
-    let catalog = flatten_catalog(&explorer_nodes);
-    let selection = editor_selection().clamped(&sql);
-    let completion_context = completion_context(&sql, selection);
-    let relation_bindings = extract_relation_bindings(&sql, &catalog);
-    let relations_to_prefetch = relations_to_prefetch(
-        Some(&active_tab),
-        &catalog,
-        &relation_bindings,
-        &completion_context,
-    );
+    let selection = editor_selection().clamped(&current_sql);
+    let completion_context = completion_context(&current_sql, selection);
+    let autocomplete_active = force_autocomplete()
+        || autocomplete_open()
+        || should_open_autocomplete(&completion_context);
+    let catalog = if autocomplete_active {
+        flatten_catalog(&explorer_nodes)
+    } else {
+        autocomplete::AutocompleteCatalog::default()
+    };
+    let relation_bindings = if autocomplete_active {
+        extract_relation_bindings(&current_sql, &catalog)
+    } else {
+        Vec::new()
+    };
+    let relations_to_prefetch = if autocomplete_active {
+        relations_to_prefetch(
+            Some(&active_tab),
+            &catalog,
+            &relation_bindings,
+            &completion_context,
+        )
+    } else {
+        Vec::new()
+    };
     let cache_snapshot = column_cache();
-    let suggestions = build_suggestions(
-        &sql,
-        selection,
-        Some(&active_tab),
-        &catalog,
-        &relation_bindings,
-        &cache_snapshot,
-        force_autocomplete(),
-    );
-    let inline_completion = build_inline_completion(
-        &sql,
-        selection,
-        &completion_context,
-        if force_autocomplete() {
-            suggestions
-                .get(selected_suggestion())
-                .or_else(|| suggestions.first())
-        } else {
-            suggestions.first()
-        },
-    );
+    let suggestions = if autocomplete_active {
+        build_suggestions(
+            &current_sql,
+            selection,
+            Some(&active_tab),
+            &catalog,
+            &relation_bindings,
+            &cache_snapshot,
+            force_autocomplete(),
+        )
+    } else {
+        Vec::new()
+    };
+    let inline_completion = if autocomplete_active {
+        build_inline_completion(
+            &current_sql,
+            selection,
+            &completion_context,
+            if force_autocomplete() {
+                suggestions
+                    .get(selected_suggestion())
+                    .or_else(|| suggestions.first())
+            } else {
+                suggestions.first()
+            },
+        )
+    } else {
+        None
+    };
     let popup_visible = force_autocomplete() && autocomplete_open() && !suggestions.is_empty();
-    let sql_len = sql.len();
+    let sql_len = current_sql.len();
     let next_suggestion_key = format!(
         "{}:{}:{}:{}:{}:{}",
         active_tab_id(),
@@ -94,9 +123,38 @@ pub fn SqlEditor(
 
     use_effect(move || {
         let _ = active_tab_id();
-        editor_selection.set(EditorSelection::collapsed(sql_len));
+        let next_sql = sql.clone();
+        let next_len = next_sql.len();
+        draft_sql.set(next_sql);
+        editor_selection.set(EditorSelection::collapsed(next_len));
         autocomplete_open.set(false);
         force_autocomplete.set(false);
+    });
+
+    use_effect(move || {
+        let next_sql = draft_sql();
+        let revision = sync_revision();
+        if next_sql == synced_tab_sql {
+            return;
+        }
+
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(90)).await;
+            if sync_revision() != revision {
+                return;
+            }
+
+            let already_synced = tabs
+                .read()
+                .iter()
+                .find(|tab| tab.id == active_tab_id_value)
+                .is_some_and(|tab| tab.sql == next_sql);
+            if already_synced {
+                return;
+            }
+
+            replace_active_tab_sql(tabs, active_tab_id_value, next_sql, "Ready".to_string());
+        });
     });
 
     use_effect(move || {
@@ -164,7 +222,7 @@ pub fn SqlEditor(
                     style: "{editor_offset}",
                     aria_hidden: "true",
                     SqlHighlightContent {
-                        sql: sql.clone(),
+                        sql: current_sql.clone(),
                         inline_cursor_position: inline_completion.as_ref().map(|completion| completion.cursor_position),
                         inline_suffix: inline_completion.as_ref().map(|completion| completion.suffix.clone()),
                     }
@@ -173,7 +231,7 @@ pub fn SqlEditor(
             textarea {
                 id: SQL_EDITOR_TEXTAREA_ID,
                 class: "sql-editor__input",
-                value: "{sql}",
+                value: "{current_sql}",
                 rows: "16",
                 cols: "80",
                 spellcheck: "false",
@@ -181,17 +239,12 @@ pub fn SqlEditor(
                     force_autocomplete.set(false);
                     autocomplete_open.set(true);
                     selected_suggestion.set(0);
-                    update_active_tab_sql(
-                        tabs,
-                        active_tab_id(),
-                        event.value(),
-                        "Ready".to_string(),
-                    );
-                    sync_editor_selection(editor_selection, SQL_EDITOR_TEXTAREA_ID);
+                    draft_sql.set(event.value());
+                    sync_revision += 1;
                 },
                 onkeydown: {
                     let suggestions = suggestions.clone();
-                    let current_sql = sql.clone();
+                    let current_sql = current_sql.clone();
                     let inline_completion = inline_completion.clone();
                     let completion_context = completion_context.clone();
                     move |event| {
@@ -220,7 +273,9 @@ pub fn SqlEditor(
                                             selection,
                                             &inline_completion.replacement,
                                         );
-                                        update_active_tab_sql(
+                                        draft_sql.set(next_sql.clone());
+                                        sync_revision += 1;
+                                        replace_active_tab_sql(
                                             tabs,
                                             active_tab_id(),
                                             next_sql,
@@ -258,7 +313,9 @@ pub fn SqlEditor(
                                     let (next_sql, next_cursor_position) =
                                         apply_suggestion(&current_sql, selection, &replacement);
                                     pending_cursor_position.set(Some(next_cursor_position));
-                                    update_active_tab_sql(
+                                    draft_sql.set(next_sql.clone());
+                                    sync_revision += 1;
+                                    replace_active_tab_sql(
                                         tabs,
                                         active_tab_id(),
                                         next_sql,
@@ -308,14 +365,16 @@ pub fn SqlEditor(
                             onclick: {
                                 let replacement =
                                     resolved_replacement(&suggestion, &completion_context);
-                                let current_sql = sql.clone();
+                                let current_sql = current_sql.clone();
                                 move |_| {
                                     autocomplete_open.set(false);
                                     force_autocomplete.set(false);
                                     let (next_sql, next_cursor_position) =
                                         apply_suggestion(&current_sql, selection, &replacement);
                                     pending_cursor_position.set(Some(next_cursor_position));
-                                    update_active_tab_sql(
+                                    draft_sql.set(next_sql.clone());
+                                    sync_revision += 1;
+                                    replace_active_tab_sql(
                                         tabs,
                                         active_tab_id(),
                                         next_sql,

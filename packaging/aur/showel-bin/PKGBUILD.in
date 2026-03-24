@@ -12,8 +12,9 @@ depends=(
 )
 provides=('showel')
 conflicts=('showel' 'showel-git')
+options=('!debug' '!lto')
 source=(
-  "${pkgname}-${pkgver}.tar.gz::https://github.com/__OWNER__/__REPO__/releases/download/v${pkgver}/showel-linux-x86_64.tar.gz"
+  "${pkgname}-${pkgver}.tar.gz::https://github.com/__OWNER__/__REPO__/releases/download/__TAG_NAME__/showel-linux-x86_64.tar.gz"
 )
 sha256sums=(
   '__SOURCE_SHA256__'
