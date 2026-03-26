@@ -72,13 +72,22 @@ pub fn IconButton(
 
 #[component]
 fn IconGlyph(icon: ActionIcon) -> Element {
+    let icon_class = match icon {
+        ActionIcon::Close => "button__icon button__icon--close",
+        _ => "button__icon",
+    };
+    let stroke_width = match icon {
+        ActionIcon::Close => "2.35",
+        _ => "1.85",
+    };
+
     rsx! {
         svg {
-            class: "button__icon",
+            class: icon_class,
             view_box: "0 0 24 24",
             fill: "none",
             stroke: "currentColor",
-            stroke_width: "1.85",
+            stroke_width,
             stroke_linecap: "round",
             stroke_linejoin: "round",
             match icon {
@@ -220,8 +229,8 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "m9 6 6 6-6 6" }
                 },
                 ActionIcon::Close => rsx! {
-                    path { d: "m7 7 10 10" }
-                    path { d: "m17 7-10 10" }
+                    path { d: "m4 4 16 16" }
+                    path { d: "m20 4-16 16" }
                 },
             }
         }

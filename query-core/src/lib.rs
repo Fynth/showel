@@ -801,7 +801,10 @@ async fn postgres_single_primary_key_column(
 
 #[cfg(test)]
 mod tests {
-    use super::{execute_query_page, is_read_only_sql};
+    use super::{
+        execute_query_page, is_read_only_sql, parse_clickhouse_primary_key_expression,
+        reorder_clickhouse_primary_key_columns,
+    };
     use models::{DatabaseConnection, QueryOutput};
     use sqlx::SqlitePool;
 
@@ -867,6 +870,50 @@ mod tests {
             other => panic!("expected table result, got {other:?}"),
         }
     }
+
+    #[test]
+    fn parses_clickhouse_primary_key_expression_in_declared_order() {
+        assert_eq!(
+            parse_clickhouse_primary_key_expression("tuple(created_at, id)"),
+            vec!["created_at", "id"]
+        );
+        assert_eq!(
+            parse_clickhouse_primary_key_expression("`event id`, shard"),
+            vec!["event id", "shard"]
+        );
+    }
+
+    #[test]
+    fn reorders_clickhouse_primary_key_columns_from_primary_key_expression() {
+        let pk_columns = vec![
+            ("id".to_string(), "UInt64".to_string()),
+            ("created_at".to_string(), "DateTime".to_string()),
+        ];
+
+        assert_eq!(
+            reorder_clickhouse_primary_key_columns(pk_columns, "tuple(created_at, id)"),
+            vec![
+                ("created_at".to_string(), "DateTime".to_string()),
+                ("id".to_string(), "UInt64".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_table_order_when_clickhouse_primary_key_expression_is_not_plain_columns() {
+        let pk_columns = vec![
+            ("created_at".to_string(), "DateTime".to_string()),
+            ("id".to_string(), "UInt64".to_string()),
+        ];
+
+        assert_eq!(
+            reorder_clickhouse_primary_key_columns(
+                pk_columns.clone(),
+                "tuple(toDate(created_at), id)"
+            ),
+            pk_columns
+        );
+    }
 }
 
 fn sqlite_type_supports_auto_id(data_type: &str) -> bool {
@@ -892,31 +939,46 @@ async fn clickhouse_get_primary_key_columns(
     schema_name: &str,
     table_name: &str,
 ) -> Result<Option<(Vec<String>, String)>, DatabaseError> {
-    let sql = format!(
-        "SELECT name, type FROM system.columns \
-         WHERE database = {} AND table = {} AND is_in_primary_key = 1 \
-         ORDER BY position_in_primary_key",
+    let primary_key_expression_sql = format!(
+        "SELECT primary_key FROM system.tables \
+         WHERE database = {} AND name = {} \
+         LIMIT 1",
         sql_literal(schema_name),
         sql_literal(table_name)
     );
-    let response = execute_json_query(config, &sql)
+    let primary_key_expression = execute_json_query(config, &primary_key_expression_sql)
+        .await
+        .map_err(DatabaseError::ClickHouse)?
+        .data
+        .into_iter()
+        .next()
+        .and_then(|row| row.into_iter().next())
+        .map(|value| clickhouse_json_value_to_string(&value))
+        .unwrap_or_default();
+
+    let columns_sql = format!(
+        "SELECT name, type, is_in_primary_key FROM system.columns \
+         WHERE database = {} AND table = {} \
+         ORDER BY position",
+        sql_literal(schema_name),
+        sql_literal(table_name)
+    );
+    let response = execute_json_query(config, &columns_sql)
         .await
         .map_err(DatabaseError::ClickHouse)?;
 
-    if response.data.is_empty() {
-        return Ok(None);
-    }
-
     let mut pk_columns = Vec::new();
-    let mut first_type = String::new();
-    for (idx, row) in response.data.into_iter().enumerate() {
-        if row.len() >= 2 {
-            let col_name = clickhouse_json_value_to_string(&row[0]);
-            let col_type = clickhouse_json_value_to_string(&row[1]);
-            pk_columns.push(col_name);
-            if idx == 0 {
-                first_type = col_type;
-            }
+    for row in response.data {
+        if row.len() < 3 {
+            continue;
+        }
+
+        let is_in_primary_key = clickhouse_json_value_to_string(&row[2]) == "1";
+        if is_in_primary_key {
+            pk_columns.push((
+                clickhouse_json_value_to_string(&row[0]),
+                clickhouse_json_value_to_string(&row[1]),
+            ));
         }
     }
 
@@ -924,7 +986,119 @@ async fn clickhouse_get_primary_key_columns(
         return Ok(None);
     }
 
-    Ok(Some((pk_columns, first_type)))
+    let pk_columns = reorder_clickhouse_primary_key_columns(pk_columns, &primary_key_expression);
+    let first_type = pk_columns
+        .first()
+        .map(|(_, data_type)| data_type.clone())
+        .unwrap_or_default();
+    let pk_column_names = pk_columns
+        .into_iter()
+        .map(|(column_name, _)| column_name)
+        .collect();
+
+    Ok(Some((pk_column_names, first_type)))
+}
+
+fn reorder_clickhouse_primary_key_columns(
+    pk_columns: Vec<(String, String)>,
+    primary_key_expression: &str,
+) -> Vec<(String, String)> {
+    let parsed_order = parse_clickhouse_primary_key_expression(primary_key_expression);
+    if parsed_order.len() != pk_columns.len() {
+        return pk_columns;
+    }
+
+    let original = pk_columns.clone();
+    let mut remaining = pk_columns;
+    let mut ordered = Vec::with_capacity(remaining.len());
+
+    for column_name in parsed_order {
+        let Some(index) = remaining.iter().position(|(name, _)| *name == column_name) else {
+            return original;
+        };
+        ordered.push(remaining.remove(index));
+    }
+
+    ordered.extend(remaining);
+    ordered
+}
+
+fn parse_clickhouse_primary_key_expression(expression: &str) -> Vec<String> {
+    let expression = expression.trim();
+    if expression.is_empty() || expression.eq_ignore_ascii_case("tuple()") {
+        return Vec::new();
+    }
+
+    let expression = strip_clickhouse_tuple_wrapper(expression).unwrap_or(expression);
+    split_clickhouse_expression_list(expression)
+        .into_iter()
+        .filter_map(parse_clickhouse_identifier_expression)
+        .collect()
+}
+
+fn strip_clickhouse_tuple_wrapper(expression: &str) -> Option<&str> {
+    let expression = expression.trim();
+    if !expression
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("tuple"))
+    {
+        return None;
+    }
+
+    let open_index = expression.find('(')?;
+    if open_index != 5 || !expression.ends_with(')') {
+        return None;
+    }
+
+    Some(&expression[(open_index + 1)..(expression.len() - 1)])
+}
+
+fn split_clickhouse_expression_list(expression: &str) -> Vec<&str> {
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut depth = 0usize;
+    let mut in_backticks = false;
+    let mut in_double_quotes = false;
+
+    for (index, ch) in expression.char_indices() {
+        match ch {
+            '`' if !in_double_quotes => in_backticks = !in_backticks,
+            '"' if !in_backticks => in_double_quotes = !in_double_quotes,
+            '(' if !in_backticks && !in_double_quotes => depth += 1,
+            ')' if !in_backticks && !in_double_quotes && depth > 0 => depth -= 1,
+            ',' if !in_backticks && !in_double_quotes && depth == 0 => {
+                segments.push(expression[start..index].trim());
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    segments.push(expression[start..].trim());
+    segments
+        .into_iter()
+        .filter(|segment| !segment.is_empty())
+        .collect()
+}
+
+fn parse_clickhouse_identifier_expression(expression: &str) -> Option<String> {
+    let expression = expression.trim();
+    if expression.is_empty() {
+        return None;
+    }
+
+    if expression.starts_with('`') && expression.ends_with('`') && expression.len() >= 2 {
+        return Some(expression[1..(expression.len() - 1)].replace("``", "`"));
+    }
+
+    if expression.starts_with('"') && expression.ends_with('"') && expression.len() >= 2 {
+        return Some(expression[1..(expression.len() - 1)].replace("\"\"", "\""));
+    }
+
+    expression
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        .then(|| expression.to_string())
 }
 
 fn clickhouse_json_value_to_string_for_pk(value: &serde_json::Value) -> String {

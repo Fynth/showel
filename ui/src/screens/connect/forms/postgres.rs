@@ -48,8 +48,10 @@ pub fn PostgresForm() -> Element {
                 spawn(async move {
                     match connection::connect_to_db(request.clone()).await {
                         Ok(connection) => {
-                            add_connection_session(request.clone(), connection);
-                            match storage::save_connection_request(request).await {
+                            let save_result =
+                                storage::save_connection_request(request.clone()).await;
+                            add_connection_session(request, connection);
+                            match save_result {
                                 Ok(()) => status.set("Connected".to_string()),
                                 Err(err) => status.set(format!(
                                     "Connected, but failed to save connection: {err}"

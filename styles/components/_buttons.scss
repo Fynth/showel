@@ -147,6 +147,12 @@
   flex-shrink: 0;
 }
 
+.button__icon--close {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.35;
+}
+
 .button__sr-label {
   position: absolute;
   width: 1px;

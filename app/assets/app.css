@@ -803,6 +803,12 @@ textarea {
   flex-shrink: 0;
 }
 
+.button__icon--close {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.35;
+}
+
 .button__sr-label {
   position: absolute;
   width: 1px;
@@ -1518,6 +1524,27 @@ select.input:focus-visible {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+}
+.tree__connection-actions .button--icon {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  color: color-mix(in srgb, var(--color-text) 94%, white 6%);
+  border-color: color-mix(in srgb, var(--color-border-strong) 84%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 92%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+.tree__connection-actions .button--icon:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--color-text) 96%, white 10%);
+  border-color: color-mix(in srgb, var(--color-primary) 44%, var(--color-border-strong));
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-elevated, var(--color-panel)));
+}
+.tree__connection-actions .button__icon--close {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2.75;
+  opacity: 1;
 }
 
 .tree__connection-copy {
@@ -3088,6 +3115,7 @@ select.input:focus-visible {
   min-height: 0;
   min-width: 0;
   flex: 1;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3106,7 +3134,7 @@ select.input:focus-visible {
 }
 
 .results__layout--with-details {
-  grid-template-columns: minmax(0, 1fr) minmax(240px, clamp(260px, 18vw, 320px));
+  grid-template-columns: minmax(0, 1fr) minmax(280px, clamp(300px, 22vw, 380px));
 }
 
 .results__main {
@@ -3424,7 +3452,7 @@ select.input:focus-visible {
 }
 
 .results__details {
-  min-width: 0;
+  min-width: 280px;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -3522,6 +3550,22 @@ select.input:focus-visible {
   padding: 6px 4px 6px 6px;
 }
 
+@container (max-width: 1120px) {
+  .results__layout--with-details {
+    grid-template-columns: minmax(0, 1fr) minmax(224px, clamp(236px, 24cqi, 288px));
+  }
+  .results__details {
+    min-width: 224px;
+  }
+}
+@media (max-width: 1280px) {
+  .results__layout--with-details {
+    grid-template-columns: minmax(0, 1fr) minmax(224px, clamp(236px, 18vw, 288px));
+  }
+  .results__details {
+    min-width: 224px;
+  }
+}
 @media (max-width: 760px) {
   .results__layout {
     grid-template-columns: 1fr;

@@ -116,6 +116,40 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
+
+  .button--icon {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    padding: 0;
+    color: color-mix(in srgb, var(--color-text) 94%, white 6%);
+    border-color: color-mix(in srgb, var(--color-border-strong) 84%, transparent);
+    background: color-mix(
+      in srgb,
+      var(--color-surface-elevated, var(--color-panel)) 92%,
+      transparent
+    );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 0 0 1px rgba(255, 255, 255, 0.02);
+  }
+
+  .button--icon:hover:not(:disabled) {
+    color: color-mix(in srgb, var(--color-text) 96%, white 10%);
+    border-color: color-mix(in srgb, var(--color-primary) 44%, var(--color-border-strong));
+    background: color-mix(
+      in srgb,
+      var(--color-primary) 10%,
+      var(--color-surface-elevated, var(--color-panel))
+    );
+  }
+
+  .button__icon--close {
+    width: 24px;
+    height: 24px;
+    stroke-width: 2.75;
+    opacity: 1;
+  }
 }
 
 .tree__connection-copy {

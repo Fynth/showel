@@ -754,43 +754,38 @@ fn materialize_display_rows(
         .collect::<Vec<_>>();
 
     if let Some(editable) = page.editable.as_ref() {
-        rows.extend(
-            page.rows
+        rows.extend(page.rows.iter().enumerate().filter_map(|(row_index, row)| {
+            let locator = editable
+                .row_locators
+                .get(row_index)
+                .cloned()
+                .unwrap_or_default();
+            if pending_changes
+                .deleted_rows
                 .iter()
-                .enumerate()
-                .filter_map(|(row_index, row)| {
-                    let locator = editable
-                        .row_locators
-                        .get(row_index)
-                        .cloned()
-                        .unwrap_or_default();
-                    if pending_changes
-                        .deleted_rows
-                        .iter()
-                        .any(|d| d.locator == locator)
-                    {
-                        return None;
-                    }
-                    Some(DisplayRow {
-                        row_ref: EditableRowRef::Existing(locator),
-                        values: page
-                            .columns
-                            .iter()
-                            .enumerate()
-                            .map(|(col_index, column_name)| {
-                                existing_cell_value(
-                                    pending_changes,
-                                    editable,
-                                    row_index,
-                                    col_index,
-                                    column_name,
-                                    row,
-                                )
-                            })
-                            .collect(),
+                .any(|d| d.locator == locator)
+            {
+                return None;
+            }
+            Some(DisplayRow {
+                row_ref: EditableRowRef::Existing(locator),
+                values: page
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .map(|(col_index, column_name)| {
+                        existing_cell_value(
+                            pending_changes,
+                            editable,
+                            row_index,
+                            col_index,
+                            column_name,
+                            row,
+                        )
                     })
-                }),
-        );
+                    .collect(),
+            })
+        }));
     } else {
         rows.extend(
             page.rows
@@ -1381,12 +1376,9 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
         }
 
         for delete in pending_changes.deleted_rows {
-            if let Err(err) = query::delete_table_row(
-                connection.clone(),
-                editable.source.clone(),
-                delete.locator,
-            )
-            .await
+            if let Err(err) =
+                query::delete_table_row(connection.clone(), editable.source.clone(), delete.locator)
+                    .await
             {
                 set_active_tab_status(tabs, current_id, format!("Row delete error: {err:?}"));
                 return;
