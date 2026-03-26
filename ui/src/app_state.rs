@@ -54,16 +54,18 @@ pub fn session_connection(session_id: u64) -> Option<DatabaseConnection> {
 pub fn add_connection_session(request: ConnectionRequest, connection: DatabaseConnection) -> u64 {
     let session_name = request.display_name();
     let session_kind = request.kind();
+    let session_key = request.identity_key();
 
     let mut activated_id = 0;
     APP_STATE.with_mut(|state| {
         if let Some(existing_session) = state
             .sessions
             .iter_mut()
-            .find(|session| session.name == session_name)
+            .find(|session| session.request.identity_key() == session_key)
         {
             existing_session.request = request.clone();
             existing_session.connection = connection.clone();
+            existing_session.name = session_name.clone();
             existing_session.kind = session_kind;
             activated_id = existing_session.id;
         } else {
@@ -90,11 +92,11 @@ pub fn add_connection_session(request: ConnectionRequest, connection: DatabaseCo
 
 pub fn remove_session(session_id: u64) {
     APP_STATE.with_mut(|state| {
-        let removed_names = state
+        let removed_keys = state
             .sessions
             .iter()
             .filter(|session| session.id == session_id)
-            .map(|session| session.name.clone())
+            .map(|session| session.request.identity_key())
             .collect::<Vec<_>>();
 
         state.sessions.retain(|session| session.id != session_id);
@@ -108,8 +110,8 @@ pub fn remove_session(session_id: u64) {
             state.show_connection_screen = true;
         }
 
-        for name in removed_names {
-            connection::release_ssh_tunnel(&name);
+        for key in removed_keys {
+            connection::release_ssh_tunnel(&key);
         }
     });
     persist_session_state();
@@ -120,18 +122,18 @@ pub fn restore_connection_sessions(
     active_name: Option<String>,
 ) {
     // First collect existing session names and release SSH tunnels
-    let existing_names = {
+    let existing_keys = {
         let state = APP_STATE.read();
         state
             .sessions
             .iter()
-            .map(|session| session.name.clone())
+            .map(|session| session.request.identity_key())
             .collect::<Vec<_>>()
     };
 
     // Release SSH tunnels outside the lock to avoid potential deadlocks
-    for name in existing_names {
-        connection::release_ssh_tunnel(&name);
+    for key in existing_keys {
+        connection::release_ssh_tunnel(&key);
     }
 
     // Now replace sessions atomically
@@ -156,7 +158,15 @@ pub fn restore_connection_sessions(
         state.next_session_id = next_id;
         state.active_session_id = active_name
             .as_deref()
-            .and_then(|name| state.session_id_by_name(name))
+            .and_then(|active_name| {
+                state
+                    .sessions
+                    .iter()
+                    .find(|session| {
+                        session.request.identity_key() == active_name || session.name == active_name
+                    })
+                    .map(|session| session.id)
+            })
             .or_else(|| state.sessions.first().map(|session| session.id));
         state.show_connection_screen = state.sessions.is_empty();
     });
@@ -174,7 +184,8 @@ fn persist_session_state() {
             .collect::<Vec<_>>();
         let active = state
             .active_session_id
-            .and_then(|active_id| state.session_name(active_id));
+            .and_then(|active_id| state.session(active_id))
+            .map(|session| session.request.identity_key());
         (requests, active)
     };
 

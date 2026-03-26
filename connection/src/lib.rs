@@ -11,7 +11,7 @@ pub use connection_ssh::release_ssh_tunnel;
 pub async fn connect_to_db(
     request: ConnectionRequest,
 ) -> Result<DatabaseConnection, DatabaseError> {
-    let session_name = request.display_name();
+    let session_key = request.identity_key();
 
     match request {
         ConnectionRequest::Sqlite(data) => {
@@ -65,10 +65,10 @@ pub async fn connect_to_db(
 
             if let Some(tunnel) = tunnel {
                 if result.is_ok() {
-                    register_ssh_tunnel(session_name, tunnel);
+                    register_ssh_tunnel(session_key, tunnel);
                 } else {
                     // Clean up the tunnel if connection failed
-                    release_ssh_tunnel(&session_name);
+                    release_ssh_tunnel(&session_key);
                 }
             }
 
@@ -105,10 +105,10 @@ pub async fn connect_to_db(
 
             if let Some(tunnel) = tunnel {
                 if result.is_ok() {
-                    register_ssh_tunnel(session_name, tunnel);
+                    register_ssh_tunnel(session_key, tunnel);
                 } else {
                     // Clean up the tunnel if connection failed
-                    release_ssh_tunnel(&session_name);
+                    release_ssh_tunnel(&session_key);
                 }
             }
 

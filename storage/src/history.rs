@@ -82,18 +82,22 @@ pub async fn load_saved_connections() -> Result<Vec<SavedConnection>, String> {
     let legacy = serde_json::from_str::<Vec<SavedConnection>>(&content)
         .map_err(|err| format!("failed to parse {}: {err}", path.display()))?;
     persist_saved_connections(&legacy, &[]).await?;
-    Ok(legacy)
+    Ok(legacy
+        .into_iter()
+        .map(|saved_connection| SavedConnection {
+            name: saved_connection.request.display_name(),
+            request: saved_connection.request,
+        })
+        .collect())
 }
 
 pub async fn save_connection_request(request: ConnectionRequest) -> Result<(), String> {
     let mut saved_connections = load_saved_connections().await.unwrap_or_default();
-    let previous_names = saved_connections
-        .iter()
-        .map(|saved| saved.name.clone())
-        .collect::<Vec<_>>();
+    let previous_connections = saved_connections.clone();
     let name = request.display_name();
+    let request_key = request.identity_key();
 
-    saved_connections.retain(|saved| saved.name != name);
+    saved_connections.retain(|saved| saved.request.identity_key() != request_key);
     saved_connections.insert(
         0,
         SavedConnection {
@@ -105,7 +109,7 @@ pub async fn save_connection_request(request: ConnectionRequest) -> Result<(), S
         saved_connections.truncate(MAX_SAVED_CONNECTIONS);
     }
 
-    persist_saved_connections(&saved_connections, &previous_names).await
+    persist_saved_connections(&saved_connections, &previous_connections).await
 }
 
 pub async fn load_query_history() -> Result<Vec<QueryHistoryItem>, String> {
@@ -135,8 +139,10 @@ pub async fn save_session_state(
 
 pub async fn load_session_state() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
     let state = read_session_state_async(session_state_path()).await?;
+    let active_connection_name =
+        normalize_active_connection_name(&state.open_connections, state.active_connection_name);
     let open_requests = hydrate_session_requests(state.open_connections)?;
-    Ok((open_requests, state.active_connection_name))
+    Ok((open_requests, active_connection_name))
 }
 
 pub fn save_session_state_sync(
@@ -151,13 +157,15 @@ pub fn save_session_state_sync(
 
 pub fn load_session_state_sync() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
     let state = read_session_state_sync(session_state_path())?;
+    let active_connection_name =
+        normalize_active_connection_name(&state.open_connections, state.active_connection_name);
     let open_requests = hydrate_session_requests(state.open_connections)?;
-    Ok((open_requests, state.active_connection_name))
+    Ok((open_requests, active_connection_name))
 }
 
 async fn persist_saved_connections(
     saved_connections: &[SavedConnection],
-    previous_names: &[String],
+    previous_connections: &[SavedConnection],
 ) -> Result<(), String> {
     let mut secret_errors = Vec::new();
 
@@ -167,11 +175,12 @@ async fn persist_saved_connections(
         }
     }
 
-    for removed_name in previous_names {
+    for removed_connection in previous_connections {
         if !saved_connections
             .iter()
-            .any(|saved| &saved.name == removed_name)
-            && let Err(err) = delete_secret(removed_name)
+            .any(|saved| saved.request.identity_key() == removed_connection.request.identity_key())
+            && let Err(err) =
+                delete_connection_secret(&removed_connection.name, &removed_connection.request)
         {
             secret_errors.push(err);
         }
@@ -209,33 +218,14 @@ fn hydrate_saved_connections(
 fn hydrate_saved_connection(
     saved_connection: PersistedSavedConnection,
 ) -> Result<SavedConnection, String> {
-    let password = load_secret(&saved_connection.name).ok().flatten();
-    let request = match saved_connection.request {
-        PersistedConnectionRequest::Sqlite(data) => ConnectionRequest::Sqlite(data),
-        PersistedConnectionRequest::Postgres(data) => {
-            ConnectionRequest::Postgres(PostgresFormData {
-                host: data.host,
-                port: data.port,
-                username: data.username,
-                password: password.clone().unwrap_or_default(),
-                database: data.database,
-                ssh_tunnel: data.ssh_tunnel,
-            })
-        }
-        PersistedConnectionRequest::ClickHouse(data) => {
-            ConnectionRequest::ClickHouse(ClickHouseFormData {
-                host: data.host,
-                port: data.port,
-                username: data.username,
-                password: password.unwrap_or_default(),
-                database: data.database,
-                ssh_tunnel: data.ssh_tunnel,
-            })
-        }
-    };
+    let request_without_password = persisted_request_without_password(&saved_connection.request);
+    let password = load_connection_secret(&saved_connection.name, &request_without_password)
+        .ok()
+        .flatten();
+    let request = persisted_request_with_password(saved_connection.request, password);
 
     Ok(SavedConnection {
-        name: saved_connection.name,
+        name: request.display_name(),
         request,
     })
 }
@@ -272,14 +262,69 @@ fn to_persisted_connection(saved_connection: SavedConnection) -> PersistedSavedC
 fn sync_connection_secret(saved_connection: &SavedConnection) -> Result<(), String> {
     match &saved_connection.request {
         ConnectionRequest::Sqlite(_) => {
-            delete_secret(&saved_connection.name)?;
+            delete_connection_secret(&saved_connection.name, &saved_connection.request)?;
         }
         ConnectionRequest::Postgres(data) => {
-            store_secret(&saved_connection.name, &data.password)?;
+            store_connection_secret(saved_connection, &data.password)?;
         }
         ConnectionRequest::ClickHouse(data) => {
-            store_secret(&saved_connection.name, &data.password)?;
+            store_connection_secret(saved_connection, &data.password)?;
         }
+    }
+
+    Ok(())
+}
+
+fn store_connection_secret(saved_connection: &SavedConnection, secret: &str) -> Result<(), String> {
+    let current_key = saved_connection.request.identity_key();
+    if secret.is_empty() {
+        delete_secret(&current_key)?;
+    } else {
+        store_secret(&current_key, secret)?;
+    }
+
+    let legacy_name = saved_connection.name.trim();
+    if !legacy_name.is_empty() && legacy_name != current_key {
+        delete_secret(legacy_name)?;
+    }
+
+    Ok(())
+}
+
+fn load_connection_secret(
+    legacy_name: &str,
+    request: &ConnectionRequest,
+) -> Result<Option<String>, String> {
+    let current_key = request.identity_key();
+    if let Some(secret) = load_secret(&current_key)? {
+        let legacy_name = legacy_name.trim();
+        if !legacy_name.is_empty() && legacy_name != current_key {
+            let _ = delete_secret(legacy_name);
+        }
+        return Ok(Some(secret));
+    }
+
+    let legacy_name = legacy_name.trim();
+    if legacy_name.is_empty() || legacy_name == current_key {
+        return Ok(None);
+    }
+
+    let Some(secret) = load_secret(legacy_name)? else {
+        return Ok(None);
+    };
+
+    store_secret(&current_key, &secret)?;
+    let _ = delete_secret(legacy_name);
+    Ok(Some(secret))
+}
+
+fn delete_connection_secret(legacy_name: &str, request: &ConnectionRequest) -> Result<(), String> {
+    let current_key = request.identity_key();
+    delete_secret(&current_key)?;
+
+    let legacy_name = legacy_name.trim();
+    if !legacy_name.is_empty() && legacy_name != current_key {
+        delete_secret(legacy_name)?;
     }
 
     Ok(())
@@ -331,6 +376,73 @@ fn secret_key(connection_name: &str) -> String {
     }
 
     format!("connection-{hash:016x}")
+}
+
+fn persisted_request_without_password(request: &PersistedConnectionRequest) -> ConnectionRequest {
+    match request {
+        PersistedConnectionRequest::Sqlite(data) => ConnectionRequest::Sqlite(data.clone()),
+        PersistedConnectionRequest::Postgres(data) => {
+            ConnectionRequest::Postgres(PostgresFormData {
+                host: data.host.clone(),
+                port: data.port,
+                username: data.username.clone(),
+                password: String::new(),
+                database: data.database.clone(),
+                ssh_tunnel: data.ssh_tunnel.clone(),
+            })
+        }
+        PersistedConnectionRequest::ClickHouse(data) => {
+            ConnectionRequest::ClickHouse(ClickHouseFormData {
+                host: data.host.clone(),
+                port: data.port,
+                username: data.username.clone(),
+                password: String::new(),
+                database: data.database.clone(),
+                ssh_tunnel: data.ssh_tunnel.clone(),
+            })
+        }
+    }
+}
+
+fn persisted_request_with_password(
+    request: PersistedConnectionRequest,
+    password: Option<String>,
+) -> ConnectionRequest {
+    match request {
+        PersistedConnectionRequest::Sqlite(data) => ConnectionRequest::Sqlite(data),
+        PersistedConnectionRequest::Postgres(data) => {
+            ConnectionRequest::Postgres(PostgresFormData {
+                host: data.host,
+                port: data.port,
+                username: data.username,
+                password: password.clone().unwrap_or_default(),
+                database: data.database,
+                ssh_tunnel: data.ssh_tunnel,
+            })
+        }
+        PersistedConnectionRequest::ClickHouse(data) => {
+            ConnectionRequest::ClickHouse(ClickHouseFormData {
+                host: data.host,
+                port: data.port,
+                username: data.username,
+                password: password.unwrap_or_default(),
+                database: data.database,
+                ssh_tunnel: data.ssh_tunnel,
+            })
+        }
+    }
+}
+
+fn normalize_active_connection_name(
+    open_connections: &[PersistedSavedConnection],
+    active_connection_name: Option<String>,
+) -> Option<String> {
+    let active_connection_name = active_connection_name?;
+    open_connections
+        .iter()
+        .find(|connection| connection.name == active_connection_name)
+        .map(|connection| persisted_request_without_password(&connection.request).identity_key())
+        .or(Some(active_connection_name))
 }
 
 fn build_persisted_session_state(
