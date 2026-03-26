@@ -1,21 +1,37 @@
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
+
 use models::{
     DatabaseConnection, DatabaseError, ExplorerNode, ExplorerNodeKind, QueryOutput, QueryPage,
     TablePreviewSource,
 };
 
 use explorer::{describe_table, load_connection_tree};
-use query::{execute_query, load_table_preview_page};
+use query::load_table_preview_page;
 
-const MAX_CONTEXT_TABLES: usize = 4;
+const MAX_PREVIEW_CONTEXT_TABLES: usize = 1;
 const MAX_CONTEXT_ROWS: usize = 3;
 const MAX_CONTEXT_COLUMNS: usize = 8;
 const MAX_CONTEXT_META_ITEMS: usize = 6;
 const MAX_OBSERVED_VALUE_COLUMNS: usize = 5;
 const MAX_OBSERVED_VALUES_PER_COLUMN: usize = 3;
-const MAX_COUNTED_TABLES: usize = 2;
-const MAX_CATALOG_RELATION_NAMES: usize = 8;
 const MAX_INLINE_VALUE_LEN: usize = 48;
 const MAX_INLINE_DETAILS_LEN: usize = 240;
+const SCHEMA_CACHE_TTL: Duration = Duration::from_secs(90);
+
+struct CachedSchemaContext {
+    catalog_signature: String,
+    built_at: Instant,
+    lines: Vec<String>,
+}
+
+fn schema_context_cache() -> &'static Mutex<HashMap<String, CachedSchemaContext>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CachedSchemaContext>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 pub async fn build_acp_database_context(
     connection: DatabaseConnection,
@@ -25,56 +41,112 @@ pub async fn build_acp_database_context(
     let tree = load_connection_tree(connection.clone()).await?;
     let all_sources = collect_table_sources(&tree);
     let prioritized_sources = prioritize_table_sources(all_sources, focus_source.clone());
-    let profiled_sources = prioritized_sources
+    let preview_sources = prioritized_sources
+        .iter()
+        .cloned()
         .into_iter()
-        .take(MAX_CONTEXT_TABLES)
+        .take(MAX_PREVIEW_CONTEXT_TABLES)
         .collect::<Vec<_>>();
 
     let mut lines = vec![format!("Active database connection: {connection_label}")];
     append_catalog_summary(&mut lines, &tree);
-
-    if !profiled_sources.is_empty() {
-        lines.push(String::new());
+    if let Some(focus_source) = focus_source.as_ref() {
         lines.push(format!(
-            "Deep table profiles (up to {MAX_CONTEXT_TABLES} relations, preview rows are never the full table):"
+            "Active focus relation: {}",
+            focus_source.qualified_name
         ));
     }
 
-    for (index, source) in profiled_sources.into_iter().enumerate() {
-        append_table_profile(
-            &mut lines,
-            connection.clone(),
-            source,
-            focus_source.as_ref(),
-            index < MAX_COUNTED_TABLES,
-        )
-        .await;
+    let schema_lines = load_or_build_schema_context_lines(
+        connection.clone(),
+        &connection_label,
+        &tree,
+        &prioritized_sources,
+    )
+    .await?;
+    if !schema_lines.is_empty() {
+        lines.push(String::new());
+        lines.extend(schema_lines);
+    }
+
+    if !preview_sources.is_empty() {
+        lines.push(String::new());
+        lines.push(format!(
+            "Focused data previews (up to {MAX_PREVIEW_CONTEXT_TABLES} relation(s); preview rows are never the full table):"
+        ));
+    }
+
+    for (index, source) in preview_sources.into_iter().enumerate() {
+        let _ = index;
+        let is_active_focus = focus_source
+            .as_ref()
+            .is_some_and(|focus| same_source(focus, &source));
+        append_relation_preview_profile(&mut lines, connection.clone(), source, is_active_focus)
+            .await;
     }
 
     Ok(lines.join("\n"))
 }
 
-async fn append_table_profile(
+pub async fn warm_acp_database_schema_context(
+    connection: DatabaseConnection,
+    connection_label: String,
+) -> Result<(), DatabaseError> {
+    let tree = load_connection_tree(connection.clone()).await?;
+    let sources = collect_table_sources(&tree);
+    let _ =
+        load_or_build_schema_context_lines(connection, &connection_label, &tree, &sources).await?;
+    Ok(())
+}
+
+async fn load_or_build_schema_context_lines(
+    connection: DatabaseConnection,
+    connection_label: &str,
+    tree: &[ExplorerNode],
+    sources: &[TablePreviewSource],
+) -> Result<Vec<String>, DatabaseError> {
+    let catalog_signature = build_catalog_signature(tree);
+
+    if let Ok(cache) = schema_context_cache().lock()
+        && let Some(cached) = cache.get(connection_label)
+        && cached.catalog_signature == catalog_signature
+        && cached.built_at.elapsed() <= SCHEMA_CACHE_TTL
+    {
+        return Ok(cached.lines.clone());
+    }
+
+    let mut lines = Vec::new();
+    if !sources.is_empty() {
+        lines.push(format!(
+            "Full relation schema map (all {} relation(s) currently visible in the database catalog):",
+            sources.len()
+        ));
+    }
+
+    for source in sources {
+        append_relation_schema_profile(&mut lines, connection.clone(), source.clone()).await;
+    }
+
+    if let Ok(mut cache) = schema_context_cache().lock() {
+        cache.insert(
+            connection_label.to_string(),
+            CachedSchemaContext {
+                catalog_signature,
+                built_at: Instant::now(),
+                lines: lines.clone(),
+            },
+        );
+    }
+
+    Ok(lines)
+}
+
+async fn append_relation_schema_profile(
     lines: &mut Vec<String>,
     connection: DatabaseConnection,
     source: TablePreviewSource,
-    focus_source: Option<&TablePreviewSource>,
-    include_row_count: bool,
 ) {
-    let focus_label = if focus_source.is_some_and(|focus| same_source(focus, &source)) {
-        " [active focus]"
-    } else {
-        ""
-    };
-    lines.push(format!("- {}{focus_label}", source.qualified_name));
-
-    if include_row_count {
-        match load_row_count_summary(connection.clone(), &source).await {
-            Ok(Some(summary)) => lines.push(format!("  row count: {summary}")),
-            Ok(None) => {}
-            Err(err) => lines.push(format!("  row count error: {err:?}")),
-        }
-    }
+    lines.push(format!("- {}", source.qualified_name));
 
     match describe_table(
         connection.clone(),
@@ -83,7 +155,7 @@ async fn append_table_profile(
     )
     .await
     {
-        Ok(QueryOutput::Table(page)) => append_structure_profile(lines, &page),
+        Ok(QueryOutput::Table(page)) => append_structure_profile(lines, &page, true),
         Ok(QueryOutput::AffectedRows(_)) => {
             lines.push("  structure: <non-tabular response>".to_string());
         }
@@ -91,6 +163,15 @@ async fn append_table_profile(
             lines.push(format!("  structure error: {err:?}"));
         }
     }
+}
+
+async fn append_relation_preview_profile(
+    lines: &mut Vec<String>,
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+    is_active_focus: bool,
+) {
+    lines.push(relation_heading(&source, is_active_focus));
 
     match load_table_preview_page(connection, source, MAX_CONTEXT_ROWS as u32, 0, None, None).await
     {
@@ -107,31 +188,34 @@ async fn append_table_profile(
     }
 }
 
-async fn load_row_count_summary(
-    connection: DatabaseConnection,
-    source: &TablePreviewSource,
-) -> Result<Option<String>, DatabaseError> {
-    let sql = format!(
-        "select count(*) as row_count from {}",
-        source.qualified_name
-    );
-    match execute_query(connection, sql).await? {
-        QueryOutput::Table(page) => {
-            Ok(first_cell(&page).map(|value| format!("{value} via COUNT(*)")))
-        }
-        QueryOutput::AffectedRows(_) => Ok(None),
+fn relation_heading(source: &TablePreviewSource, is_active_focus: bool) -> String {
+    if is_active_focus {
+        format!("- {} [active focus]", source.qualified_name)
+    } else {
+        format!("- {}", source.qualified_name)
     }
 }
 
-fn first_cell(page: &QueryPage) -> Option<String> {
-    page.rows
-        .first()
-        .and_then(|row| row.first())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+fn build_catalog_signature(nodes: &[ExplorerNode]) -> String {
+    let mut signature = String::new();
+    append_catalog_signature_parts(nodes, &mut signature);
+    signature
 }
 
-fn append_structure_profile(lines: &mut Vec<String>, page: &QueryPage) {
+fn append_catalog_signature_parts(nodes: &[ExplorerNode], signature: &mut String) {
+    for node in nodes {
+        signature.push_str(match node.kind {
+            ExplorerNodeKind::Schema => "schema:",
+            ExplorerNodeKind::Table => "table:",
+            ExplorerNodeKind::View => "view:",
+        });
+        signature.push_str(&node.qualified_name);
+        signature.push('|');
+        append_catalog_signature_parts(&node.children, signature);
+    }
+}
+
+fn append_structure_profile(lines: &mut Vec<String>, page: &QueryPage, include_all_items: bool) {
     let mut definition = None::<String>;
     let mut table_meta = Vec::new();
     let mut columns = Vec::new();
@@ -169,17 +253,29 @@ fn append_structure_profile(lines: &mut Vec<String>, page: &QueryPage) {
 
     if !table_meta.is_empty() {
         lines.push("  relation details:".to_string());
-        append_limited_items(lines, &table_meta, MAX_CONTEXT_META_ITEMS);
+        append_limited_items(
+            lines,
+            &table_meta,
+            item_limit(table_meta.len(), include_all_items, MAX_CONTEXT_META_ITEMS),
+        );
     }
 
     if !columns.is_empty() {
         lines.push("  columns:".to_string());
-        append_limited_items(lines, &columns, MAX_CONTEXT_COLUMNS);
+        append_limited_items(
+            lines,
+            &columns,
+            item_limit(columns.len(), include_all_items, MAX_CONTEXT_COLUMNS),
+        );
     }
 
     if !other_meta.is_empty() {
         lines.push("  schema details:".to_string());
-        append_limited_items(lines, &other_meta, MAX_CONTEXT_META_ITEMS);
+        append_limited_items(
+            lines,
+            &other_meta,
+            item_limit(other_meta.len(), include_all_items, MAX_CONTEXT_META_ITEMS),
+        );
     }
 }
 
@@ -293,19 +389,14 @@ fn append_catalog_summary(lines: &mut Vec<String>, nodes: &[ExplorerNode]) {
                 let relation_names = node
                     .children
                     .iter()
-                    .take(MAX_CATALOG_RELATION_NAMES)
                     .map(|child| child.name.clone())
                     .collect::<Vec<_>>();
-                let overflow = node.children.len().saturating_sub(relation_names.len());
                 let mut summary = format!(
                     "- schema {}: {} table(s), {} view(s)",
                     node.name, table_count, view_count
                 );
                 if !relation_names.is_empty() {
                     summary.push_str(&format!(" -> {}", relation_names.join(", ")));
-                }
-                if overflow > 0 {
-                    summary.push_str(&format!(", +{overflow} more"));
                 }
                 lines.push(summary);
             }
@@ -325,6 +416,14 @@ fn count_relations(node: &ExplorerNode) -> usize {
     match node.kind {
         ExplorerNodeKind::Schema => node.children.iter().map(count_relations).sum(),
         ExplorerNodeKind::Table | ExplorerNodeKind::View => 1,
+    }
+}
+
+fn item_limit(item_count: usize, include_all_items: bool, default_limit: usize) -> usize {
+    if include_all_items {
+        item_count
+    } else {
+        default_limit
     }
 }
 
@@ -417,9 +516,11 @@ fn collect_table_sources_inner(nodes: &[ExplorerNode], sources: &mut Vec<TablePr
 #[cfg(test)]
 mod tests {
     use super::{
-        append_observed_values, append_page_preview, inline_excerpt, prioritize_table_sources,
+        append_catalog_summary, append_observed_values, append_page_preview,
+        append_structure_profile, build_catalog_signature, inline_excerpt,
+        prioritize_table_sources, relation_heading,
     };
-    use models::{QueryPage, TablePreviewSource};
+    use models::{ExplorerNode, ExplorerNodeKind, QueryPage, TablePreviewSource};
 
     #[test]
     fn page_preview_marks_partial_data_as_preview_only() {
@@ -529,8 +630,111 @@ mod tests {
     }
 
     #[test]
+    fn catalog_summary_lists_all_relation_names() {
+        let nodes = vec![ExplorerNode {
+            name: "main".to_string(),
+            kind: ExplorerNodeKind::Schema,
+            schema: Some("main".to_string()),
+            qualified_name: "main".to_string(),
+            children: (1..=10)
+                .map(|index| ExplorerNode {
+                    name: format!("table_{index}"),
+                    kind: ExplorerNodeKind::Table,
+                    schema: Some("main".to_string()),
+                    qualified_name: format!("main.table_{index}"),
+                    children: Vec::new(),
+                })
+                .collect(),
+        }];
+
+        let mut lines = Vec::new();
+        append_catalog_summary(&mut lines, &nodes);
+        let summary = lines.join("\n");
+
+        assert!(summary.contains("table_1"));
+        assert!(summary.contains("table_10"));
+        assert!(!summary.contains("+"));
+    }
+
+    #[test]
     fn inline_excerpt_flattens_multiline_content() {
         let excerpt = inline_excerpt("CREATE TABLE products\n(\n  id INTEGER\n)", 80);
         assert_eq!(excerpt, "CREATE TABLE products ( id INTEGER )");
+    }
+
+    #[test]
+    fn structure_profile_can_include_all_columns_for_full_schema_map() {
+        let page = QueryPage {
+            columns: vec![
+                "section".to_string(),
+                "name".to_string(),
+                "type".to_string(),
+                "target".to_string(),
+                "details".to_string(),
+            ],
+            rows: (1..=10)
+                .map(|index| {
+                    vec![
+                        "column".to_string(),
+                        format!("col_{index}"),
+                        "text".to_string(),
+                        String::new(),
+                        String::new(),
+                    ]
+                })
+                .collect(),
+            editable: None,
+            offset: 0,
+            page_size: 0,
+            has_previous: false,
+            has_next: false,
+        };
+
+        let mut lines = Vec::new();
+        append_structure_profile(&mut lines, &page, true);
+        let summary = lines.join("\n");
+
+        assert!(summary.contains("col_1"));
+        assert!(summary.contains("col_10"));
+        assert!(!summary.contains("..."));
+    }
+
+    #[test]
+    fn relation_heading_marks_active_focus() {
+        let source = TablePreviewSource {
+            schema: Some("main".to_string()),
+            table_name: "products".to_string(),
+            qualified_name: "\"main\".\"products\"".to_string(),
+        };
+
+        assert_eq!(
+            relation_heading(&source, true),
+            "- \"main\".\"products\" [active focus]"
+        );
+    }
+
+    #[test]
+    fn catalog_signature_changes_when_relation_names_change() {
+        let nodes = vec![ExplorerNode {
+            name: "main".to_string(),
+            kind: ExplorerNodeKind::Schema,
+            schema: Some("main".to_string()),
+            qualified_name: "main".to_string(),
+            children: vec![ExplorerNode {
+                name: "products".to_string(),
+                kind: ExplorerNodeKind::Table,
+                schema: Some("main".to_string()),
+                qualified_name: "main.products".to_string(),
+                children: Vec::new(),
+            }],
+        }];
+        let mut updated = nodes.clone();
+        updated[0].children[0].qualified_name = "main.orders".to_string();
+        updated[0].children[0].name = "orders".to_string();
+
+        assert_ne!(
+            build_catalog_signature(&nodes),
+            build_catalog_signature(&updated)
+        );
     }
 }

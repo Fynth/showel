@@ -27,6 +27,11 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 struct AcpRuntimeHandle {
     command_tx: tokio_mpsc::UnboundedSender<AcpCommand>,
@@ -290,6 +295,7 @@ impl acp::Client for BridgeClient {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
+        apply_hidden_process_flags(&mut command);
         for env_var in args.env {
             command.env(env_var.name, env_var.value);
         }
@@ -614,14 +620,16 @@ async fn run_acp_worker(
         }
     };
 
-    let mut child = match tokio::process::Command::new(command)
+    let mut child_command = tokio::process::Command::new(command);
+    child_command
         .args(&args)
         .current_dir(&cwd)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-    {
+        .kill_on_drop(true);
+    apply_hidden_process_flags(&mut child_command);
+
+    let mut child = match child_command.spawn() {
         Ok(child) => child,
         Err(err) => {
             let _ = ready_tx.send(Err(format!("Failed to start ACP agent: {err}")));
@@ -813,6 +821,11 @@ fn normalize_cwd_path(path: PathBuf) -> Result<PathBuf, String> {
     }
 
     Ok(path)
+}
+
+fn apply_hidden_process_flags(_command: &mut tokio::process::Command) {
+    #[cfg(windows)]
+    _command.creation_flags(CREATE_NO_WINDOW);
 }
 
 fn resolve_workspace_path(

@@ -7,16 +7,17 @@ use models::{
     AcpPanelState, AcpUiMessage, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery,
     WorkspaceToolDock, WorkspaceToolLayout, WorkspaceToolPanel,
 };
-use std::collections::HashSet;
 use std::time::Duration;
+use std::{collections::HashSet, path::Path};
 
 use self::{
     actions::{new_query_tab, update_active_tab_sql},
     components::{
         AcpAgentPanel, ActionIcon, AgentSqlExecutionMode, ExplorerConnectionSection, IconButton,
         QueryHistoryPanel, SavedQueriesPanel, SessionRail, SidebarConnectionTree, TabsManager,
-        apply_acp_events, default_acp_panel_state, execute_agent_sql_request,
-        extract_sql_candidate, replace_messages,
+        apply_acp_events, default_acp_panel_state, ensure_opencode_connected,
+        execute_agent_sql_request, extract_sql_candidate, preferred_sql_target_tab_id,
+        replace_messages,
     },
 };
 
@@ -314,11 +315,27 @@ fn compact_chat_title(text: &str, max_chars: usize) -> String {
     }
 }
 
+fn launch_uses_opencode(state: &AcpPanelState) -> bool {
+    let command = state.launch.command.trim();
+    if command.is_empty() {
+        return true;
+    }
+
+    Path::new(command)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| {
+            value.eq_ignore_ascii_case("opencode") || value.eq_ignore_ascii_case("opencode.exe")
+        })
+        .unwrap_or(false)
+}
+
 fn derive_chat_thread_title(
     current_title: Option<&str>,
     messages: &[AcpUiMessage],
     connection_label: &str,
 ) -> String {
+    let _ = connection_label;
     if let Some(current_title) = current_title
         .map(str::trim)
         .filter(|title| !title.is_empty() && *title != "New chat")
@@ -341,7 +358,7 @@ fn derive_chat_thread_title(
         return compact_chat_title(first_user_message, 56);
     }
 
-    format!("New chat · {}", compact_chat_title(connection_label, 28))
+    "New chat".to_string()
 }
 
 fn upsert_chat_thread_summary(threads: &mut Vec<ChatThreadSummary>, summary: ChatThreadSummary) {
@@ -360,15 +377,12 @@ fn upsert_chat_thread_summary(threads: &mut Vec<ChatThreadSummary>, summary: Cha
 }
 
 fn reset_panel_for_thread(state: &mut AcpPanelState, title: &str, messages: Vec<AcpUiMessage>) {
+    let _ = title;
     let launch = state.launch.clone();
     let ollama = state.ollama.clone();
     *state = AcpPanelState::new(launch, ollama);
     replace_messages(state, messages);
-    state.status = if title.trim().is_empty() {
-        "Chat ready. Connect an agent to continue.".to_string()
-    } else {
-        format!("{title} is ready. Connect an agent to continue.")
-    };
+    state.status = "Connect an agent to continue.".to_string();
 }
 
 fn create_chat_thread(
@@ -1079,6 +1093,10 @@ fn WorkspaceBody(
                         next_history_id,
                         show_sql_editor,
                         explorer_sections: tree_sections,
+                        acp_panel_state,
+                        chat_revision,
+                        allow_agent_db_read,
+                        ai_features_enabled,
                     }
                 }
                 if show_inspector {
@@ -1181,8 +1199,8 @@ pub fn Workspace() -> Element {
     let mut show_sql_editor = use_signal(|| APP_UI_SETTINGS().show_sql_editor);
     let mut ai_features_enabled = use_signal(|| APP_UI_SETTINGS().ai_features_enabled);
     let mut show_agent_panel = use_signal(|| APP_UI_SETTINGS().show_agent_panel);
-    let allow_agent_db_read = use_signal(|| false);
-    let allow_agent_read_sql_run = use_signal(|| false);
+    let allow_agent_db_read = use_signal(|| true);
+    let allow_agent_read_sql_run = use_signal(|| true);
     let allow_agent_write_sql_run = use_signal(|| false);
     let allow_agent_tool_run = use_signal(|| false);
     let mut acp_panel_state = use_signal(default_acp_panel_state);
@@ -1193,6 +1211,8 @@ pub fn Workspace() -> Element {
     let mut ai_disable_applied = use_signal(|| false);
     let mut chat_threads_loaded = use_signal(|| false);
     let mut chat_bootstrap_inflight = use_signal(|| false);
+    let mut opencode_autostart_attempted = use_signal(|| false);
+    let mut warmed_schema_session_id = use_signal(|| 0_u64);
     let sidebar_width = use_signal(|| 320.0);
     let sidebar_resize_active = use_signal(|| false);
     let inspector_width = use_signal(|| 360.0);
@@ -1340,7 +1360,7 @@ pub fn Workspace() -> Element {
     });
 
     use_effect(move || {
-        if !ai_features_enabled() || !show_agent_panel() {
+        if !ai_features_enabled() {
             return;
         }
         if chat_threads_loaded() {
@@ -1380,7 +1400,7 @@ pub fn Workspace() -> Element {
     });
 
     use_effect(move || {
-        if !ai_features_enabled() || !show_agent_panel() {
+        if !ai_features_enabled() {
             return;
         }
         let Some(thread_id) = active_chat_thread_id() else {
@@ -1405,6 +1425,7 @@ pub fn Workspace() -> Element {
 
             let _ = acp::disconnect_acp_agent();
             handled_agent_sql_message_id.set(last_message_id);
+            opencode_autostart_attempted.set(false);
             acp_panel_state
                 .with_mut(|state| reset_panel_for_thread(state, &thread_title, messages));
         });
@@ -1424,6 +1445,7 @@ pub fn Workspace() -> Element {
         if ai_features_enabled() {
             if ai_disable_applied() {
                 ai_disable_applied.set(false);
+                opencode_autostart_attempted.set(false);
             }
             return;
         }
@@ -1433,6 +1455,7 @@ pub fn Workspace() -> Element {
         }
 
         ai_disable_applied.set(true);
+        opencode_autostart_attempted.set(false);
         let _ = acp::disconnect_acp_agent();
         acp_panel_state.with_mut(|state| {
             let launch = state.launch.clone();
@@ -1451,6 +1474,52 @@ pub fn Workspace() -> Element {
                 settings.tool_panel_layout = normalized;
             });
         }
+    });
+
+    use_effect(move || {
+        if !ai_features_enabled() {
+            return;
+        }
+        if !chat_threads_loaded() || active_chat_thread_id().is_none() {
+            return;
+        }
+        if opencode_autostart_attempted() {
+            return;
+        }
+
+        let state = acp_panel_state();
+        if state.connected || state.busy || !launch_uses_opencode(&state) {
+            return;
+        }
+
+        opencode_autostart_attempted.set(true);
+        spawn(async move {
+            let _ = ensure_opencode_connected(acp_panel_state, chat_revision).await;
+        });
+    });
+
+    use_effect(move || {
+        if !ai_features_enabled() || !allow_agent_db_read() {
+            return;
+        }
+
+        let active_session = { APP_STATE.read().active_session().cloned() };
+        let Some(session) = active_session else {
+            return;
+        };
+
+        if warmed_schema_session_id() == session.id {
+            return;
+        }
+
+        warmed_schema_session_id.set(session.id);
+        spawn(async move {
+            let _ = acp::warm_acp_database_schema_context(
+                session.connection.clone(),
+                session.name.clone(),
+            )
+            .await;
+        });
     });
 
     use_effect(move || {
@@ -1495,14 +1564,19 @@ pub fn Workspace() -> Element {
     use_effect(move || {
         spawn(async move {
             loop {
-                let panel_active = ai_features_enabled() && show_agent_panel();
-                let poll_delay = if panel_active && acp_panel_state().connected {
-                    Duration::from_millis(120)
+                let ai_active = ai_features_enabled();
+                let panel_visible = show_agent_panel();
+                let poll_delay = if ai_active && acp_panel_state().connected {
+                    if panel_visible {
+                        Duration::from_millis(120)
+                    } else {
+                        Duration::from_millis(180)
+                    }
                 } else {
                     Duration::from_millis(400)
                 };
 
-                if !panel_active {
+                if !ai_active {
                     let _ = acp::drain_acp_events();
                     tokio::time::sleep(poll_delay).await;
                     continue;
@@ -1537,25 +1611,30 @@ pub fn Workspace() -> Element {
                             execute_agent_sql_request(
                                 acp_panel_state,
                                 tabs,
-                                active_tab_id(),
+                                active_tab_id,
                                 show_sql_editor,
                                 chat_revision,
                                 sql,
                                 AgentSqlExecutionMode::AutoReadOnly,
                             );
                         } else if pending_sql_insert {
-                            show_sql_editor.set(true);
-                            update_active_tab_sql(
-                                tabs,
-                                active_tab_id(),
-                                sql,
-                                "SQL generated by ACP agent".to_string(),
-                            );
-                            acp_panel_state.with_mut(|state| {
-                                state.pending_sql_insert = false;
-                                state.status =
-                                    "Inserted generated SQL into the active editor.".to_string();
-                            });
+                            if let Some(target_tab_id) =
+                                preferred_sql_target_tab_id(tabs, active_tab_id())
+                            {
+                                show_sql_editor.set(true);
+                                active_tab_id.set(target_tab_id);
+                                update_active_tab_sql(
+                                    tabs,
+                                    target_tab_id,
+                                    sql,
+                                    "SQL generated by ACP agent".to_string(),
+                                );
+                                acp_panel_state.with_mut(|state| {
+                                    state.pending_sql_insert = false;
+                                    state.status = "Inserted generated SQL into the active editor."
+                                        .to_string();
+                                });
+                            }
                         }
                     }
                 }
@@ -1673,3 +1752,72 @@ pub fn Workspace() -> Element {
 }
 
 pub(crate) use self::components::SqlFormatSettingsFields;
+
+#[cfg(test)]
+mod tests {
+    use super::{derive_chat_thread_title, launch_uses_opencode, reset_panel_for_thread};
+    use models::{AcpLaunchRequest, AcpOllamaConfig, AcpPanelState, AcpUiMessage};
+
+    #[test]
+    fn default_chat_title_stays_compact() {
+        assert_eq!(
+            derive_chat_thread_title(None, &[], "SQLite · /home/rasul/Documents/data.sqlite"),
+            "New chat"
+        );
+    }
+
+    #[test]
+    fn reset_panel_uses_compact_disconnected_status() {
+        let mut state = AcpPanelState::new(
+            AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+
+        reset_panel_for_thread(&mut state, "New chat · SQLite", Vec::<AcpUiMessage>::new());
+        assert_eq!(state.status, "Connect an agent to continue.");
+    }
+
+    #[test]
+    fn empty_launch_defaults_to_opencode_autostart() {
+        let state = AcpPanelState::new(
+            AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+
+        assert!(launch_uses_opencode(&state));
+    }
+
+    #[test]
+    fn custom_launch_does_not_autostart_opencode() {
+        let state = AcpPanelState::new(
+            AcpLaunchRequest {
+                command: "/usr/bin/custom-acp".to_string(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+
+        assert!(!launch_uses_opencode(&state));
+    }
+}

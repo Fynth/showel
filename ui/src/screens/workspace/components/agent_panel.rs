@@ -6,7 +6,13 @@ mod registry_card;
 mod state;
 
 use dioxus::prelude::*;
-use models::{AcpMessageKind, AcpPanelState, ChatArtifact, ChatThreadSummary, QueryTabState};
+use explorer::load_connection_tree;
+use models::{
+    AcpMessageKind, AcpPanelState, AcpUiMessage, ChatArtifact, ChatThreadSummary,
+    DatabaseConnection, ExplorerNode, QueryTabState, TablePreviewSource,
+};
+use query::preview_source_for_sql;
+use std::collections::BTreeSet;
 
 use crate::screens::workspace::actions::{run_query_for_tab, tab_connection_or_error};
 
@@ -14,21 +20,35 @@ use super::{ActionIcon, IconButton};
 
 use self::{
     prompt::{
-        active_editor_connection, active_editor_focus_source, active_editor_prompt_context,
-        build_chat_prompt, build_sql_generation_prompt, build_thread_history_context,
+        active_editor_connection, active_editor_error, active_editor_focus_source,
+        active_editor_prompt_context, active_editor_sql, build_chat_prompt,
+        build_sql_error_fix_prompt, build_sql_explanation_prompt, build_sql_generation_prompt,
+        build_sql_plan_prompt, build_thread_history_context, describe_query_output,
         insert_sql_into_editor,
     },
     registry_card::RegistryAgentCard,
     state::{
         apply_connected, message_kind_class, message_kind_label, permission_button_class,
-        push_message, push_message_with_artifact,
+        push_message,
     },
 };
 
 pub(crate) use self::{
-    prompt::extract_sql_candidate,
+    prompt::{extract_sql_candidate, preferred_sql_target_tab_id},
     state::{apply_acp_events, default_acp_panel_state, replace_messages},
 };
+
+thread_local! {
+    // Keep clipboard ownership alive for Linux/X11/Wayland instead of dropping it right after copy.
+    static PERSISTENT_CLIPBOARD: std::cell::RefCell<Option<arboard::Clipboard>> =
+        std::cell::RefCell::new(None);
+}
+
+#[derive(Clone)]
+struct ResolvedAgentSql {
+    sql: String,
+    correction_note: Option<String>,
+}
 
 fn send_chat_prompt_request(
     mut panel_state: Signal<AcpPanelState>,
@@ -126,7 +146,7 @@ fn send_chat_prompt_request(
     });
 }
 
-fn send_sql_generation_request(
+pub(crate) fn send_sql_generation_request(
     mut panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: u64,
@@ -227,16 +247,486 @@ fn send_sql_generation_request(
     });
 }
 
-pub(crate) fn execute_agent_sql_request(
+async fn connect_registry_agent(
+    mut panel_state: Signal<AcpPanelState>,
+    mut chat_revision: Signal<u64>,
+    agent_id: &str,
+    agent_name: &str,
+) -> Result<(), String> {
+    let cwd = panel_state().launch.cwd.clone();
+    panel_state.with_mut(|state| {
+        state.busy = true;
+        state.status = format!("Preparing {agent_name} from the ACP registry...");
+    });
+
+    let launch = match acp::install_acp_registry_agent(agent_id.to_string(), cwd).await {
+        Ok(launch) => launch,
+        Err(err) => {
+            panel_state.with_mut(|state| {
+                state.busy = false;
+                state.status = err.clone();
+                push_message(state, AcpMessageKind::Error, err.clone());
+            });
+            chat_revision += 1;
+            return Err(err);
+        }
+    };
+
+    panel_state.with_mut(|state| {
+        state.launch = launch.clone();
+        state.busy = true;
+        state.status = format!("Connecting to {agent_name}...");
+    });
+
+    match acp::connect_acp_agent(launch).await {
+        Ok(connection) => {
+            panel_state.with_mut(|state| {
+                apply_connected(state, connection);
+            });
+            Ok(())
+        }
+        Err(err) => {
+            panel_state.with_mut(|state| {
+                state.busy = false;
+                state.connected = false;
+                state.connection = None;
+                state.status = err.clone();
+                push_message(state, AcpMessageKind::Error, err.clone());
+            });
+            chat_revision += 1;
+            Err(err)
+        }
+    }
+}
+
+pub(crate) async fn ensure_opencode_connected(
+    panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+) -> Result<(), String> {
+    if panel_state().connected {
+        return Ok(());
+    }
+
+    if panel_state().busy {
+        let status = panel_state().status.trim().to_string();
+        return Err(if status.is_empty() {
+            "ACP agent is busy.".to_string()
+        } else {
+            status
+        });
+    }
+
+    connect_registry_agent(
+        panel_state,
+        chat_revision,
+        OPENCODE_REGISTRY_AGENT_ID,
+        "OpenCode",
+    )
+    .await
+}
+
+fn send_sql_plan_request(
     mut panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: u64,
+    connection_label: String,
+    mut chat_revision: Signal<u64>,
+    allow_db_read: bool,
+    allow_read_sql_run: bool,
+) {
+    let Some(active_sql) = active_editor_sql(tabs, active_tab_id) else {
+        panel_state.with_mut(|state| {
+            state.status = "There is no active SQL to explain with EXPLAIN.".to_string();
+            push_message(
+                state,
+                AcpMessageKind::Error,
+                "There is no active SQL to explain with EXPLAIN.".to_string(),
+            );
+        });
+        chat_revision += 1;
+        return;
+    };
+
+    if panel_state().busy {
+        return;
+    }
+
+    if !allow_read_sql_run {
+        panel_state.with_mut(|state| {
+            state.status = "Enable read-only SQL execution to run EXPLAIN.".to_string();
+            push_message(
+                state,
+                AcpMessageKind::Error,
+                "Enable read-only SQL execution to run EXPLAIN.".to_string(),
+            );
+        });
+        chat_revision += 1;
+        return;
+    }
+
+    if !query::is_read_only_sql(&active_sql) {
+        panel_state.with_mut(|state| {
+            state.status = "Explain Plan is available only for read-only SQL.".to_string();
+            push_message(
+                state,
+                AcpMessageKind::Error,
+                "Explain Plan is available only for read-only SQL.".to_string(),
+            );
+        });
+        chat_revision += 1;
+        return;
+    }
+
+    let Some(connection) = active_editor_connection(tabs, active_tab_id) else {
+        panel_state.with_mut(|state| {
+            state.status = "The active tab connection is not available.".to_string();
+            push_message(
+                state,
+                AcpMessageKind::Error,
+                "The active tab connection is not available.".to_string(),
+            );
+        });
+        chat_revision += 1;
+        return;
+    };
+
+    let explain_sql = build_explain_sql(&active_sql);
+    let focus_source = active_editor_focus_source(tabs, active_tab_id);
+    let active_tab_context = if allow_db_read {
+        active_editor_prompt_context(tabs, active_tab_id)
+    } else {
+        None
+    };
+    let thread_history = build_thread_history_context(&panel_state().messages);
+
+    panel_state.with_mut(|state| {
+        state.busy = true;
+        state.pending_sql_insert = false;
+        state.status = "Running EXPLAIN for the active SQL...".to_string();
+    });
+
+    spawn(async move {
+        let plan_output = match query::execute_query_page(
+            connection.clone(),
+            explain_sql.clone(),
+            100,
+            0,
+            None,
+            None,
+        )
+        .await
+        {
+            Ok(output) => output,
+            Err(err) => {
+                let error = format!("Explain plan error: {err}");
+                panel_state.with_mut(|state| {
+                    state.status = error.clone();
+                    state.busy = false;
+                    push_message(state, AcpMessageKind::Error, error);
+                });
+                chat_revision += 1;
+                return;
+            }
+        };
+        let explain_plan = describe_query_output("Explain plan result", &plan_output);
+
+        let prompt = if allow_db_read {
+            match acp::build_acp_database_context(
+                connection,
+                connection_label.clone(),
+                focus_source,
+            )
+            .await
+            {
+                Ok(db_context) => build_sql_plan_prompt(
+                    &connection_label,
+                    &active_sql,
+                    &explain_sql,
+                    &explain_plan,
+                    Some(db_context),
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+                Err(_) => build_sql_plan_prompt(
+                    &connection_label,
+                    &active_sql,
+                    &explain_sql,
+                    &explain_plan,
+                    None,
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+            }
+        } else {
+            build_sql_plan_prompt(
+                &connection_label,
+                &active_sql,
+                &explain_sql,
+                &explain_plan,
+                None,
+                active_tab_context.clone(),
+                thread_history.clone(),
+            )
+        };
+
+        match acp::send_acp_prompt(prompt) {
+            Ok(()) => {
+                panel_state.with_mut(|state| {
+                    push_message(
+                        state,
+                        AcpMessageKind::User,
+                        format!("Explain query plan:\n```sql\n{active_sql}\n```"),
+                    );
+                    state.busy = true;
+                    state.pending_sql_insert = false;
+                    state.status = "Waiting for query plan explanation...".to_string();
+                });
+                chat_revision += 1;
+            }
+            Err(err) => {
+                panel_state.with_mut(|state| {
+                    state.status = err.clone();
+                    state.busy = false;
+                    push_message(state, AcpMessageKind::Error, err);
+                });
+                chat_revision += 1;
+            }
+        }
+    });
+}
+
+fn send_sql_explanation_request(
+    mut panel_state: Signal<AcpPanelState>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    connection_label: String,
+    mut chat_revision: Signal<u64>,
+    allow_db_read: bool,
+) {
+    let Some(active_sql) = active_editor_sql(tabs, active_tab_id) else {
+        panel_state.with_mut(|state| {
+            state.status = "There is no active SQL to explain.".to_string();
+            push_message(
+                state,
+                AcpMessageKind::Error,
+                "There is no active SQL to explain.".to_string(),
+            );
+        });
+        chat_revision += 1;
+        return;
+    };
+
+    if panel_state().busy {
+        return;
+    }
+
+    let thread_history = build_thread_history_context(&panel_state().messages);
+    let connection = if allow_db_read {
+        active_editor_connection(tabs, active_tab_id)
+    } else {
+        None
+    };
+    let focus_source = active_editor_focus_source(tabs, active_tab_id);
+    let active_tab_context = if allow_db_read {
+        active_editor_prompt_context(tabs, active_tab_id)
+    } else {
+        None
+    };
+
+    panel_state.with_mut(|state| {
+        state.busy = true;
+        state.pending_sql_insert = false;
+        state.status = "Preparing active SQL for explanation...".to_string();
+    });
+
+    spawn(async move {
+        let prompt = match connection {
+            Some(connection) => match acp::build_acp_database_context(
+                connection,
+                connection_label.clone(),
+                focus_source,
+            )
+            .await
+            {
+                Ok(db_context) => build_sql_explanation_prompt(
+                    &connection_label,
+                    &active_sql,
+                    Some(db_context),
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+                Err(_) => build_sql_explanation_prompt(
+                    &connection_label,
+                    &active_sql,
+                    None,
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+            },
+            None => build_sql_explanation_prompt(
+                &connection_label,
+                &active_sql,
+                None,
+                active_tab_context.clone(),
+                thread_history.clone(),
+            ),
+        };
+
+        match acp::send_acp_prompt(prompt) {
+            Ok(()) => {
+                panel_state.with_mut(|state| {
+                    push_message(
+                        state,
+                        AcpMessageKind::User,
+                        format!("Explain active SQL:\n```sql\n{active_sql}\n```"),
+                    );
+                    state.busy = true;
+                    state.pending_sql_insert = false;
+                    state.status = "Waiting for SQL explanation...".to_string();
+                });
+                chat_revision += 1;
+            }
+            Err(err) => {
+                panel_state.with_mut(|state| {
+                    state.status = err.clone();
+                    state.busy = false;
+                    push_message(state, AcpMessageKind::Error, err);
+                });
+                chat_revision += 1;
+            }
+        }
+    });
+}
+
+fn send_sql_error_fix_request(
+    mut panel_state: Signal<AcpPanelState>,
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    connection_label: String,
+    mut chat_revision: Signal<u64>,
+    allow_db_read: bool,
+) {
+    let Some(active_sql) = active_editor_sql(tabs, active_tab_id) else {
+        panel_state.with_mut(|state| {
+            state.status = "There is no active SQL to repair.".to_string();
+            push_message(
+                state,
+                AcpMessageKind::Error,
+                "There is no active SQL to repair.".to_string(),
+            );
+        });
+        chat_revision += 1;
+        return;
+    };
+    let Some(error) = active_editor_error(tabs, active_tab_id) else {
+        panel_state.with_mut(|state| {
+            state.status = "The active tab has no SQL error to fix.".to_string();
+            push_message(
+                state,
+                AcpMessageKind::Error,
+                "The active tab has no SQL error to fix.".to_string(),
+            );
+        });
+        chat_revision += 1;
+        return;
+    };
+
+    if panel_state().busy {
+        return;
+    }
+
+    let connection = if allow_db_read {
+        active_editor_connection(tabs, active_tab_id)
+    } else {
+        None
+    };
+    let focus_source = active_editor_focus_source(tabs, active_tab_id);
+    let active_tab_context = if allow_db_read {
+        active_editor_prompt_context(tabs, active_tab_id)
+    } else {
+        None
+    };
+    let thread_history = build_thread_history_context(&panel_state().messages);
+
+    panel_state.with_mut(|state| {
+        state.busy = true;
+        state.pending_sql_insert = true;
+        state.status = "Preparing SQL repair prompt for the agent...".to_string();
+    });
+
+    spawn(async move {
+        let prompt = match connection {
+            Some(connection) => match acp::build_acp_database_context(
+                connection,
+                connection_label.clone(),
+                focus_source,
+            )
+            .await
+            {
+                Ok(db_context) => build_sql_error_fix_prompt(
+                    &connection_label,
+                    &active_sql,
+                    &error,
+                    Some(db_context),
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+                Err(_) => build_sql_error_fix_prompt(
+                    &connection_label,
+                    &active_sql,
+                    &error,
+                    None,
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+            },
+            None => build_sql_error_fix_prompt(
+                &connection_label,
+                &active_sql,
+                &error,
+                None,
+                active_tab_context.clone(),
+                thread_history.clone(),
+            ),
+        };
+
+        match acp::send_acp_prompt(prompt) {
+            Ok(()) => {
+                panel_state.with_mut(|state| {
+                    push_message(
+                        state,
+                        AcpMessageKind::User,
+                        format!("Fix SQL error: {error}\n```sql\n{active_sql}\n```"),
+                    );
+                    state.busy = true;
+                    state.pending_sql_insert = true;
+                    state.status = "Waiting for repaired SQL...".to_string();
+                });
+                chat_revision += 1;
+            }
+            Err(err) => {
+                panel_state.with_mut(|state| {
+                    state.status = err.clone();
+                    state.busy = false;
+                    state.pending_sql_insert = false;
+                    push_message(state, AcpMessageKind::Error, err);
+                });
+                chat_revision += 1;
+            }
+        }
+    });
+}
+
+pub(crate) fn execute_agent_sql_request(
+    mut panel_state: Signal<AcpPanelState>,
+    mut tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: Signal<u64>,
     show_sql_editor: Signal<bool>,
     mut chat_revision: Signal<u64>,
     sql: String,
     execution_mode: AgentSqlExecutionMode,
 ) {
-    if active_tab_id == 0 {
+    let Some(target_tab_id) = preferred_sql_target_tab_id(tabs, active_tab_id()) else {
         panel_state.with_mut(|state| {
             state.status = "No active SQL tab to execute in.".to_string();
             push_message(
@@ -247,12 +737,12 @@ pub(crate) fn execute_agent_sql_request(
         });
         chat_revision += 1;
         return;
-    }
+    };
 
     let current_tab = tabs
         .read()
         .iter()
-        .find(|tab| tab.id == active_tab_id)
+        .find(|tab| tab.id == target_tab_id)
         .cloned();
     let Some(current_tab) = current_tab else {
         panel_state.with_mut(|state| {
@@ -281,56 +771,390 @@ pub(crate) fn execute_agent_sql_request(
         return;
     };
 
-    insert_sql_into_editor(
-        panel_state,
-        tabs,
-        active_tab_id,
-        show_sql_editor,
-        sql.clone(),
-    );
-
-    let (status, summary) = match execution_mode {
-        AgentSqlExecutionMode::Manual => (
-            "Executing agent SQL in the active tab...".to_string(),
-            "Executed agent SQL in the active SQL tab.".to_string(),
-        ),
-        AgentSqlExecutionMode::AutoReadOnly => (
-            "Automatically running read-only SQL from ACP agent...".to_string(),
-            "Automatically executed read-only SQL from ACP agent.".to_string(),
-        ),
+    let base_status = match execution_mode {
+        AgentSqlExecutionMode::Manual => "Executed agent SQL in the active SQL tab.".to_string(),
+        AgentSqlExecutionMode::AutoReadOnly => {
+            "Executed read-only SQL from the ACP agent.".to_string()
+        }
     };
 
-    panel_state.with_mut(|state| {
-        state.status = status;
-        push_message_with_artifact(
-            state,
-            AcpMessageKind::System,
-            summary.clone(),
-            Some(ChatArtifact::QuerySummary {
-                sql: sql.clone(),
-                summary,
-            }),
+    spawn(async move {
+        let resolved = match resolve_agent_sql_execution(connection.clone(), &sql).await {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                tabs.with_mut(|all_tabs| {
+                    if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_tab.id) {
+                        tab.status = format!("Error: {err}");
+                    }
+                });
+                panel_state.with_mut(|state| {
+                    state.status = err.clone();
+                    push_message(state, AcpMessageKind::Error, err);
+                });
+                chat_revision += 1;
+                return;
+            }
+        };
+
+        insert_sql_into_editor(
+            panel_state,
+            tabs,
+            active_tab_id,
+            show_sql_editor,
+            resolved.sql.clone(),
+        );
+
+        panel_state.with_mut(|state| {
+            state.status = match &resolved.correction_note {
+                Some(note) => format!("{base_status} {note}"),
+                None => base_status.clone(),
+            };
+        });
+        chat_revision += 1;
+
+        run_query_for_tab(
+            tabs,
+            current_tab.id,
+            connection,
+            resolved.sql,
+            0,
+            current_tab.page_size,
+            None,
         );
     });
-    chat_revision += 1;
+}
 
-    run_query_for_tab(
-        tabs,
-        current_tab.id,
-        connection,
-        sql,
-        0,
-        current_tab.page_size,
-        None,
-    );
+async fn resolve_agent_sql_execution(
+    connection: DatabaseConnection,
+    sql: &str,
+) -> Result<ResolvedAgentSql, String> {
+    let DatabaseConnection::ClickHouse(config) = &connection else {
+        return Ok(ResolvedAgentSql {
+            sql: sql.to_string(),
+            correction_note: None,
+        });
+    };
+    let Some(source) = preview_source_for_sql(sql) else {
+        return Ok(ResolvedAgentSql {
+            sql: sql.to_string(),
+            correction_note: None,
+        });
+    };
+    let default_schema = config.effective_database().to_string();
+    let tree = load_connection_tree(connection).await.map_err(|err| {
+        format!("Failed to refresh ClickHouse catalog before running ACP SQL: {err}")
+    })?;
+
+    if clickhouse_catalog_contains_source(&tree, &source, &default_schema) {
+        return Ok(ResolvedAgentSql {
+            sql: sql.to_string(),
+            correction_note: None,
+        });
+    }
+
+    let relation = clickhouse_source_display_name(&source, &default_schema);
+    let matches = ranked_clickhouse_source_matches(&tree, &source, &default_schema);
+    if let Some(best_match) = matches.first()
+        && clickhouse_match_is_confident(best_match, matches.get(1))
+    {
+        let corrected_sql = rewrite_simple_select_source(sql, &source, &best_match.source);
+        let corrected_relation =
+            clickhouse_source_display_name(&best_match.source, &default_schema);
+        return Ok(ResolvedAgentSql {
+            sql: corrected_sql,
+            correction_note: Some(format!(
+                "Corrected relation `{relation}` to `{corrected_relation}` using the current ClickHouse catalog."
+            )),
+        });
+    }
+
+    let suggestions = matches
+        .iter()
+        .take(3)
+        .map(|candidate| clickhouse_source_display_name(&candidate.source, &default_schema))
+        .collect::<Vec<_>>();
+    let suggestion_suffix = if suggestions.is_empty() {
+        String::new()
+    } else {
+        format!(" Closest matches: {}.", suggestions.join(", "))
+    };
+    Err(format!(
+        "ACP generated SQL for `{relation}`, but that relation is not available in the current ClickHouse catalog. Use an exact table or view name from the database snapshot.{suggestion_suffix}"
+    ))
+}
+
+#[derive(Clone, Debug)]
+struct ClickHouseSourceMatch {
+    source: TablePreviewSource,
+    score: usize,
+    shared_token_weight: usize,
+}
+
+fn clickhouse_catalog_contains_source(
+    nodes: &[ExplorerNode],
+    source: &TablePreviewSource,
+    default_schema: &str,
+) -> bool {
+    let expected_schema = source.schema.as_deref().unwrap_or(default_schema);
+    nodes.iter().any(|node| match node.kind {
+        models::ExplorerNodeKind::Schema => {
+            node.name == expected_schema
+                && node.children.iter().any(|child| {
+                    child.schema.as_deref() == Some(expected_schema)
+                        && child.name == source.table_name
+                })
+        }
+        _ => node.schema.as_deref() == Some(expected_schema) && node.name == source.table_name,
+    })
+}
+
+fn clickhouse_source_display_name(source: &TablePreviewSource, default_schema: &str) -> String {
+    source
+        .schema
+        .as_deref()
+        .map(|schema| format!("{schema}.{}", source.table_name))
+        .unwrap_or_else(|| format!("{default_schema}.{}", source.table_name))
+}
+
+fn ranked_clickhouse_source_matches(
+    nodes: &[ExplorerNode],
+    source: &TablePreviewSource,
+    default_schema: &str,
+) -> Vec<ClickHouseSourceMatch> {
+    let expected_schema = source.schema.as_deref().unwrap_or(default_schema);
+    let mut matches = collect_clickhouse_catalog_sources(nodes)
+        .into_iter()
+        .filter(|candidate| candidate.table_name != source.table_name)
+        .map(|candidate| {
+            let shared_token_weight =
+                shared_identifier_token_weight(&source.table_name, &candidate.table_name);
+            let bigram_overlap = shared_bigram_count(&source.table_name, &candidate.table_name);
+            let schema_bonus =
+                usize::from(candidate.schema.as_deref() == Some(expected_schema)) * 10_000;
+            let score = schema_bonus + shared_token_weight * 100 + bigram_overlap;
+            ClickHouseSourceMatch {
+                source: candidate,
+                score,
+                shared_token_weight,
+            }
+        })
+        .filter(|candidate| candidate.shared_token_weight > 0)
+        .collect::<Vec<_>>();
+
+    matches.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| right.shared_token_weight.cmp(&left.shared_token_weight))
+            .then_with(|| {
+                left.source
+                    .table_name
+                    .len()
+                    .cmp(&right.source.table_name.len())
+            })
+            .then_with(|| left.source.table_name.cmp(&right.source.table_name))
+    });
+    matches
+}
+
+fn clickhouse_match_is_confident(
+    best_match: &ClickHouseSourceMatch,
+    runner_up: Option<&ClickHouseSourceMatch>,
+) -> bool {
+    if best_match.shared_token_weight < 40 {
+        return false;
+    }
+
+    runner_up.is_none_or(|next| best_match.score >= next.score + 150)
+}
+
+fn collect_clickhouse_catalog_sources(nodes: &[ExplorerNode]) -> Vec<TablePreviewSource> {
+    let mut sources = Vec::new();
+    collect_clickhouse_catalog_sources_inner(nodes, &mut sources);
+    sources
+}
+
+fn collect_clickhouse_catalog_sources_inner(
+    nodes: &[ExplorerNode],
+    sources: &mut Vec<TablePreviewSource>,
+) {
+    for node in nodes {
+        match node.kind {
+            models::ExplorerNodeKind::Schema => {
+                collect_clickhouse_catalog_sources_inner(&node.children, sources);
+            }
+            _ => sources.push(TablePreviewSource {
+                schema: node.schema.clone(),
+                table_name: node.name.clone(),
+                qualified_name: node.qualified_name.clone(),
+            }),
+        }
+    }
+}
+
+fn shared_identifier_token_weight(left: &str, right: &str) -> usize {
+    let left_tokens = identifier_token_set(left);
+    let right_tokens = identifier_token_set(right);
+    left_tokens
+        .intersection(&right_tokens)
+        .map(|token| token.len() * token.len())
+        .sum()
+}
+
+fn identifier_token_set(value: &str) -> BTreeSet<String> {
+    value
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter_map(|token| {
+            let token = token.trim().to_ascii_lowercase();
+            (token.len() >= 3).then_some(token)
+        })
+        .collect()
+}
+
+fn shared_bigram_count(left: &str, right: &str) -> usize {
+    let left_bigrams = identifier_bigrams(left);
+    let right_bigrams = identifier_bigrams(right);
+    left_bigrams.intersection(&right_bigrams).count()
+}
+
+fn identifier_bigrams(value: &str) -> BTreeSet<String> {
+    let normalized = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    normalized
+        .windows(2)
+        .map(|window| window.iter().collect::<String>())
+        .collect()
+}
+
+fn rewrite_simple_select_source(
+    sql: &str,
+    source: &TablePreviewSource,
+    replacement: &TablePreviewSource,
+) -> String {
+    sql.replacen(&source.qualified_name, &replacement.qualified_name, 1)
 }
 
 fn is_connection_notice(kind: &AcpMessageKind, text: &str) -> bool {
     matches!(kind, AcpMessageKind::System) && text.starts_with("Connected to ")
 }
 
-fn is_visible_message(kind: &AcpMessageKind, text: &str) -> bool {
-    !is_connection_notice(kind, text) && !matches!(kind, AcpMessageKind::Tool)
+fn is_internal_status_message(text: &str) -> bool {
+    text.starts_with("Connected to ")
+        || text.starts_with("Selected permission option:")
+        || text == "Cancelled permission request."
+        || text.starts_with("Blocked ACP tool request")
+}
+
+fn is_visible_message(message: &AcpUiMessage) -> bool {
+    match message.kind {
+        AcpMessageKind::Tool => false,
+        AcpMessageKind::System => {
+            message.artifact.is_some()
+                && !matches!(message.artifact, Some(ChatArtifact::QuerySummary { .. }))
+                && !is_internal_status_message(&message.text)
+        }
+        _ => !is_connection_notice(&message.kind, &message.text),
+    }
+}
+
+fn compact_header_title(title: &str) -> String {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return "New chat".to_string();
+    }
+
+    trimmed
+        .strip_prefix("New chat · ")
+        .map(|_| "New chat".to_string())
+        .unwrap_or_else(|| trimmed.to_string())
+}
+
+fn compact_connection_part(part: &str) -> String {
+    let trimmed = part.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let last_segment = trimmed
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|segment| !segment.is_empty())
+        .unwrap_or(trimmed);
+
+    if last_segment != trimmed {
+        return last_segment.to_string();
+    }
+
+    if trimmed.chars().count() <= 48 {
+        trimmed.to_string()
+    } else {
+        format!("{}...", trimmed.chars().take(45).collect::<String>())
+    }
+}
+
+fn compact_connection_label(label: &str) -> String {
+    label
+        .split('·')
+        .map(compact_connection_part)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+fn is_noisy_header_status(status: &str) -> bool {
+    status.is_empty()
+        || status == "Ready"
+        || status == "Connect an agent to continue."
+        || status == "ACP agent is disconnected."
+        || status.starts_with("Connected to ")
+        || status.starts_with("Executed agent SQL")
+        || status.starts_with("Executed read-only SQL")
+        || status.starts_with("Prompt finished:")
+        || status.starts_with("Finished:")
+}
+
+fn build_thread_meta(thread_connection_name: &str, state: &AcpPanelState) -> String {
+    let connection = compact_connection_label(thread_connection_name);
+    let status = state.status.trim();
+
+    if state.busy || state.pending_permission.is_some() {
+        if connection.is_empty() {
+            status.to_string()
+        } else {
+            format!("{connection} · {status}")
+        }
+    } else if is_noisy_header_status(status) {
+        connection
+    } else if status.is_empty() {
+        connection
+    } else if connection.is_empty() {
+        status.to_string()
+    } else if state.connected {
+        format!("{connection} · {status}")
+    } else {
+        connection
+    }
+}
+
+fn should_render_message_text(message: &AcpUiMessage) -> bool {
+    if matches!(message.kind, AcpMessageKind::Thought) {
+        return false;
+    }
+
+    match &message.artifact {
+        Some(ChatArtifact::QuerySummary { summary, .. }) => message.text.trim() != summary.trim(),
+        _ => true,
+    }
+}
+
+fn artifact_title(artifact: &ChatArtifact) -> &'static str {
+    match artifact {
+        ChatArtifact::SqlDraft { .. } => "SQL Draft",
+        ChatArtifact::QuerySummary { .. } => "SQL",
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -443,6 +1267,19 @@ fn code_chunk_sql(language: Option<&str>, code: &str) -> Option<String> {
         .map(|candidate| candidate.trim().to_string())
 }
 
+fn build_explain_sql(active_sql: &str) -> String {
+    let trimmed = active_sql.trim();
+    if trimmed
+        .split_whitespace()
+        .next()
+        .is_some_and(|keyword| keyword.eq_ignore_ascii_case("explain"))
+    {
+        trimmed.to_string()
+    } else {
+        format!("EXPLAIN {trimmed}")
+    }
+}
+
 fn can_execute_agent_sql(sql: &str, allow_read_sql_run: bool, allow_write_sql_run: bool) -> bool {
     if query::is_read_only_sql(sql) {
         allow_read_sql_run
@@ -451,17 +1288,96 @@ fn can_execute_agent_sql(sql: &str, allow_read_sql_run: bool, allow_write_sql_ru
     }
 }
 
-fn copy_text_to_clipboard(mut panel_state: Signal<AcpPanelState>, text: String, label: &str) {
-    let result = arboard::Clipboard::new()
-        .map_err(|err| err.to_string())
-        .and_then(|mut clipboard| clipboard.set_text(text).map_err(|err| err.to_string()));
+fn write_text_to_clipboard(text: &str) -> Result<(), String> {
+    PERSISTENT_CLIPBOARD.with(|clipboard| {
+        let mut clipboard = clipboard.borrow_mut();
+        if clipboard.is_none() {
+            *clipboard = Some(arboard::Clipboard::new().map_err(|err| err.to_string())?);
+        }
 
-    panel_state.with_mut(|state| {
-        state.status = match result {
-            Ok(()) => format!("Copied {label} to clipboard."),
-            Err(err) => format!("Clipboard error: {err}"),
-        };
-    });
+        let clipboard = clipboard
+            .as_mut()
+            .ok_or_else(|| "Clipboard is unavailable.".to_string())?;
+
+        clipboard
+            .set_text(text.to_string())
+            .map_err(|err| err.to_string())
+    })
+}
+
+fn copy_text_to_clipboard(mut panel_state: Signal<AcpPanelState>, text: String, label: &str) {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        panel_state.with_mut(|state| {
+            state.status = format!("Nothing to copy as {label}.");
+        });
+        return;
+    }
+
+    let result = write_text_to_clipboard(&text);
+
+    match result {
+        Ok(()) => {
+            panel_state.with_mut(|state| {
+                state.status = format!("Copied {label} to clipboard.");
+            });
+        }
+        Err(native_err) => {
+            let Some(script) = clipboard_copy_script(&text) else {
+                panel_state.with_mut(|state| {
+                    state.status = format!("Clipboard error: {native_err}");
+                });
+                return;
+            };
+
+            let label = label.to_string();
+            spawn(async move {
+                let result = document::eval(&script).join::<bool>().await;
+                panel_state.with_mut(|state| {
+                    state.status = match result {
+                        Ok(true) => format!("Copied {label} to clipboard."),
+                        Ok(false) => format!("Clipboard error: {native_err}"),
+                        Err(err) => {
+                            format!("Clipboard error: {native_err}; fallback failed: {err:?}")
+                        }
+                    };
+                });
+            });
+        }
+    }
+}
+
+fn clipboard_copy_script(text: &str) -> Option<String> {
+    let value = serde_json::to_string(text).ok()?;
+    Some(format!(
+        r#"
+        (() => {{
+            const value = {value};
+            const copyWithExecCommand = () => {{
+                const textarea = document.createElement("textarea");
+                textarea.value = value;
+                textarea.setAttribute("readonly", "");
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                textarea.style.pointerEvents = "none";
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                const copied = document.execCommand("copy");
+                textarea.remove();
+                return copied;
+            }};
+
+            if (navigator.clipboard && window.isSecureContext) {{
+                return navigator.clipboard.writeText(value)
+                    .then(() => true)
+                    .catch(() => copyWithExecCommand());
+            }}
+
+            return copyWithExecCommand();
+        }})()
+        "#
+    ))
 }
 
 #[component]
@@ -487,9 +1403,16 @@ fn AgentComposer(
     });
 
     let prompt_is_empty = prompt_draft().trim().is_empty();
+    let active_sql = active_editor_sql(tabs, active_tab_id());
+    let has_active_sql = active_sql.is_some();
+    let has_explainable_sql = active_sql.as_deref().is_some_and(query::is_read_only_sql);
+    let has_active_error = active_editor_error(tabs, active_tab_id()).is_some();
     let enter_chat_label = connection_label.clone();
     let generate_sql_label = connection_label.clone();
     let chat_label = connection_label.clone();
+    let explain_plan_label = connection_label.clone();
+    let explain_sql_label = connection_label.clone();
+    let fix_sql_label = connection_label.clone();
 
     rsx! {
         div { class: "agent-panel__composer",
@@ -562,6 +1485,52 @@ fn AgentComposer(
             div { class: "agent-panel__composer-actions",
                 button {
                     class: "button button--ghost button--small",
+                    disabled: busy || !allow_agent_read_sql_run() || !has_explainable_sql,
+                    onclick: move |_| {
+                        send_sql_plan_request(
+                            panel_state,
+                            tabs,
+                            active_tab_id(),
+                            explain_plan_label.clone(),
+                            chat_revision,
+                            allow_agent_db_read(),
+                            allow_agent_read_sql_run(),
+                        );
+                    },
+                    "Explain Plan"
+                }
+                button {
+                    class: "button button--ghost button--small",
+                    disabled: busy || !has_active_sql,
+                    onclick: move |_| {
+                        send_sql_explanation_request(
+                            panel_state,
+                            tabs,
+                            active_tab_id(),
+                            explain_sql_label.clone(),
+                            chat_revision,
+                            allow_agent_db_read(),
+                        );
+                    },
+                    "Explain SQL"
+                }
+                button {
+                    class: "button button--ghost button--small",
+                    disabled: busy || !has_active_error,
+                    onclick: move |_| {
+                        send_sql_error_fix_request(
+                            panel_state,
+                            tabs,
+                            active_tab_id(),
+                            fix_sql_label.clone(),
+                            chat_revision,
+                            allow_agent_db_read(),
+                        );
+                    },
+                    "Fix SQL Error"
+                }
+                button {
+                    class: "button button--ghost button--small",
                     disabled: busy || prompt_is_empty,
                     onclick: move |_| {
                         send_sql_generation_request(
@@ -596,6 +1565,304 @@ fn AgentComposer(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        artifact_title, build_explain_sql, build_thread_meta, clickhouse_catalog_contains_source,
+        clickhouse_match_is_confident, clickhouse_source_display_name, compact_connection_label,
+        compact_header_title, is_visible_message, ranked_clickhouse_source_matches,
+        rewrite_simple_select_source, should_render_message_text,
+    };
+    use models::{
+        AcpMessageKind, AcpOllamaConfig, AcpPanelState, AcpUiMessage, ChatArtifact, ExplorerNode,
+        ExplorerNodeKind, TablePreviewSource,
+    };
+
+    #[test]
+    fn prefixes_explain_for_regular_sql() {
+        assert_eq!(
+            build_explain_sql("select * from products"),
+            "EXPLAIN select * from products"
+        );
+    }
+
+    #[test]
+    fn preserves_existing_explain_statement() {
+        assert_eq!(
+            build_explain_sql("EXPLAIN select * from products"),
+            "EXPLAIN select * from products"
+        );
+    }
+
+    #[test]
+    fn hides_internal_system_messages_without_artifacts() {
+        let message = AcpUiMessage {
+            id: 1,
+            kind: AcpMessageKind::System,
+            text: "Connected to OpenCode".to_string(),
+            created_at: 0,
+            artifact: None,
+        };
+        assert!(!is_visible_message(&message));
+    }
+
+    #[test]
+    fn keeps_system_messages_with_artifacts_visible() {
+        let message = AcpUiMessage {
+            id: 1,
+            kind: AcpMessageKind::System,
+            text: "Prepared SQL draft.".to_string(),
+            created_at: 0,
+            artifact: Some(ChatArtifact::SqlDraft {
+                sql: "select 1".to_string(),
+            }),
+        };
+        assert!(is_visible_message(&message));
+    }
+
+    #[test]
+    fn hides_query_summary_system_messages() {
+        let message = AcpUiMessage {
+            id: 1,
+            kind: AcpMessageKind::System,
+            text: "Executed agent SQL in the active SQL tab.".to_string(),
+            created_at: 0,
+            artifact: Some(ChatArtifact::QuerySummary {
+                sql: "select 1".to_string(),
+                summary: "Executed agent SQL in the active SQL tab.".to_string(),
+            }),
+        };
+        assert!(!is_visible_message(&message));
+    }
+
+    #[test]
+    fn hides_duplicate_query_summary_message_text() {
+        let message = AcpUiMessage {
+            id: 1,
+            kind: AcpMessageKind::System,
+            text: "Automatically executed read-only SQL from ACP agent.".to_string(),
+            created_at: 0,
+            artifact: Some(ChatArtifact::QuerySummary {
+                sql: "select 1".to_string(),
+                summary: "Automatically executed read-only SQL from ACP agent.".to_string(),
+            }),
+        };
+
+        assert!(!should_render_message_text(&message));
+    }
+
+    #[test]
+    fn query_summary_artifact_title_is_compact() {
+        assert_eq!(
+            artifact_title(&ChatArtifact::QuerySummary {
+                sql: "select 1".to_string(),
+                summary: "Executed agent SQL in the active SQL tab.".to_string(),
+            }),
+            "SQL"
+        );
+    }
+
+    #[test]
+    fn compacts_new_chat_header_title() {
+        assert_eq!(
+            compact_header_title("New chat · SQLite · /home/rasul/Documents/data.sqlite"),
+            "New chat"
+        );
+    }
+
+    #[test]
+    fn compacts_connection_paths_in_header_meta() {
+        assert_eq!(
+            compact_connection_label("SQLite · /home/rasul/Documents/data.sqlite"),
+            "SQLite · data.sqlite"
+        );
+    }
+
+    #[test]
+    fn hides_idle_connected_status_from_header_meta() {
+        let mut state = AcpPanelState::new(
+            models::AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+        state.connected = true;
+        state.status = "Ready".to_string();
+
+        assert_eq!(
+            build_thread_meta("SQLite · /home/rasul/Documents/data.sqlite", &state),
+            "SQLite · data.sqlite"
+        );
+    }
+
+    #[test]
+    fn hides_sql_execution_status_from_header_meta() {
+        let mut state = AcpPanelState::new(
+            models::AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+        state.connected = true;
+        state.status = "Executed read-only SQL from the ACP agent.".to_string();
+
+        assert_eq!(
+            build_thread_meta("SQLite · /home/rasul/Documents/data.sqlite", &state),
+            "SQLite · data.sqlite"
+        );
+    }
+
+    #[test]
+    fn hides_disconnected_prompt_from_header_meta() {
+        let state = AcpPanelState::new(
+            models::AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+
+        assert_eq!(
+            build_thread_meta("SQLite · /home/rasul/Documents/data.sqlite", &state),
+            "SQLite · data.sqlite"
+        );
+    }
+
+    #[test]
+    fn clickhouse_catalog_lookup_uses_default_schema_for_unqualified_sql() {
+        let tree = vec![ExplorerNode {
+            name: "dwh_ogs".to_string(),
+            kind: ExplorerNodeKind::Schema,
+            schema: Some("dwh_ogs".to_string()),
+            qualified_name: "`dwh_ogs`".to_string(),
+            children: vec![ExplorerNode {
+                name: "source_statistics".to_string(),
+                kind: ExplorerNodeKind::Table,
+                schema: Some("dwh_ogs".to_string()),
+                qualified_name: "`dwh_ogs`.`source_statistics`".to_string(),
+                children: Vec::new(),
+            }],
+        }];
+        let source = TablePreviewSource {
+            schema: None,
+            table_name: "source_statistics".to_string(),
+            qualified_name: "source_statistics".to_string(),
+        };
+
+        assert!(clickhouse_catalog_contains_source(
+            &tree, &source, "dwh_ogs"
+        ));
+        assert_eq!(
+            clickhouse_source_display_name(&source, "dwh_ogs"),
+            "dwh_ogs.source_statistics"
+        );
+    }
+
+    #[test]
+    fn clickhouse_catalog_lookup_rejects_missing_relation_names() {
+        let tree = vec![ExplorerNode {
+            name: "dwh_ogs".to_string(),
+            kind: ExplorerNodeKind::Schema,
+            schema: Some("dwh_ogs".to_string()),
+            qualified_name: "`dwh_ogs`".to_string(),
+            children: vec![ExplorerNode {
+                name: "dag_source_statistics".to_string(),
+                kind: ExplorerNodeKind::Table,
+                schema: Some("dwh_ogs".to_string()),
+                qualified_name: "`dwh_ogs`.`dag_source_statistics`".to_string(),
+                children: Vec::new(),
+            }],
+        }];
+        let source = TablePreviewSource {
+            schema: Some("dwh_ogs".to_string()),
+            table_name: "dag_source_statistics_kafka_buffer".to_string(),
+            qualified_name: "dwh_ogs.dag_source_statistics_kafka_buffer".to_string(),
+        };
+
+        assert!(!clickhouse_catalog_contains_source(
+            &tree, &source, "dwh_ogs"
+        ));
+    }
+
+    #[test]
+    fn clickhouse_matcher_prefers_real_buffer_table_with_strongest_token_overlap() {
+        let tree = vec![ExplorerNode {
+            name: "dwh_ogs".to_string(),
+            kind: ExplorerNodeKind::Schema,
+            schema: Some("dwh_ogs".to_string()),
+            qualified_name: "`dwh_ogs`".to_string(),
+            children: vec![
+                ExplorerNode {
+                    name: "dag_source_statistics".to_string(),
+                    kind: ExplorerNodeKind::Table,
+                    schema: Some("dwh_ogs".to_string()),
+                    qualified_name: "`dwh_ogs`.`dag_source_statistics`".to_string(),
+                    children: Vec::new(),
+                },
+                ExplorerNode {
+                    name: "source_statistics_test_debug_buffer".to_string(),
+                    kind: ExplorerNodeKind::Table,
+                    schema: Some("dwh_ogs".to_string()),
+                    qualified_name: "`dwh_ogs`.`source_statistics_test_debug_buffer`".to_string(),
+                    children: Vec::new(),
+                },
+            ],
+        }];
+        let source = TablePreviewSource {
+            schema: Some("dwh_ogs".to_string()),
+            table_name: "dag_source_statistics_kafka_buffer".to_string(),
+            qualified_name: "dwh_ogs.dag_source_statistics_kafka_buffer".to_string(),
+        };
+
+        let matches = ranked_clickhouse_source_matches(&tree, &source, "dwh_ogs");
+        assert_eq!(
+            matches.first().unwrap().source.table_name,
+            "source_statistics_test_debug_buffer"
+        );
+        assert!(clickhouse_match_is_confident(
+            matches.first().unwrap(),
+            matches.get(1)
+        ));
+    }
+
+    #[test]
+    fn rewrite_simple_select_source_swaps_relation_name_once() {
+        let sql = "SELECT * FROM dwh_ogs.dag_source_statistics_kafka_buffer";
+        let source = TablePreviewSource {
+            schema: Some("dwh_ogs".to_string()),
+            table_name: "dag_source_statistics_kafka_buffer".to_string(),
+            qualified_name: "dwh_ogs.dag_source_statistics_kafka_buffer".to_string(),
+        };
+        let replacement = TablePreviewSource {
+            schema: Some("dwh_ogs".to_string()),
+            table_name: "source_statistics_test_debug_buffer".to_string(),
+            qualified_name: "`dwh_ogs`.`source_statistics_test_debug_buffer`".to_string(),
+        };
+
+        assert_eq!(
+            rewrite_simple_select_source(sql, &source, &replacement),
+            "SELECT * FROM `dwh_ogs`.`source_statistics_test_debug_buffer`"
+        );
     }
 }
 
@@ -691,11 +1958,8 @@ pub fn AcpAgentPanel(
     on_delete_thread: EventHandler<i64>,
 ) -> Element {
     let state = panel_state();
-    let thread_meta = if thread_connection_name.trim().is_empty() {
-        state.status.clone()
-    } else {
-        format!("{} · {}", thread_connection_name.trim(), state.status)
-    };
+    let thread_title = compact_header_title(&thread_title);
+    let thread_meta = build_thread_meta(&thread_connection_name, &state);
     let chat_label = sql_connection_label.clone();
     let mut setup_mode = use_signal(|| AgentSetupMode::Ollama);
     let mut show_dialogs = use_signal(|| false);
@@ -718,7 +1982,7 @@ pub fn AcpAgentPanel(
         .messages
         .clone()
         .into_iter()
-        .filter(|message| is_visible_message(&message.kind, &message.text))
+        .filter(|message| is_visible_message(message))
         .collect::<Vec<_>>();
     let visible_message_total = visible_messages.len();
     let mut message_limit = use_signal(|| AGENT_MESSAGE_BATCH);
@@ -774,7 +2038,9 @@ pub fn AcpAgentPanel(
             div { class: "agent-panel__header",
                 div { class: "agent-panel__header-copy",
                     h3 { class: "agent-panel__title", "{thread_title}" }
-                    p { class: "agent-panel__meta", "{thread_meta}" }
+                    if !thread_meta.is_empty() {
+                        p { class: "agent-panel__meta", "{thread_meta}" }
+                    }
                 }
                 div { class: "agent-panel__header-actions",
                     button {
@@ -786,7 +2052,6 @@ pub fn AcpAgentPanel(
                         onclick: move |_| show_dialogs.set(!show_dialogs()),
                         "Dialogs"
                     }
-                    div { class: "agent-panel__badge", "Database Chat" }
                     if let Some(connection) = state.connection.clone() {
                         div { class: "agent-panel__badge",
                             "{connection.agent_name}"
@@ -949,7 +2214,7 @@ pub fn AcpAgentPanel(
                                                     }
                                                 }
                                             }
-                                            if !matches!(message.kind, AcpMessageKind::Thought) {
+                                            if should_render_message_text(&message) {
                                                 for chunk in message_chunks {
                                                     match chunk {
                                                         MessageChunk::Text(text) => rsx! {
@@ -981,52 +2246,56 @@ pub fn AcpAgentPanel(
                                                                 div { class: "agent-panel__code-card",
                                                                     div { class: "agent-panel__code-header",
                                                                         span { class: "agent-panel__code-language", "{language_label}" }
-                                                                        div { class: "agent-panel__code-actions",
+                                                                    div { class: "agent-panel__code-actions",
+                                                                        button {
+                                                                            class: "button button--ghost button--small",
+                                                                            onclick: {
+                                                                                let copy_value = sql.clone().unwrap_or_else(|| code.clone());
+                                                                                let copy_label = if sql.is_some() { "SQL" } else { "code" };
+                                                                                move |event| {
+                                                                                    event.stop_propagation();
+                                                                                    copy_text_to_clipboard(panel_state, copy_value.clone(), copy_label);
+                                                                                }
+                                                                            },
+                                                                            if sql.is_some() { "Copy SQL" } else { "Copy" }
+                                                                        }
+                                                                        if let Some(sql) = sql.clone() {
                                                                             button {
                                                                                 class: "button button--ghost button--small",
                                                                                 onclick: {
-                                                                                    let code = code.clone();
-                                                                                    move |_| {
-                                                                                        copy_text_to_clipboard(panel_state, code.clone(), if sql.is_some() { "SQL" } else { "code" });
+                                                                                    let sql = sql.clone();
+                                                                                    move |event| {
+                                                                                        event.stop_propagation();
+                                                                                        insert_sql_into_editor(
+                                                                                            panel_state,
+                                                                                            tabs,
+                                                                                            active_tab_id,
+                                                                                            show_sql_editor,
+                                                                                            sql.clone(),
+                                                                                        );
                                                                                     }
                                                                                 },
-                                                                                if sql.is_some() { "Copy SQL" } else { "Copy" }
-                                                                            }
-                                                                            if let Some(sql) = sql.clone() {
-                                                                                button {
-                                                                                    class: "button button--ghost button--small",
-                                                                                    onclick: {
-                                                                                        let sql = sql.clone();
-                                                                                        move |_| {
-                                                                                            insert_sql_into_editor(
-                                                                                                panel_state,
-                                                                                                tabs,
-                                                                                                active_tab_id(),
-                                                                                                show_sql_editor,
-                                                                                                sql.clone(),
-                                                                                            );
-                                                                                        }
-                                                                                    },
                                                                                     "Insert SQL"
                                                                                 }
                                                                                 button {
                                                                                     class: "button button--primary button--small",
-                                                                                    disabled: !can_execute_agent_sql(
-                                                                                        &sql,
-                                                                                        allow_agent_read_sql_run(),
-                                                                                        allow_agent_write_sql_run(),
-                                                                                    ),
-                                                                                    onclick: {
-                                                                                        let sql = sql.clone();
-                                                                                        move |_| {
-                                                                                            execute_agent_sql_request(
-                                                                                                panel_state,
-                                                                                                tabs,
-                                                                                                active_tab_id(),
-                                                                                                show_sql_editor,
-                                                                                                chat_revision,
-                                                                                                sql.clone(),
-                                                                                                AgentSqlExecutionMode::Manual,
+                                                                                disabled: !can_execute_agent_sql(
+                                                                                    &sql,
+                                                                                    allow_agent_read_sql_run(),
+                                                                                    allow_agent_write_sql_run(),
+                                                                                ),
+                                                                                onclick: {
+                                                                                    let sql = sql.clone();
+                                                                                    move |event| {
+                                                                                        event.stop_propagation();
+                                                                                        execute_agent_sql_request(
+                                                                                            panel_state,
+                                                                                            tabs,
+                                                                                            active_tab_id,
+                                                                                            show_sql_editor,
+                                                                                            chat_revision,
+                                                                                            sql.clone(),
+                                                                                            AgentSqlExecutionMode::Manual,
                                                                                             );
                                                                                         }
                                                                                     },
@@ -1047,13 +2316,16 @@ pub fn AcpAgentPanel(
                                                     ChatArtifact::SqlDraft { sql } => rsx! {
                                                         div { class: "agent-panel__artifact",
                                                             div { class: "agent-panel__artifact-header",
-                                                                p { class: "agent-panel__artifact-label", "SQL Draft" }
+                                                                p { class: "agent-panel__artifact-label", {artifact_title(&ChatArtifact::SqlDraft { sql: sql.clone() })} }
                                                                 div { class: "agent-panel__artifact-actions",
                                                                     button {
                                                                         class: "button button--ghost button--small",
                                                                         onclick: {
                                                                             let sql = sql.clone();
-                                                                            move |_| copy_text_to_clipboard(panel_state, sql.clone(), "SQL")
+                                                                            move |event| {
+                                                                                event.stop_propagation();
+                                                                                copy_text_to_clipboard(panel_state, sql.clone(), "SQL")
+                                                                            }
                                                                         },
                                                                         "Copy SQL"
                                                                     }
@@ -1061,11 +2333,12 @@ pub fn AcpAgentPanel(
                                                                         class: "button button--ghost button--small",
                                                                         onclick: {
                                                                             let sql = sql.clone();
-                                                                            move |_| {
+                                                                            move |event| {
+                                                                                event.stop_propagation();
                                                                                 insert_sql_into_editor(
                                                                                     panel_state,
                                                                                     tabs,
-                                                                                    active_tab_id(),
+                                                                                    active_tab_id,
                                                                                     show_sql_editor,
                                                                                     sql.clone(),
                                                                                 );
@@ -1082,11 +2355,12 @@ pub fn AcpAgentPanel(
                                                                         ),
                                                                         onclick: {
                                                                             let sql = sql.clone();
-                                                                            move |_| {
+                                                                            move |event| {
+                                                                                event.stop_propagation();
                                                                                 execute_agent_sql_request(
                                                                                     panel_state,
                                                                                     tabs,
-                                                                                    active_tab_id(),
+                                                                                    active_tab_id,
                                                                                     show_sql_editor,
                                                                                     chat_revision,
                                                                                     sql.clone(),
@@ -1101,16 +2375,19 @@ pub fn AcpAgentPanel(
                                                             pre { class: "agent-panel__artifact-body", "{sql}" }
                                                         }
                                                     },
-                                                    ChatArtifact::QuerySummary { sql, summary } => rsx! {
+                                                    ChatArtifact::QuerySummary { sql, summary: _ } => rsx! {
                                                         div { class: "agent-panel__artifact",
                                                             div { class: "agent-panel__artifact-header",
-                                                                p { class: "agent-panel__artifact-label", "{summary}" }
+                                                                p { class: "agent-panel__artifact-label", {artifact_title(&ChatArtifact::QuerySummary { sql: sql.clone(), summary: String::new() })} }
                                                                 div { class: "agent-panel__artifact-actions",
                                                                     button {
                                                                         class: "button button--ghost button--small",
                                                                         onclick: {
                                                                             let sql = sql.clone();
-                                                                            move |_| copy_text_to_clipboard(panel_state, sql.clone(), "SQL")
+                                                                            move |event| {
+                                                                                event.stop_propagation();
+                                                                                copy_text_to_clipboard(panel_state, sql.clone(), "SQL")
+                                                                            }
                                                                         },
                                                                         "Copy SQL"
                                                                     }
@@ -1118,11 +2395,12 @@ pub fn AcpAgentPanel(
                                                                         class: "button button--ghost button--small",
                                                                         onclick: {
                                                                             let sql = sql.clone();
-                                                                            move |_| {
+                                                                            move |event| {
+                                                                                event.stop_propagation();
                                                                                 insert_sql_into_editor(
                                                                                     panel_state,
                                                                                     tabs,
-                                                                                    active_tab_id(),
+                                                                                    active_tab_id,
                                                                                     show_sql_editor,
                                                                                     sql.clone(),
                                                                                 );
@@ -1139,11 +2417,12 @@ pub fn AcpAgentPanel(
                                                                         ),
                                                                         onclick: {
                                                                             let sql = sql.clone();
-                                                                            move |_| {
+                                                                            move |event| {
+                                                                                event.stop_propagation();
                                                                                 execute_agent_sql_request(
                                                                                     panel_state,
                                                                                     tabs,
-                                                                                    active_tab_id(),
+                                                                                    active_tab_id,
                                                                                     show_sql_editor,
                                                                                     chat_revision,
                                                                                     sql.clone(),
@@ -1170,11 +2449,23 @@ pub fn AcpAgentPanel(
                                                                     class: "button button--ghost button--small",
                                                                     onclick: {
                                                                         let sql = sql.clone();
-                                                                        move |_| {
+                                                                        move |event| {
+                                                                            event.stop_propagation();
+                                                                            copy_text_to_clipboard(panel_state, sql.clone(), "SQL");
+                                                                        }
+                                                                    },
+                                                                    "Copy SQL"
+                                                                }
+                                                                button {
+                                                                    class: "button button--ghost button--small",
+                                                                    onclick: {
+                                                                        let sql = sql.clone();
+                                                                        move |event| {
+                                                                            event.stop_propagation();
                                                                             insert_sql_into_editor(
                                                                                 panel_state,
                                                                                 tabs,
-                                                                                active_tab_id(),
+                                                                                active_tab_id,
                                                                                 show_sql_editor,
                                                                                 sql.clone(),
                                                                             );
@@ -1191,11 +2482,12 @@ pub fn AcpAgentPanel(
                                                                     ),
                                                                     onclick: {
                                                                         let sql = sql.clone();
-                                                                        move |_| {
+                                                                        move |event| {
+                                                                            event.stop_propagation();
                                                                             execute_agent_sql_request(
                                                                                 panel_state,
                                                                                 tabs,
-                                                                                active_tab_id(),
+                                                                                active_tab_id,
                                                                                 show_sql_editor,
                                                                                 chat_revision,
                                                                                 sql.clone(),

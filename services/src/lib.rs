@@ -1,4 +1,7 @@
-pub use acp::{build_acp_database_context, install_acp_registry_agent, load_acp_registry_agents};
+pub use acp::{
+    build_acp_database_context, install_acp_registry_agent, load_acp_registry_agents,
+    warm_acp_database_schema_context,
+};
 pub use acp::{
     cancel_acp_prompt, connect_acp_agent, disconnect_acp_agent, drain_acp_events,
     respond_acp_permission, send_acp_prompt,

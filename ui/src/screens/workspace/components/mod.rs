@@ -11,7 +11,8 @@ mod tabs;
 
 pub(crate) use agent_panel::{
     AcpAgentPanel, AgentSqlExecutionMode, apply_acp_events, default_acp_panel_state,
-    execute_agent_sql_request, extract_sql_candidate, replace_messages,
+    ensure_opencode_connected, execute_agent_sql_request, extract_sql_candidate,
+    preferred_sql_target_tab_id, replace_messages, send_sql_generation_request,
 };
 pub use explorer::{ExplorerConnectionSection, SidebarConnectionTree};
 pub use history::QueryHistoryPanel;

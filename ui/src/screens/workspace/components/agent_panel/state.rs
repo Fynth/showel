@@ -59,7 +59,7 @@ pub(crate) fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>)
             AcpEvent::PromptFinished { stop_reason } => {
                 state.busy = false;
                 state.pending_permission = None;
-                state.status = format!("Prompt finished: {stop_reason}");
+                state.status = prompt_finished_status(&stop_reason);
                 state
                     .messages
                     .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
@@ -86,6 +86,15 @@ pub(crate) fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>)
                     .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
             }
         }
+    }
+}
+
+fn prompt_finished_status(stop_reason: &str) -> String {
+    let stop_reason = stop_reason.trim();
+    if stop_reason.is_empty() || stop_reason == "EndTurn" {
+        "Ready".to_string()
+    } else {
+        format!("Finished: {stop_reason}")
     }
 }
 
@@ -202,4 +211,19 @@ fn unix_timestamp() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prompt_finished_status;
+
+    #[test]
+    fn normalizes_end_turn_prompt_status() {
+        assert_eq!(prompt_finished_status("EndTurn"), "Ready");
+    }
+
+    #[test]
+    fn keeps_other_stop_reasons_compact() {
+        assert_eq!(prompt_finished_status("MaxTokens"), "Finished: MaxTokens");
+    }
 }

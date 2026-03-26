@@ -2329,6 +2329,21 @@ select.input:focus-visible {
   overflow: auto;
 }
 
+.editor__generate-sql-modal {
+  gap: 10px;
+}
+
+.editor__generate-sql-input {
+  min-height: 132px;
+}
+
+.editor__generate-sql-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .sql-editor {
   position: relative;
   min-height: 0;

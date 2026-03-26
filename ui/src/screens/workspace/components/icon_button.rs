@@ -12,6 +12,7 @@ pub enum ActionIcon {
     Run,
     Clear,
     Format,
+    Generate,
     Structure,
     ExportCsv,
     ExportJson,
@@ -143,6 +144,17 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "M5 11h10" }
                     path { d: "M5 15h14" }
                     path { d: "M5 19h10" }
+                },
+                ActionIcon::Generate => rsx! {
+                    path { d: "M12 4v4" }
+                    path { d: "M12 16v4" }
+                    path { d: "M4 12h4" }
+                    path { d: "M16 12h4" }
+                    path { d: "m6.5 6.5 2.8 2.8" }
+                    path { d: "m14.7 14.7 2.8 2.8" }
+                    path { d: "m17.5 6.5-2.8 2.8" }
+                    path { d: "m9.3 14.7-2.8 2.8" }
+                    circle { cx: "12", cy: "12", r: "2.2" }
                 },
                 ActionIcon::Structure => rsx! {
                     rect { x: "4", y: "5", width: "16", height: "14", rx: "2" }

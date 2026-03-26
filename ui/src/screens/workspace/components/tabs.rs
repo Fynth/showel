@@ -6,10 +6,16 @@ use crate::{
     },
 };
 use dioxus::prelude::*;
-use models::{QueryHistoryItem, QueryOutput, QueryTabState, SqlFormatSettings, TablePreviewSource};
+use models::{
+    AcpPanelState, QueryHistoryItem, QueryOutput, QueryTabState, SqlFormatSettings,
+    TablePreviewSource,
+};
 use rfd::AsyncFileDialog;
 
-use super::{ActionIcon, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor};
+use super::{
+    ActionIcon, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor,
+    ensure_opencode_connected, send_sql_generation_request,
+};
 
 const EDITOR_MIN_HEIGHT: f64 = 160.0;
 const EDITOR_MAX_HEIGHT: f64 = 720.0;
@@ -54,9 +60,15 @@ pub fn TabsManager(
     next_history_id: Signal<u64>,
     show_sql_editor: Signal<bool>,
     explorer_sections: Signal<Vec<ExplorerConnectionSection>>,
+    acp_panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: Signal<bool>,
+    ai_features_enabled: Signal<bool>,
 ) -> Element {
     let mut editor_height = use_signal(|| 260.0);
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
+    let mut show_generate_sql_modal = use_signal(|| false);
+    let mut generate_sql_prompt = use_signal(String::new);
     let active_tab = tabs
         .read()
         .iter()
@@ -82,6 +94,8 @@ pub fn TabsManager(
             .collect::<std::collections::HashMap<_, _>>()
     };
     let active_actionable_source = active_tab.as_ref().and_then(actionable_table_source);
+    let generate_sql_busy = acp_panel_state().busy;
+    let generate_sql_prompt_empty = generate_sql_prompt().trim().is_empty();
 
     rsx! {
         div {
@@ -239,9 +253,10 @@ pub fn TabsManager(
                             let sql = current_tab.sql.trim().to_string();
                             let tab_title = current_tab.title.clone();
                             let page_size = current_tab.page_size;
-                            let connection_name = session_labels
-                                .get(&current_tab.session_id)
-                                .cloned()
+                            let connection_name = APP_STATE
+                                .read()
+                                .session(current_tab.session_id)
+                                .map(|session| session.name.clone())
                                 .unwrap_or_else(|| "Detached session".to_string());
 
                             if sql.is_empty() {
@@ -292,6 +307,25 @@ pub fn TabsManager(
                             let current_tab = active_tab.clone();
                             let format_settings = APP_SQL_FORMAT_SETTINGS();
                             move |_| format_active_sql(tabs, current_tab.clone(), format_settings.clone())
+                        },
+                    }
+                    IconButton {
+                        icon: ActionIcon::Generate,
+                        label: "Generate SQL".to_string(),
+                        disabled: generate_sql_busy,
+                        onclick: move |_| {
+                            if !ai_features_enabled() {
+                                set_active_tab_status(
+                                    tabs,
+                                    active_tab_id(),
+                                    "Enable AI features in Settings to use Generate SQL."
+                                        .to_string(),
+                                );
+                                return;
+                            }
+
+                            generate_sql_prompt.set(String::new());
+                            show_generate_sql_modal.set(true);
                         },
                     }
                     IconButton {
@@ -351,6 +385,78 @@ pub fn TabsManager(
                         result: active_tab.result.clone(),
                         tabs,
                         active_tab_id,
+                    }
+                }
+                if show_generate_sql_modal() {
+                    div {
+                        class: "editor__modal-backdrop",
+                        onclick: move |_| show_generate_sql_modal.set(false),
+                        div {
+                            class: "editor__modal",
+                            onclick: move |event| event.stop_propagation(),
+                            div { class: "editor__format-settings editor__generate-sql-modal",
+                                div {
+                                    class: "editor__format-settings-header",
+                                    div { class: "editor__format-settings-copy",
+                                        h3 { class: "editor__format-settings-title", "Generate SQL" }
+                                        p {
+                                            class: "editor__format-settings-hint",
+                                            "Describe the query you want. OpenCode will generate SQL and insert it into the active editor."
+                                        }
+                                    }
+                                    button {
+                                        class: "button button--ghost button--small",
+                                        onclick: move |_| show_generate_sql_modal.set(false),
+                                        "Close"
+                                    }
+                                }
+                                div { class: "field",
+                                    span { class: "field__label", "Query description" }
+                                    textarea {
+                                        class: "input editor__generate-sql-input",
+                                        placeholder: "For example: show failed payments from the last 7 days grouped by provider",
+                                        value: "{generate_sql_prompt}",
+                                        oninput: move |event| generate_sql_prompt.set(event.value()),
+                                    }
+                                }
+                                div { class: "editor__generate-sql-actions",
+                                    button {
+                                        class: "button button--ghost button--small",
+                                        disabled: generate_sql_busy,
+                                        onclick: move |_| show_generate_sql_modal.set(false),
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "button button--primary button--small",
+                                        disabled: generate_sql_busy || generate_sql_prompt_empty,
+                                        onclick: {
+                                            move |_| {
+                                                let Some(current_tab) = tabs
+                                                    .read()
+                                                    .iter()
+                                                    .find(|tab| tab.id == active_tab_id())
+                                                    .cloned()
+                                                else {
+                                                    return;
+                                                };
+
+                                                submit_generated_sql_request(
+                                                    tabs,
+                                                    active_tab_id(),
+                                                    current_tab,
+                                                    acp_panel_state,
+                                                    chat_revision,
+                                                    allow_agent_db_read(),
+                                                    generate_sql_prompt,
+                                                    show_generate_sql_modal,
+                                                );
+                                            }
+                                        },
+                                        if generate_sql_busy { "Generating..." } else { "Generate SQL" }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } else {
@@ -552,6 +658,58 @@ fn format_active_sql(
         .map(|session| session.kind);
     let formatted = query::format_sql(session_kind, sql, &format_settings);
     replace_active_tab_sql(tabs, current_tab.id, formatted, "SQL formatted".to_string());
+}
+
+fn submit_generated_sql_request(
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    current_tab: QueryTabState,
+    acp_panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+    allow_agent_db_read: bool,
+    prompt_draft: Signal<String>,
+    mut show_generate_sql_modal: Signal<bool>,
+) {
+    let request = prompt_draft().trim().to_string();
+    if request.is_empty() {
+        set_active_tab_status(
+            tabs,
+            current_tab.id,
+            "Enter a description before generating SQL.".to_string(),
+        );
+        return;
+    }
+
+    let connection_label = APP_STATE
+        .read()
+        .session(current_tab.session_id)
+        .map(|session| session.name.clone())
+        .unwrap_or_else(|| "Detached session".to_string());
+
+    set_active_tab_status(
+        tabs,
+        current_tab.id,
+        "Generating SQL with OpenCode...".to_string(),
+    );
+
+    spawn(async move {
+        if let Err(err) = ensure_opencode_connected(acp_panel_state, chat_revision).await {
+            set_active_tab_status(tabs, current_tab.id, format!("Generate SQL error: {err}"));
+            return;
+        }
+
+        send_sql_generation_request(
+            acp_panel_state,
+            tabs,
+            active_tab_id,
+            connection_label,
+            chat_revision,
+            allow_agent_db_read,
+            request,
+            prompt_draft,
+        );
+        show_generate_sql_modal.set(false);
+    });
 }
 
 fn open_structure_for_active_preview(

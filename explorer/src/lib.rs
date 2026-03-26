@@ -665,7 +665,7 @@ pub async fn load_connection_tree(
             let response = execute_json_query(
                 &config,
                 r#"
-                select database, name, engine
+                select database, name, engine, create_table_query
                 from system.tables
                 where database not in ('system', 'INFORMATION_SCHEMA', 'information_schema')
                 order by database, name
@@ -681,6 +681,10 @@ pub async fn load_connection_tree(
                 let schema = clickhouse_value_to_string(row.first());
                 let name = clickhouse_value_to_string(row.get(1));
                 let engine = clickhouse_value_to_string(row.get(2));
+                let create_table_query = clickhouse_value_to_string(row.get(3));
+                if !clickhouse_relation_supports_preview(&engine, &create_table_query) {
+                    continue;
+                }
                 let kind = if engine.to_ascii_lowercase().contains("view") {
                     ExplorerNodeKind::View
                 } else {
@@ -788,6 +792,39 @@ fn postgres_column_details(is_nullable: &str, default_value: Option<String>) -> 
     ])
 }
 
+fn clickhouse_relation_supports_preview(engine: &str, create_table_query: &str) -> bool {
+    let normalized_engine = engine.trim().to_ascii_lowercase();
+    if matches!(
+        normalized_engine.as_str(),
+        "kafka" | "rabbitmq" | "nats" | "s3queue" | "azurequeue" | "redis"
+    ) {
+        return false;
+    }
+
+    if normalized_engine == "materializedview" {
+        return !clickhouse_materialized_view_targets_table(create_table_query);
+    }
+
+    true
+}
+
+fn clickhouse_materialized_view_targets_table(create_table_query: &str) -> bool {
+    let normalized = create_table_query
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_uppercase();
+    if !normalized.starts_with("CREATE MATERIALIZED VIEW ") {
+        return false;
+    }
+
+    let definition_head = normalized
+        .split_once(" AS ")
+        .map(|(head, _)| head)
+        .unwrap_or(&normalized);
+    definition_head.contains(" TO ")
+}
+
 fn meaningful_clickhouse_value(value: &str) -> bool {
     let trimmed = value.trim();
     !trimmed.is_empty() && trimmed != "NULL"
@@ -829,5 +866,49 @@ fn clickhouse_json_value_to_string(value: &serde_json::Value) -> String {
         serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
             serde_json::to_string(value).unwrap_or_else(|_| "<unsupported>".to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clickhouse_materialized_view_targets_table, clickhouse_relation_supports_preview};
+
+    #[test]
+    fn hides_stream_like_clickhouse_engines_from_preview_tree() {
+        assert!(!clickhouse_relation_supports_preview(
+            "Kafka",
+            "CREATE TABLE dwh_ogs.source_statistics_kafka ENGINE = Kafka"
+        ));
+        assert!(!clickhouse_relation_supports_preview(
+            "RabbitMQ",
+            "CREATE TABLE dwh_ogs.source_statistics_queue ENGINE = RabbitMQ"
+        ));
+    }
+
+    #[test]
+    fn hides_materialized_views_with_to_target_from_preview_tree() {
+        assert!(clickhouse_materialized_view_targets_table(
+            "CREATE MATERIALIZED VIEW dwh_ogs.mv TO dwh_ogs.target AS SELECT * FROM dwh_ogs.src"
+        ));
+        assert!(!clickhouse_relation_supports_preview(
+            "MaterializedView",
+            "CREATE MATERIALIZED VIEW dwh_ogs.mv TO dwh_ogs.target AS SELECT * FROM dwh_ogs.src"
+        ));
+    }
+
+    #[test]
+    fn keeps_regular_clickhouse_views_and_tables_previewable() {
+        assert!(clickhouse_relation_supports_preview(
+            "MergeTree",
+            "CREATE TABLE dwh_ogs.source_statistics ENGINE = MergeTree ORDER BY tuple()"
+        ));
+        assert!(clickhouse_relation_supports_preview(
+            "View",
+            "CREATE VIEW dwh_ogs.source_statistics_view AS SELECT * FROM dwh_ogs.source_statistics"
+        ));
+        assert!(clickhouse_relation_supports_preview(
+            "MaterializedView",
+            "CREATE MATERIALIZED VIEW dwh_ogs.mv ENGINE = MergeTree ORDER BY tuple() AS SELECT 1"
+        ));
     }
 }

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use models::{
     AcpMessageKind, AcpPanelState, AcpUiMessage, QueryOutput, QueryPage, QueryTabState,
-    TablePreviewSource,
+    TablePreviewSource, WorkspaceTabKind,
 };
 
 use crate::{app_state::session_connection, screens::workspace::actions::update_active_tab_sql};
@@ -82,6 +82,12 @@ Database context: {connection_label}\n"
         "Snapshot rows are previews only. Never infer total row counts, aggregates, or full-table statistics unless a query result explicitly provides them.\n\
 If the available context is insufficient, generate SQL that verifies the answer instead of guessing.\n\
 Use the existing ACP session history for follow-up requests, but prefer the current editor and database context when they conflict with older assumptions.\n\
+Never invent database, schema, view, or table names. Use only exact relation names that appear in the live database snapshot or active editor context.\n\
+Never synthesize suffixes or prefixes such as `_kafka`, `_buffer`, `_mv`, `_view`, `_tmp`, or `_staging` unless that exact relation name is present in context.\n\
+When the user asks for rows from a specific relation and the schema is available; expand the real column list from context.\n\
+Prefer the fully qualified relation name when schema or database names are available.\n\
+For ClickHouse, do not target Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, or Redis ingest relations for an ordinary SELECT unless that exact relation is present in context and the user explicitly asks for a direct read.\n\
+Do not add LIMIT, OFFSET, TOP, FETCH, SAMPLE, or TABLESAMPLE unless the user explicitly asks for it.\n\
 When creating tables, always define an auto-generated primary key `id`.\n\
 For SQLite use `id INTEGER PRIMARY KEY AUTOINCREMENT`.\n\
 For PostgreSQL use `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`.\n\
@@ -92,14 +98,130 @@ Return exactly one SQL query inside a single ```sql``` block with no explanation
     prompt
 }
 
+pub(super) fn build_sql_explanation_prompt(
+    connection_label: &str,
+    active_sql: &str,
+    db_context: Option<String>,
+    active_tab_context: Option<String>,
+    thread_history: Option<String>,
+) -> String {
+    let mut prompt = format!(
+        "You are reviewing SQL for the active database connection.\n\
+Database context: {connection_label}\n\
+Active SQL:\n```sql\n{active_sql}\n```\n"
+    );
+    if let Some(thread_history) = thread_history {
+        prompt.push_str("Use this recent chat history for follow-up intent:\n");
+        prompt.push_str(&thread_history);
+        prompt.push('\n');
+    }
+    if let Some(active_tab_context) = active_tab_context {
+        prompt.push_str("Use this active editor context too:\n");
+        prompt.push_str(&active_tab_context);
+        prompt.push('\n');
+    }
+    if let Some(db_context) = db_context {
+        prompt.push_str("Use this live database snapshot:\n");
+        prompt.push_str(&db_context);
+        prompt.push('\n');
+    }
+    prompt.push_str(
+        "Always answer in English.\n\
+Explain what the SQL does, what assumptions it makes, and any correctness or performance risks.\n\
+If the query looks wrong or unsafe, say so clearly.\n\
+Do not add LIMIT, OFFSET, TOP, FETCH, SAMPLE, or TABLESAMPLE unless the user explicitly asks for it or the original SQL already uses one.\n\
+If a better read-only alternative is appropriate, include exactly one improved SQL query inside a single ```sql``` block.\n",
+    );
+    prompt
+}
+
+pub(super) fn build_sql_plan_prompt(
+    connection_label: &str,
+    active_sql: &str,
+    explain_sql: &str,
+    explain_plan: &str,
+    db_context: Option<String>,
+    active_tab_context: Option<String>,
+    thread_history: Option<String>,
+) -> String {
+    let mut prompt = format!(
+        "You are reviewing a database query plan for the active connection.\n\
+Database context: {connection_label}\n\
+Active SQL:\n```sql\n{active_sql}\n```\n\
+Explain SQL:\n```sql\n{explain_sql}\n```\n\
+Explain plan snapshot:\n```\n{explain_plan}\n```\n"
+    );
+    if let Some(thread_history) = thread_history {
+        prompt.push_str("Use this recent chat history for follow-up intent:\n");
+        prompt.push_str(&thread_history);
+        prompt.push('\n');
+    }
+    if let Some(active_tab_context) = active_tab_context {
+        prompt.push_str("Use this active editor context too:\n");
+        prompt.push_str(&active_tab_context);
+        prompt.push('\n');
+    }
+    if let Some(db_context) = db_context {
+        prompt.push_str("Use this live database snapshot:\n");
+        prompt.push_str(&db_context);
+        prompt.push('\n');
+    }
+    prompt.push_str(
+        "Always answer in English.\n\
+Explain what the plan is doing, point out the expensive scans or joins, and call out any obvious performance risks.\n\
+Do not invent exact costs, row counts, or index usage beyond what the plan output explicitly shows.\n\
+Do not add LIMIT, OFFSET, TOP, FETCH, SAMPLE, or TABLESAMPLE unless the user explicitly asks for it or the original SQL already uses one.\n\
+If a better read-only rewrite is obvious, include exactly one improved SQL query inside a single ```sql``` block.\n",
+    );
+    prompt
+}
+
+pub(super) fn build_sql_error_fix_prompt(
+    connection_label: &str,
+    active_sql: &str,
+    error: &str,
+    db_context: Option<String>,
+    active_tab_context: Option<String>,
+    thread_history: Option<String>,
+) -> String {
+    let mut prompt = format!(
+        "You are fixing SQL for the active database connection.\n\
+Database context: {connection_label}\n\
+Failing SQL:\n```sql\n{active_sql}\n```\n\
+Observed database error: {error}\n"
+    );
+    if let Some(thread_history) = thread_history {
+        prompt.push_str("Use this recent chat history for follow-up intent:\n");
+        prompt.push_str(&thread_history);
+        prompt.push('\n');
+    }
+    if let Some(active_tab_context) = active_tab_context {
+        prompt.push_str("Use this active editor context too:\n");
+        prompt.push_str(&active_tab_context);
+        prompt.push('\n');
+    }
+    if let Some(db_context) = db_context {
+        prompt.push_str("Use this live database snapshot:\n");
+        prompt.push_str(&db_context);
+        prompt.push('\n');
+    }
+    prompt.push_str(
+        "Return exactly one corrected SQL query inside a single ```sql``` block with no explanation.\n\
+Preserve the user's intent, but fix syntax, identifiers, quoting, and dialect mismatches.\n\
+Do not add LIMIT, OFFSET, TOP, FETCH, SAMPLE, or TABLESAMPLE unless the original SQL already uses one or the user explicitly asks for it.\n\
+Prefer a read-only fix when possible unless the original SQL is clearly a write statement.\n",
+    );
+    prompt
+}
+
 pub(super) fn insert_sql_into_editor(
     mut panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
-    active_tab_id: u64,
+    mut active_tab_id: Signal<u64>,
     mut show_sql_editor: Signal<bool>,
     sql: String,
 ) {
-    if active_tab_id == 0 {
+    let Some(target_tab_id) = preferred_sql_target_tab_id(tabs, active_tab_id()) else {
         panel_state.with_mut(|state| {
             state.status = "No active SQL tab to insert into.".to_string();
             push_message(
@@ -109,12 +231,13 @@ pub(super) fn insert_sql_into_editor(
             );
         });
         return;
-    }
+    };
 
     show_sql_editor.set(true);
+    active_tab_id.set(target_tab_id);
     update_active_tab_sql(
         tabs,
-        active_tab_id,
+        target_tab_id,
         sql,
         "SQL inserted from ACP agent".to_string(),
     );
@@ -122,6 +245,37 @@ pub(super) fn insert_sql_into_editor(
         state.pending_sql_insert = false;
         state.status = "Inserted agent SQL into the active editor.".to_string();
     });
+}
+
+pub(crate) fn preferred_sql_target_tab_id(
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+) -> Option<u64> {
+    preferred_sql_target_tab_id_from_tabs(&tabs.read(), active_tab_id)
+}
+
+fn preferred_sql_target_tab_id_from_tabs(
+    tabs: &[QueryTabState],
+    active_tab_id: u64,
+) -> Option<u64> {
+    let active_tab = tabs.iter().find(|tab| tab.id == active_tab_id);
+
+    if let Some(tab) = active_tab.filter(|tab| matches!(tab.tab_kind, WorkspaceTabKind::Query)) {
+        return Some(tab.id);
+    }
+
+    if let Some(session_id) = active_tab.map(|tab| tab.session_id)
+        && let Some(query_tab) = tabs.iter().find(|tab| {
+            tab.session_id == session_id && matches!(tab.tab_kind, WorkspaceTabKind::Query)
+        })
+    {
+        return Some(query_tab.id);
+    }
+
+    tabs.iter()
+        .find(|tab| matches!(tab.tab_kind, WorkspaceTabKind::Query))
+        .map(|tab| tab.id)
+        .or_else(|| tabs.first().map(|tab| tab.id))
 }
 
 pub(super) fn build_chat_prompt(
@@ -156,6 +310,7 @@ Snapshot rows are previews only. Never infer total row counts, aggregates, or fu
 If the available context is insufficient, say what is unknown and include exactly one read-only SQL query inside a single ```sql``` block so the app can verify it automatically.\n\
 Use the ongoing ACP session history for follow-up questions, but do not invent facts that were not established earlier in the session.\n\
 Prefer facts from the active editor context over generic assumptions.\n\
+Do not add LIMIT, OFFSET, TOP, FETCH, SAMPLE, or TABLESAMPLE unless the user explicitly asks for it.\n\
 If you propose schema creation, always use an auto-generated primary key `id`.\n\
 If you propose inserts, omit `id` unless the user explicitly asks for manual ids.\n",
     );
@@ -203,6 +358,44 @@ pub(super) fn active_editor_prompt_context(
     build_active_tab_context(tab)
 }
 
+pub(super) fn active_editor_sql(
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+) -> Option<String> {
+    tabs.read()
+        .iter()
+        .find(|tab| tab.id == active_tab_id)
+        .map(|tab| tab.sql.trim().to_string())
+        .filter(|sql| !sql.is_empty())
+}
+
+pub(super) fn active_editor_error(
+    tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+) -> Option<String> {
+    let status = tabs
+        .read()
+        .iter()
+        .find(|tab| tab.id == active_tab_id)
+        .map(|tab| tab.status.trim().to_string())?;
+
+    extract_status_error(&status)
+}
+
+fn extract_status_error(status: &str) -> Option<String> {
+    [
+        "Error: ",
+        "Preview error: ",
+        "Structure error: ",
+        "Load more error: ",
+    ]
+    .iter()
+    .find_map(|prefix| status.strip_prefix(prefix))
+    .map(str::trim)
+    .filter(|message| !message.is_empty())
+    .map(ToOwned::to_owned)
+}
+
 fn build_active_tab_context(tab: &QueryTabState) -> Option<String> {
     let mut sections = Vec::new();
     if let Some(source) = tab.preview_source.as_ref() {
@@ -248,11 +441,15 @@ fn build_active_tab_context(tab: &QueryTabState) -> Option<String> {
 }
 
 fn build_result_context(result: &QueryOutput) -> String {
+    describe_query_output("Active tab result", result)
+}
+
+pub(super) fn describe_query_output(label: &str, result: &QueryOutput) -> String {
     match result {
         QueryOutput::AffectedRows(rows) => {
-            format!("Active tab result: the last statement affected {rows} row(s).")
+            format!("{label}: the last statement affected {rows} row(s).")
         }
-        QueryOutput::Table(page) => build_page_result_context(page),
+        QueryOutput::Table(page) => build_page_result_context(label, page),
     }
 }
 
@@ -267,14 +464,14 @@ fn thread_role_label(kind: &AcpMessageKind) -> &'static str {
     }
 }
 
-fn build_page_result_context(page: &QueryPage) -> String {
+fn build_page_result_context(label: &str, page: &QueryPage) -> String {
     if page.columns.is_empty() && page.rows.is_empty() {
-        return "Active tab result: the query returned no rows.".to_string();
+        return format!("{label}: the query returned no rows.");
     }
 
     let mut lines = Vec::new();
     if page.rows.is_empty() {
-        lines.push("Active tab result preview: no rows on the current page.".to_string());
+        lines.push(format!("{label} preview: no rows on the current page."));
     } else {
         let first_row = page.offset + 1;
         let last_row = page.offset + page.rows.len() as u64;
@@ -284,7 +481,7 @@ fn build_page_result_context(page: &QueryPage) -> String {
             ""
         };
         lines.push(format!(
-            "Active tab result preview: rows {first_row}-{last_row} from the current page.{preview_scope}"
+            "{label} preview: rows {first_row}-{last_row} from the current page.{preview_scope}"
         ));
     }
 
@@ -310,7 +507,8 @@ fn build_page_result_context(page: &QueryPage) -> String {
 mod tests {
     use super::{
         MAX_ACTIVE_RESULT_ROWS, build_active_tab_context, build_chat_prompt,
-        build_sql_generation_prompt,
+        build_sql_explanation_prompt, build_sql_generation_prompt, build_sql_plan_prompt,
+        describe_query_output, extract_status_error, preferred_sql_target_tab_id_from_tabs,
     };
     use models::{PendingTableChanges, QueryOutput, QueryPage, QueryTabState, WorkspaceTabKind};
 
@@ -342,6 +540,63 @@ mod tests {
         assert!(prompt.contains("Snapshot rows are previews only."));
         assert!(prompt.contains("Never infer total row counts"));
         assert!(prompt.contains("generate SQL that verifies"));
+        assert!(prompt.contains("Do not add LIMIT, OFFSET, TOP, FETCH, SAMPLE, or TABLESAMPLE"));
+        assert!(prompt.contains("Never invent database, schema, view, or table names."));
+        assert!(prompt.contains("Never synthesize suffixes or prefixes"));
+    }
+
+    #[test]
+    fn chat_prompt_forbids_implicit_row_limits() {
+        let prompt = build_chat_prompt(
+            "SQLite",
+            "Show products",
+            Some("preview".to_string()),
+            Some("editor".to_string()),
+            None,
+        );
+        assert!(prompt.contains("Do not add LIMIT, OFFSET, TOP, FETCH, SAMPLE, or TABLESAMPLE"));
+    }
+
+    #[test]
+    fn sql_explanation_prompt_mentions_active_sql() {
+        let prompt =
+            build_sql_explanation_prompt("SQLite", "select * from products", None, None, None);
+        assert!(prompt.contains("Active SQL:"));
+        assert!(prompt.contains("Explain what the SQL does"));
+    }
+
+    #[test]
+    fn sql_plan_prompt_mentions_explain_snapshot() {
+        let prompt = build_sql_plan_prompt(
+            "SQLite",
+            "select * from products",
+            "EXPLAIN select * from products",
+            "Explain plan result preview: rows 1-1 from the current page.",
+            None,
+            None,
+            None,
+        );
+        assert!(prompt.contains("Explain SQL:"));
+        assert!(prompt.contains("Explain plan snapshot:"));
+        assert!(prompt.contains("point out the expensive scans or joins"));
+    }
+
+    #[test]
+    fn describe_query_output_uses_custom_label() {
+        let context = describe_query_output(
+            "Explain plan result",
+            &QueryOutput::Table(QueryPage {
+                columns: vec!["plan".to_string()],
+                rows: vec![vec!["SCAN products".to_string()]],
+                editable: None,
+                offset: 0,
+                page_size: 100,
+                has_previous: false,
+                has_next: false,
+            }),
+        );
+        assert!(context.contains("Explain plan result preview"));
+        assert!(context.contains("result row: plan=SCAN products"));
     }
 
     #[test]
@@ -379,6 +634,56 @@ mod tests {
         assert!(context.contains("Loaded rows 1-10 from products"));
         assert!(context.contains("More rows exist beyond this preview."));
         assert!(context.contains("result row: id=1, name=Product 1"));
+    }
+
+    #[test]
+    fn extracts_active_tab_error_from_status() {
+        assert_eq!(
+            extract_status_error("Error: SQLite error: no such table: missing"),
+            Some("SQLite error: no such table: missing".to_string())
+        );
+    }
+
+    #[test]
+    fn prefers_query_tab_in_same_session_for_sql_inserts() {
+        let tabs = vec![
+            QueryTabState {
+                id: 7,
+                session_id: 3,
+                title: "Preview".to_string(),
+                sql: String::new(),
+                status: String::new(),
+                result: None,
+                current_offset: 0,
+                page_size: 100,
+                last_run_sql: None,
+                preview_source: None,
+                filter: None,
+                sort: None,
+                tab_kind: WorkspaceTabKind::TablePreview,
+                is_loading_more: false,
+                pending_table_changes: PendingTableChanges::default(),
+            },
+            QueryTabState {
+                id: 8,
+                session_id: 3,
+                title: "Query 8".to_string(),
+                sql: String::new(),
+                status: String::new(),
+                result: None,
+                current_offset: 0,
+                page_size: 100,
+                last_run_sql: None,
+                preview_source: None,
+                filter: None,
+                sort: None,
+                tab_kind: WorkspaceTabKind::Query,
+                is_loading_more: false,
+                pending_table_changes: PendingTableChanges::default(),
+            },
+        ];
+
+        assert_eq!(preferred_sql_target_tab_id_from_tabs(&tabs, 7), Some(8));
     }
 }
 
