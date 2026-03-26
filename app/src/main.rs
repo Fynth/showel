@@ -30,6 +30,8 @@ use ui::App as UiApp;
     target_os = "openbsd"
 ))]
 use dioxus::desktop::tao::platform::unix::EventLoopBuilderExtUnix;
+#[cfg(target_os = "windows")]
+use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
 
 const APP_ICON_RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app_icon.rgba"));
 const APP_CSS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/app.css"));
@@ -66,7 +68,6 @@ fn launch_app() {
         .with_cfg(
             Config::new()
                 .with_event_loop(event_loop)
-                .with_icon(load_app_icon())
                 .with_menu(None)
                 .with_disable_context_menu(true)
                 .with_disable_drag_drop_handler(true)
@@ -74,16 +75,24 @@ fn launch_app() {
                 // This is the only practical GPU-backed improvement available in the current
                 // Dioxus desktop/webview renderer without rewriting the app around WGPU/Freya.
                 .with_disable_dma_buf_on_wayland(should_disable_wayland_dma_buf())
-                .with_window(
-                    WindowBuilder::new()
-                        .with_title("Showel")
-                        .with_inner_size(LogicalSize::new(1440.0, 920.0))
-                        .with_min_inner_size(LogicalSize::new(720.0, 480.0))
-                        .with_always_on_top(false)
-                        .with_resizable(true),
-                ),
+                .with_window(main_window_builder()),
         )
         .launch(Root);
+}
+
+fn main_window_builder() -> WindowBuilder {
+    let window = WindowBuilder::new()
+        .with_title("Showel")
+        .with_inner_size(LogicalSize::new(1440.0, 920.0))
+        .with_min_inner_size(LogicalSize::new(720.0, 480.0))
+        .with_always_on_top(false)
+        .with_resizable(true)
+        .with_window_icon(Some(load_app_icon()));
+
+    #[cfg(target_os = "windows")]
+    let window = window.with_taskbar_icon(Some(load_app_icon()));
+
+    window
 }
 
 fn env_flag(name: &str) -> bool {
