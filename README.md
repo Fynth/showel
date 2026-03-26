@@ -3,6 +3,7 @@
 </p>
 
 <h1 align="center">Showel</h1>
+<img width="1890" height="1137" alt="image" src="https://github.com/user-attachments/assets/134c9eb7-60f2-43fd-89ea-860e1a0a49a2" />
 
 <p align="center">
   A native desktop database client built with Rust and Dioxus.
