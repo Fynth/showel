@@ -45,7 +45,11 @@ pub(crate) fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>)
                 state.status = status;
             }
             AcpEvent::Message { kind, text } => {
-                push_or_append_message(state, kind, text);
+                if state.suppress_transcript {
+                    buffer_hidden_message(state, kind, text);
+                } else {
+                    push_or_append_message(state, kind, text);
+                }
             }
             AcpEvent::PermissionRequested(request) => {
                 state.pending_permission = Some(request);
@@ -59,25 +63,33 @@ pub(crate) fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>)
             AcpEvent::PromptFinished { stop_reason } => {
                 state.busy = false;
                 state.pending_permission = None;
+                state.suppress_transcript = false;
                 state.status = prompt_finished_status(&stop_reason);
                 state
                     .messages
                     .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
             }
             AcpEvent::Error(error) => {
+                let suppress_transcript = state.suppress_transcript;
                 state.busy = false;
                 state.pending_permission = None;
                 state.pending_sql_insert = false;
+                state.suppress_transcript = false;
+                state.hidden_agent_response.clear();
                 state.status = error.clone();
                 state
                     .messages
                     .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
-                push_message(state, AcpMessageKind::Error, error);
+                if !suppress_transcript {
+                    push_message(state, AcpMessageKind::Error, error);
+                }
             }
             AcpEvent::Disconnected => {
                 state.busy = false;
                 state.connected = false;
                 state.pending_sql_insert = false;
+                state.suppress_transcript = false;
+                state.hidden_agent_response.clear();
                 state.connection = None;
                 state.pending_permission = None;
                 state.status = "ACP agent disconnected.".to_string();
@@ -102,6 +114,8 @@ pub(super) fn apply_connected(state: &mut AcpPanelState, connection: AcpConnecti
     state.connected = true;
     state.busy = false;
     state.pending_sql_insert = false;
+    state.suppress_transcript = false;
+    state.hidden_agent_response.clear();
     state.connection = Some(connection.clone());
     state.pending_permission = None;
     state.messages.retain(|message| {
@@ -143,6 +157,12 @@ fn push_or_append_message(state: &mut AcpPanelState, kind: AcpMessageKind, text:
         push_message(state, kind, "🛠".to_string());
     } else {
         push_message(state, kind, text);
+    }
+}
+
+fn buffer_hidden_message(state: &mut AcpPanelState, kind: AcpMessageKind, text: String) {
+    if matches!(kind, AcpMessageKind::Agent) && !text.is_empty() {
+        state.hidden_agent_response.push_str(&text);
     }
 }
 
@@ -215,7 +235,23 @@ fn unix_timestamp() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::prompt_finished_status;
+    use super::{apply_acp_events, prompt_finished_status};
+    use models::{AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpOllamaConfig, AcpPanelState};
+
+    fn test_state() -> AcpPanelState {
+        AcpPanelState::new(
+            AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        )
+    }
 
     #[test]
     fn normalizes_end_turn_prompt_status() {
@@ -225,5 +261,40 @@ mod tests {
     #[test]
     fn keeps_other_stop_reasons_compact() {
         assert_eq!(prompt_finished_status("MaxTokens"), "Finished: MaxTokens");
+    }
+
+    #[test]
+    fn suppresses_transcript_messages_during_hidden_prompt() {
+        let mut state = test_state();
+        state.suppress_transcript = true;
+
+        apply_acp_events(
+            &mut state,
+            vec![
+                AcpEvent::Message {
+                    kind: AcpMessageKind::Agent,
+                    text: "SELECT ".to_string(),
+                },
+                AcpEvent::Message {
+                    kind: AcpMessageKind::Agent,
+                    text: "1".to_string(),
+                },
+            ],
+        );
+
+        assert!(state.messages.is_empty());
+        assert_eq!(state.hidden_agent_response, "SELECT 1");
+    }
+
+    #[test]
+    fn hidden_prompt_errors_do_not_create_visible_messages() {
+        let mut state = test_state();
+        state.suppress_transcript = true;
+
+        apply_acp_events(&mut state, vec![AcpEvent::Error("boom".to_string())]);
+
+        assert!(state.messages.is_empty());
+        assert!(!state.suppress_transcript);
+        assert!(state.hidden_agent_response.is_empty());
     }
 }

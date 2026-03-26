@@ -80,6 +80,8 @@ fn send_chat_prompt_request(
     panel_state.with_mut(|state| {
         state.busy = true;
         state.pending_sql_insert = false;
+        state.suppress_transcript = false;
+        state.hidden_agent_response.clear();
         state.status = if allow_db_read {
             "Preparing connected database context for the agent...".to_string()
         } else {
@@ -154,7 +156,8 @@ pub(crate) fn send_sql_generation_request(
     mut chat_revision: Signal<u64>,
     allow_db_read: bool,
     prompt: String,
-    mut prompt_draft: Signal<String>,
+    mut prompt_draft: Option<Signal<String>>,
+    record_in_agent_panel: bool,
 ) {
     let request = prompt.trim().to_string();
     if request.is_empty() || panel_state().busy {
@@ -176,6 +179,8 @@ pub(crate) fn send_sql_generation_request(
     panel_state.with_mut(|state| {
         state.busy = true;
         state.pending_sql_insert = true;
+        state.suppress_transcript = !record_in_agent_panel;
+        state.hidden_agent_response.clear();
         state.status = if allow_db_read {
             "Preparing connected database context for the agent...".to_string()
         } else {
@@ -221,17 +226,21 @@ pub(crate) fn send_sql_generation_request(
         match acp::send_acp_prompt(prompt) {
             Ok(()) => {
                 panel_state.with_mut(|state| {
-                    push_message(
-                        state,
-                        AcpMessageKind::User,
-                        format!("Generate SQL: {request}"),
-                    );
+                    if record_in_agent_panel {
+                        push_message(
+                            state,
+                            AcpMessageKind::User,
+                            format!("Generate SQL: {request}"),
+                        );
+                    }
                     state.prompt.clear();
                     state.busy = true;
                     state.pending_sql_insert = true;
                     state.status = "Waiting for agent SQL to insert into the editor...".to_string();
                 });
-                prompt_draft.set(String::new());
+                if let Some(prompt_draft) = prompt_draft.as_mut() {
+                    prompt_draft.set(String::new());
+                }
                 chat_revision += 1;
             }
             Err(err) => {
@@ -239,7 +248,11 @@ pub(crate) fn send_sql_generation_request(
                     state.status = err.clone();
                     state.busy = false;
                     state.pending_sql_insert = false;
-                    push_message(state, AcpMessageKind::Error, err);
+                    state.suppress_transcript = false;
+                    state.hidden_agent_response.clear();
+                    if record_in_agent_panel {
+                        push_message(state, AcpMessageKind::Error, err);
+                    }
                 });
                 chat_revision += 1;
             }
@@ -402,6 +415,8 @@ fn send_sql_plan_request(
     panel_state.with_mut(|state| {
         state.busy = true;
         state.pending_sql_insert = false;
+        state.suppress_transcript = false;
+        state.hidden_agent_response.clear();
         state.status = "Running EXPLAIN for the active SQL...".to_string();
     });
 
@@ -536,6 +551,8 @@ fn send_sql_explanation_request(
     panel_state.with_mut(|state| {
         state.busy = true;
         state.pending_sql_insert = false;
+        state.suppress_transcript = false;
+        state.hidden_agent_response.clear();
         state.status = "Preparing active SQL for explanation...".to_string();
     });
 
@@ -651,6 +668,8 @@ fn send_sql_error_fix_request(
     panel_state.with_mut(|state| {
         state.busy = true;
         state.pending_sql_insert = true;
+        state.suppress_transcript = false;
+        state.hidden_agent_response.clear();
         state.status = "Preparing SQL repair prompt for the agent...".to_string();
     });
 
@@ -725,15 +744,18 @@ pub(crate) fn execute_agent_sql_request(
     mut chat_revision: Signal<u64>,
     sql: String,
     execution_mode: AgentSqlExecutionMode,
+    record_error_in_agent_panel: bool,
 ) {
     let Some(target_tab_id) = preferred_sql_target_tab_id(tabs, active_tab_id()) else {
         panel_state.with_mut(|state| {
             state.status = "No active SQL tab to execute in.".to_string();
-            push_message(
-                state,
-                AcpMessageKind::Error,
-                "No active SQL tab to execute in.".to_string(),
-            );
+            if record_error_in_agent_panel {
+                push_message(
+                    state,
+                    AcpMessageKind::Error,
+                    "No active SQL tab to execute in.".to_string(),
+                );
+            }
         });
         chat_revision += 1;
         return;
@@ -747,11 +769,13 @@ pub(crate) fn execute_agent_sql_request(
     let Some(current_tab) = current_tab else {
         panel_state.with_mut(|state| {
             state.status = "Active SQL tab was not found.".to_string();
-            push_message(
-                state,
-                AcpMessageKind::Error,
-                "Active SQL tab was not found.".to_string(),
-            );
+            if record_error_in_agent_panel {
+                push_message(
+                    state,
+                    AcpMessageKind::Error,
+                    "Active SQL tab was not found.".to_string(),
+                );
+            }
         });
         chat_revision += 1;
         return;
@@ -761,11 +785,13 @@ pub(crate) fn execute_agent_sql_request(
     else {
         panel_state.with_mut(|state| {
             state.status = "The active tab connection is not available.".to_string();
-            push_message(
-                state,
-                AcpMessageKind::Error,
-                "The active tab connection is not available.".to_string(),
-            );
+            if record_error_in_agent_panel {
+                push_message(
+                    state,
+                    AcpMessageKind::Error,
+                    "The active tab connection is not available.".to_string(),
+                );
+            }
         });
         chat_revision += 1;
         return;
@@ -789,7 +815,9 @@ pub(crate) fn execute_agent_sql_request(
                 });
                 panel_state.with_mut(|state| {
                     state.status = err.clone();
-                    push_message(state, AcpMessageKind::Error, err);
+                    if record_error_in_agent_panel {
+                        push_message(state, AcpMessageKind::Error, err);
+                    }
                 });
                 chat_revision += 1;
                 return;
@@ -1541,7 +1569,8 @@ fn AgentComposer(
                             chat_revision,
                             allow_agent_db_read(),
                             prompt_draft(),
-                            prompt_draft,
+                            Some(prompt_draft),
+                            true,
                         );
                     },
                     "Generate SQL"
@@ -2296,6 +2325,7 @@ pub fn AcpAgentPanel(
                                                                                             chat_revision,
                                                                                             sql.clone(),
                                                                                             AgentSqlExecutionMode::Manual,
+                                                                                            true,
                                                                                             );
                                                                                         }
                                                                                     },
@@ -2365,6 +2395,7 @@ pub fn AcpAgentPanel(
                                                                                     chat_revision,
                                                                                     sql.clone(),
                                                                                     AgentSqlExecutionMode::Manual,
+                                                                                    true,
                                                                                 );
                                                                             }
                                                                         },
@@ -2427,6 +2458,7 @@ pub fn AcpAgentPanel(
                                                                                     chat_revision,
                                                                                     sql.clone(),
                                                                                     AgentSqlExecutionMode::Manual,
+                                                                                    true,
                                                                                 );
                                                                             }
                                                                         },
@@ -2492,6 +2524,7 @@ pub fn AcpAgentPanel(
                                                                                 chat_revision,
                                                                                 sql.clone(),
                                                                                 AgentSqlExecutionMode::Manual,
+                                                                                true,
                                                                             );
                                                                         }
                                                                     },

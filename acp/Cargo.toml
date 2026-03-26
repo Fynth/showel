@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-agent-client-protocol = "0.10.2"
+agent-client-protocol = "0.10.3"
 acp-registry.workspace = true
 async-trait = "0.1.89"
 explorer.workspace = true

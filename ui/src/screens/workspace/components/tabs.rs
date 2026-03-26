@@ -67,7 +67,7 @@ pub fn TabsManager(
 ) -> Element {
     let mut editor_height = use_signal(|| 260.0);
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
-    let mut show_generate_sql_modal = use_signal(|| false);
+    let mut show_generate_sql_window = use_signal(|| false);
     let mut generate_sql_prompt = use_signal(String::new);
     let active_tab = tabs
         .read()
@@ -324,8 +324,12 @@ pub fn TabsManager(
                                 return;
                             }
 
-                            generate_sql_prompt.set(String::new());
-                            show_generate_sql_modal.set(true);
+                            if show_generate_sql_window() {
+                                show_generate_sql_window.set(false);
+                            } else {
+                                generate_sql_prompt.set(String::new());
+                                show_generate_sql_window.set(true);
+                            }
                         },
                     }
                     IconButton {
@@ -381,20 +385,9 @@ pub fn TabsManager(
                 }
                 div {
                     class: "workspace__results",
-                    ResultTable {
-                        result: active_tab.result.clone(),
-                        tabs,
-                        active_tab_id,
-                    }
-                }
-                if show_generate_sql_modal() {
-                    div {
-                        class: "editor__modal-backdrop",
-                        onclick: move |_| show_generate_sql_modal.set(false),
-                        div {
-                            class: "editor__modal",
-                            onclick: move |event| event.stop_propagation(),
-                            div { class: "editor__format-settings editor__generate-sql-modal",
+                    if show_generate_sql_window() {
+                        div { class: "editor__context-window editor__context-window--fill",
+                            div { class: "editor__format-settings editor__generate-sql-window editor__generate-sql-window--fill",
                                 div {
                                     class: "editor__format-settings-header",
                                     div { class: "editor__format-settings-copy",
@@ -406,7 +399,7 @@ pub fn TabsManager(
                                     }
                                     button {
                                         class: "button button--ghost button--small",
-                                        onclick: move |_| show_generate_sql_modal.set(false),
+                                        onclick: move |_| show_generate_sql_window.set(false),
                                         "Close"
                                     }
                                 }
@@ -423,7 +416,7 @@ pub fn TabsManager(
                                     button {
                                         class: "button button--ghost button--small",
                                         disabled: generate_sql_busy,
-                                        onclick: move |_| show_generate_sql_modal.set(false),
+                                        onclick: move |_| show_generate_sql_window.set(false),
                                         "Cancel"
                                     }
                                     button {
@@ -448,7 +441,7 @@ pub fn TabsManager(
                                                     chat_revision,
                                                     allow_agent_db_read(),
                                                     generate_sql_prompt,
-                                                    show_generate_sql_modal,
+                                                    show_generate_sql_window,
                                                 );
                                             }
                                         },
@@ -456,6 +449,12 @@ pub fn TabsManager(
                                     }
                                 }
                             }
+                        }
+                    } else {
+                        ResultTable {
+                            result: active_tab.result.clone(),
+                            tabs,
+                            active_tab_id,
                         }
                     }
                 }
@@ -668,7 +667,7 @@ fn submit_generated_sql_request(
     chat_revision: Signal<u64>,
     allow_agent_db_read: bool,
     prompt_draft: Signal<String>,
-    mut show_generate_sql_modal: Signal<bool>,
+    mut show_generate_sql_window: Signal<bool>,
 ) {
     let request = prompt_draft().trim().to_string();
     if request.is_empty() {
@@ -706,9 +705,10 @@ fn submit_generated_sql_request(
             chat_revision,
             allow_agent_db_read,
             request,
-            prompt_draft,
+            Some(prompt_draft),
+            false,
         );
-        show_generate_sql_modal.set(false);
+        show_generate_sql_window.set(false);
     });
 }
 

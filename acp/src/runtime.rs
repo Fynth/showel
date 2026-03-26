@@ -626,6 +626,7 @@ async fn run_acp_worker(
         .current_dir(&cwd)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
     apply_hidden_process_flags(&mut child_command);
 
@@ -645,6 +646,23 @@ async fn run_acp_worker(
         let _ = ready_tx.send(Err("ACP agent stdout is unavailable".to_string()));
         return;
     };
+    let stderr_buffer = Arc::new(Mutex::new(String::new()));
+    if let Some(mut stderr) = child.stderr.take() {
+        let stderr_buffer = Arc::clone(&stderr_buffer);
+        tokio::task::spawn_local(async move {
+            let mut chunk = [0_u8; 2048];
+            loop {
+                let read = match stderr.read(&mut chunk).await {
+                    Ok(read) => read,
+                    Err(_) => break,
+                };
+                if read == 0 {
+                    break;
+                }
+                append_stderr_chunk(&stderr_buffer, &chunk[..read]);
+            }
+        });
+    }
 
     let (conn, io_task) = acp::ClientSideConnection::new(
         BridgeClient {
@@ -663,9 +681,13 @@ async fn run_acp_worker(
 
     {
         let event_tx = event_tx.clone();
+        let stderr_buffer = Arc::clone(&stderr_buffer);
         tokio::task::spawn_local(async move {
             if let Err(err) = io_task.await {
-                let _ = event_tx.send(AcpEvent::Error(format!("ACP I/O error: {err}")));
+                let _ = event_tx.send(AcpEvent::Error(format_error_with_stderr(
+                    format!("ACP I/O error: {err}"),
+                    &stderr_buffer,
+                )));
             }
         });
     }
@@ -689,7 +711,10 @@ async fn run_acp_worker(
     {
         Ok(response) => response,
         Err(err) => {
-            let _ = ready_tx.send(Err(format!("ACP initialize failed: {err}")));
+            let _ = ready_tx.send(Err(format_error_with_stderr(
+                format!("ACP initialize failed: {err}"),
+                &stderr_buffer,
+            )));
             return;
         }
     };
@@ -700,7 +725,10 @@ async fn run_acp_worker(
     {
         Ok(response) => response,
         Err(err) => {
-            let _ = ready_tx.send(Err(format!("ACP session creation failed: {err}")));
+            let _ = ready_tx.send(Err(format_error_with_stderr(
+                format!("ACP session creation failed: {err}"),
+                &stderr_buffer,
+            )));
             return;
         }
     };
@@ -826,6 +854,37 @@ fn normalize_cwd_path(path: PathBuf) -> Result<PathBuf, String> {
 fn apply_hidden_process_flags(_command: &mut tokio::process::Command) {
     #[cfg(windows)]
     _command.creation_flags(CREATE_NO_WINDOW);
+}
+
+fn append_stderr_chunk(buffer: &Arc<Mutex<String>>, bytes: &[u8]) {
+    let chunk = String::from_utf8_lossy(bytes);
+    let Ok(mut stderr) = buffer.lock() else {
+        return;
+    };
+    stderr.push_str(&chunk);
+    const MAX_STDERR_CHARS: usize = 8192;
+    if stderr.len() > MAX_STDERR_CHARS {
+        let split_index = stderr.len() - MAX_STDERR_CHARS;
+        stderr.drain(..split_index);
+    }
+}
+
+fn format_error_with_stderr(message: String, stderr_buffer: &Arc<Mutex<String>>) -> String {
+    let Ok(stderr) = stderr_buffer.lock() else {
+        return message;
+    };
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        return message;
+    }
+
+    const MAX_STDERR_EXCERPT: usize = 600;
+    let excerpt = if stderr.len() > MAX_STDERR_EXCERPT {
+        &stderr[stderr.len() - MAX_STDERR_EXCERPT..]
+    } else {
+        stderr
+    };
+    format!("{message}. Agent stderr: {excerpt}")
 }
 
 fn resolve_workspace_path(
@@ -1098,7 +1157,8 @@ fn respond_to_permission_request(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_cwd_path;
+    use super::{acp, format_error_with_stderr, normalize_cwd_path};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn normalize_cwd_path_keeps_existing_directory() {
@@ -1123,5 +1183,25 @@ mod tests {
         let path = dir.join("missing").join("project.db");
 
         assert_eq!(normalize_cwd_path(path).unwrap(), dir);
+    }
+
+    #[test]
+    fn initialize_request_uses_numeric_protocol_version() {
+        let request = acp::InitializeRequest::new(acp::ProtocolVersion::LATEST)
+            .client_capabilities(acp::ClientCapabilities::new().terminal(true))
+            .client_info(acp::Implementation::new("showel", "test"));
+
+        let payload = serde_json::to_value(&request).unwrap();
+
+        assert_eq!(payload["protocolVersion"], serde_json::json!(1));
+    }
+
+    #[test]
+    fn format_error_with_stderr_appends_excerpt() {
+        let stderr = Arc::new(Mutex::new("line 1\nline 2".to_string()));
+        let message = format_error_with_stderr("ACP initialize failed".to_string(), &stderr);
+
+        assert!(message.contains("ACP initialize failed"));
+        assert!(message.contains("Agent stderr: line 1\nline 2"));
     }
 }
