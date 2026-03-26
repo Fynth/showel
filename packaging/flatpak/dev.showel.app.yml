@@ -1,0 +1,49 @@
+app-id: dev.showel.app
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: showel
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=ssh-auth
+  - --device=dri
+  - --filesystem=host
+  - --talk-name=org.freedesktop.secrets
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/showel/cargo
+    CARGO_NET_OFFLINE: "true"
+    CARGO_TARGET_DIR: /run/build/showel/target
+modules:
+  - name: libxdo
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/releases/download/v3.20211022.1/xdotool-3.20211022.1.tar.gz
+        sha256: 96f0facfde6d78eacad35b91b0f46fecd0b35e474c03e00e30da3fdd345f9ada
+  - name: showel
+    buildsystem: simple
+    build-commands:
+      - cargo build --offline --frozen --release -p app --features desktop
+      - install -Dm755 target/release/app /app/bin/showel
+      - install -Dm644 app/assets/app.css /app/lib/showel/assets/app.css
+      - install -Dm644 packaging/flatpak/dev.showel.app.desktop /app/share/applications/dev.showel.app.desktop
+      - install -Dm644 packaging/flatpak/dev.showel.app.metainfo.xml /app/share/metainfo/dev.showel.app.metainfo.xml
+      - install -Dm644 app/assets/icon.svg /app/share/icons/hicolor/scalable/apps/dev.showel.app.svg
+    sources:
+      - type: dir
+        path: ../..

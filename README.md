@@ -182,6 +182,19 @@ or:
 yay -S showel-git
 ```
 
+### Linux via Flatpak bundle
+
+Download the Flatpak bundle from:
+
+- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+
+Then install and run it with:
+
+```bash
+flatpak install --user ./showel-linux-x86_64.flatpak
+flatpak run dev.showel.app
+```
+
 ### Linux via release tarball
 
 Download the Linux archive from:
@@ -330,6 +343,16 @@ Notes:
 - the initial repository is unsigned, so the source line uses `trusted=yes`
 - runtime dependencies target Ubuntu 24.04 / Debian-family systems with `webkit2gtk-4.1`
 - each `v*` release publishes both the `.deb` asset and refreshed APT metadata
+
+## Flatpak Bundle
+
+This repo also includes a Flatpak release workflow:
+
+- `.github/workflows/flatpak.yml`
+- `packaging/flatpak/dev.showel.app.yml`
+- `scripts/build-flatpak-bundle.sh`
+
+Each `v*` release publishes a `showel-linux-x86_64.flatpak` bundle to GitHub Releases.
 
 ## Project Layout
 

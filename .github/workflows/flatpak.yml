@@ -1,0 +1,96 @@
+name: Build Flatpak Bundle
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to upload assets into; optional'
+        required: false
+        type: string
+
+concurrency:
+  group: flatpak-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-flatpak:
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
+
+      - name: Resolve workflow metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_tag=""
+          version=""
+
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            release_tag="${{ github.event.release.tag_name }}"
+            version="${release_tag#v}"
+          elif [[ -n "${{ github.event.inputs.release_tag }}" ]]; then
+            release_tag="${{ github.event.inputs.release_tag }}"
+            version="${release_tag#v}"
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            appstream \
+            desktop-file-utils \
+            flatpak \
+            flatpak-builder
+
+      - name: Install Flatpak runtimes
+        run: |
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --system --noninteractive flathub \
+            org.gnome.Platform//48 \
+            org.gnome.Sdk//48 \
+            org.freedesktop.Sdk.Extension.rust-stable//24.08
+
+      - name: Build Flatpak bundle
+        run: |
+          chmod +x scripts/build-flatpak-bundle.sh
+          mkdir -p packaging/flatpak/generated
+          version="${{ steps.meta.outputs.version }}"
+          if [[ -z "${version}" ]]; then
+            version="0.0.0-dev"
+          fi
+          scripts/build-flatpak-bundle.sh "${version}" packaging/flatpak/generated
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: showel-flatpak-bundle
+          path: packaging/flatpak/generated/*.flatpak
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Flatpak release asset
+        if: steps.meta.outputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          files: |
+            packaging/flatpak/generated/*.flatpak
