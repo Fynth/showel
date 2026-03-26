@@ -122,28 +122,17 @@ jobs:
           ssh-keyscan -H -t rsa,ecdsa,ed25519 aur.archlinux.org > "${ssh_dir}/known_hosts" 2>/dev/null
           chmod 644 "${ssh_dir}/known_hosts"
 
-      - name: Verify SSH connectivity to AUR
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ssh_dir="${RUNNER_TEMP}/aur-ssh"
-          export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts"
-          ssh -i "${ssh_dir}/aur" \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
-            aur@aur.archlinux.org help
-
       - name: Push binary package to AUR
         env:
           VERSION: ${{ steps.meta.outputs.version }}
+          SHOWEL_SSH_RETRY_ATTEMPTS: 5
+          SHOWEL_SSH_RETRY_DELAY_SECONDS: 8
         shell: bash
         run: |
           set -euo pipefail
 
           ssh_dir="${RUNNER_TEMP}/aur-ssh"
-          export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
           ./scripts/publish-aur-package.sh \
             "showel-bin" \
             "${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin" \

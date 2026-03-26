@@ -12,8 +12,30 @@ package_dir="$2"
 version="$3"
 aur_repo="${RUNNER_TEMP:-/tmp}/aur-${package_name}"
 
+with_retry() {
+  local attempts="${SHOWEL_SSH_RETRY_ATTEMPTS:-5}"
+  local delay_seconds="${SHOWEL_SSH_RETRY_DELAY_SECONDS:-5}"
+  local attempt=1
+  local exit_code=0
+
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+    exit_code=$?
+
+    if (( attempt >= attempts )); then
+      return "${exit_code}"
+    fi
+
+    echo "command failed with exit code ${exit_code}; retry ${attempt}/${attempts} in ${delay_seconds}s: $*" >&2
+    sleep "${delay_seconds}"
+    attempt=$((attempt + 1))
+  done
+}
+
 rm -rf "${aur_repo}"
-git clone "ssh://aur@aur.archlinux.org/${package_name}.git" "${aur_repo}"
+with_retry git clone "ssh://aur@aur.archlinux.org/${package_name}.git" "${aur_repo}"
 cd "${aur_repo}"
 
 if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
@@ -33,4 +55,4 @@ fi
 
 git add PKGBUILD .SRCINFO
 git commit -m "${package_name} ${version}"
-git push origin HEAD:master
+with_retry git push origin HEAD:master
