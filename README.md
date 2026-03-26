@@ -107,6 +107,134 @@ The archive contains:
 dx bundle --release --platform desktop --package app --features bundle --package-types msi
 ```
 
+## Installation
+
+Release artifacts are published here:
+
+- [GitHub Releases](https://github.com/Fynth/showel/releases)
+
+### Ubuntu / Debian via APT repository
+
+If the APT repository has already been configured on the machine, installation is just:
+
+```bash
+sudo apt update
+sudo apt install showel
+```
+
+To add the repository first:
+
+```bash
+echo "deb [arch=amd64 trusted=yes] https://fynth.github.io/showel/apt stable main" | sudo tee /etc/apt/sources.list.d/showel.list
+sudo apt update
+sudo apt install showel
+```
+
+Notes:
+
+- this currently targets `amd64`
+- the repository is currently unsigned, so the source line uses `trusted=yes`
+
+### Ubuntu / Debian via downloaded `.deb`
+
+Download the latest Debian package from:
+
+- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+
+Then install it with:
+
+```bash
+sudo apt install ./showel_<version>_amd64.deb
+```
+
+or:
+
+```bash
+sudo dpkg -i showel_<version>_amd64.deb
+sudo apt -f install
+```
+
+### Arch Linux / EndeavourOS / Manjaro via AUR
+
+Available AUR packages:
+
+- `showel`
+- `showel-bin`
+- `showel-git`
+
+Install with:
+
+```bash
+yay -S showel
+```
+
+or:
+
+```bash
+yay -S showel-bin
+```
+
+or:
+
+```bash
+yay -S showel-git
+```
+
+### Linux via release tarball
+
+Download the Linux archive from:
+
+- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+
+Then unpack and run:
+
+```bash
+tar -xzf showel-linux-x86_64.tar.gz
+./bin/showel
+```
+
+The archive contains:
+
+- `bin/showel`
+- `lib/showel/assets/app.css`
+- desktop entry
+- app icon
+
+### Windows
+
+Download from:
+
+- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+
+Available artifacts:
+
+- `showel-windows-x86_64.exe`
+- Windows `.msi` installer
+
+Notes:
+
+- for raw `.exe`, Microsoft Edge WebView2 Runtime is required
+- `.msi` is the better option for end-user installation
+
+### Build from source
+
+Requirements:
+
+- Rust stable
+- platform desktop dependencies required by Dioxus Desktop/WebView
+
+Run directly:
+
+```bash
+cargo run -p app --features desktop
+```
+
+Build release binary:
+
+```bash
+cargo build -p app --release --features desktop
+```
+
 ## AUR
 
 This repo includes two AUR packaging paths:
@@ -165,12 +293,41 @@ Linux and Arch workflows:
 
 - `.github/workflows/linux.yml`
 - `.github/workflows/arch-repo.yml`
+- `.github/workflows/apt-repo.yml`
 - `.github/workflows/aur-check.yml`
 
 Notes:
 
 - the raw `.exe` build is the fastest path for testing
 - the `.msi` bundle uses Dioxus bundling and is the better option for end-user distribution
+
+## APT Repository
+
+This repo now includes Debian packaging and a GitHub Pages-backed APT repository workflow:
+
+- `.github/workflows/apt-repo.yml`
+- `scripts/build-deb-package.sh`
+- `scripts/build-apt-repo.sh`
+
+The workflow builds a `showel` package and publishes an `amd64` APT repository under:
+
+```bash
+https://<owner>.github.io/<repo>/apt
+```
+
+To install from the published repository:
+
+```bash
+echo "deb [arch=amd64 trusted=yes] https://<owner>.github.io/<repo>/apt stable main" | sudo tee /etc/apt/sources.list.d/showel.list
+sudo apt update
+sudo apt install showel
+```
+
+Notes:
+
+- the initial repository is unsigned, so the source line uses `trusted=yes`
+- runtime dependencies target Ubuntu 24.04 / Debian-family systems with `webkit2gtk-4.1`
+- each `v*` release publishes both the `.deb` asset and refreshed APT metadata
 
 ## Project Layout
 

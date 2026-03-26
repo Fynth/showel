@@ -5,9 +5,19 @@ use models::{
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) fn default_acp_panel_state() -> AcpPanelState {
-    let cwd = std::env::current_dir()
+    let cwd = std::env::var("SHOWEL_ACP_CWD")
         .ok()
-        .map(|path| path.display().to_string())
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            storage::acp_workspace_root()
+                .ok()
+                .map(|path| path.display().to_string())
+        })
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|path| path.display().to_string())
+        })
         .unwrap_or_else(|| ".".to_string());
 
     AcpPanelState::new(

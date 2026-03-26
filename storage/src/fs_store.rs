@@ -8,6 +8,10 @@ fn storage_root() -> PathBuf {
         .join("showel")
 }
 
+pub(crate) fn acp_workspace_root() -> PathBuf {
+    storage_root().join("acp").join("workspace")
+}
+
 pub(crate) fn saved_connections_path() -> PathBuf {
     storage_root().join("saved_connections.json")
 }

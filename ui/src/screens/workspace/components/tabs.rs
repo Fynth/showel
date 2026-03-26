@@ -6,7 +6,7 @@ use crate::{
     },
 };
 use dioxus::prelude::*;
-use models::{QueryHistoryItem, QueryOutput, QueryTabState, SqlFormatSettings};
+use models::{QueryHistoryItem, QueryOutput, QueryTabState, SqlFormatSettings, TablePreviewSource};
 use rfd::AsyncFileDialog;
 
 use super::{ActionIcon, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor};
@@ -81,6 +81,7 @@ pub fn TabsManager(
             .map(|session| (session.id, session.name.clone()))
             .collect::<std::collections::HashMap<_, _>>()
     };
+    let active_actionable_source = active_tab.as_ref().and_then(actionable_table_source);
 
     rsx! {
         div {
@@ -296,7 +297,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::Structure,
                         label: "Open structure".to_string(),
-                        disabled: active_tab.preview_source.is_none(),
+                        disabled: active_actionable_source.is_none(),
                         onclick: {
                             let current_tab = active_tab.clone();
                             move |_| open_structure_for_active_preview(
@@ -337,7 +338,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ImportCsv,
                         label: "Import CSV".to_string(),
-                        disabled: active_tab.preview_source.is_none(),
+                        disabled: active_actionable_source.is_none(),
                         onclick: {
                             let current_tab = active_tab.clone();
                             move |_| import_csv_into_active_table(tabs, current_tab.clone())
@@ -434,11 +435,12 @@ fn export_active_page(
 }
 
 fn import_csv_into_active_table(tabs: Signal<Vec<QueryTabState>>, current_tab: QueryTabState) {
-    let Some(source) = current_tab.preview_source.clone() else {
+    let Some(source) = actionable_table_source(&current_tab) else {
         set_active_tab_status(
             tabs,
             current_tab.id,
-            "Open a table preview before importing CSV".to_string(),
+            "Import CSV is available for previewed tables and simple single-table SELECT queries"
+                .to_string(),
         );
         return;
     };
@@ -558,11 +560,12 @@ fn open_structure_for_active_preview(
     next_tab_id: Signal<u64>,
     current_tab: QueryTabState,
 ) {
-    let Some(source) = current_tab.preview_source.clone() else {
+    let Some(source) = actionable_table_source(&current_tab) else {
         set_active_tab_status(
             tabs,
             current_tab.id,
-            "Structure view is available for previewed tables and views".to_string(),
+            "Structure view is available for previewed tables and simple single-table SELECT queries"
+                .to_string(),
         );
         return;
     };
@@ -580,4 +583,12 @@ fn open_structure_for_active_preview(
         connection,
         source,
     );
+}
+
+fn actionable_table_source(tab: &QueryTabState) -> Option<TablePreviewSource> {
+    tab.preview_source.clone().or_else(|| {
+        tab.last_run_sql
+            .as_deref()
+            .and_then(query::preview_source_for_sql)
+    })
 }

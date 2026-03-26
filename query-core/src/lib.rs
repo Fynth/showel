@@ -52,6 +52,10 @@ pub fn is_read_only_sql(sql: &str) -> bool {
     )
 }
 
+pub fn preview_source_for_sql(sql: &str) -> Option<TablePreviewSource> {
+    editable_select_plan(sql).map(|plan| plan.source)
+}
+
 pub async fn load_table_preview_page(
     connection: DatabaseConnection,
     source: TablePreviewSource,
@@ -803,7 +807,7 @@ async fn postgres_single_primary_key_column(
 mod tests {
     use super::{
         execute_query_page, is_read_only_sql, parse_clickhouse_primary_key_expression,
-        reorder_clickhouse_primary_key_columns,
+        preview_source_for_sql, reorder_clickhouse_primary_key_columns,
     };
     use models::{DatabaseConnection, QueryOutput};
     use sqlx::SqlitePool;
@@ -912,6 +916,26 @@ mod tests {
                 "tuple(toDate(created_at), id)"
             ),
             pk_columns
+        );
+    }
+
+    #[test]
+    fn infers_preview_source_for_simple_select() {
+        let source = preview_source_for_sql(r#"select id, name from "main"."products" limit 100"#)
+            .expect("source");
+
+        assert_eq!(source.schema.as_deref(), Some("main"));
+        assert_eq!(source.table_name, "products");
+        assert_eq!(source.qualified_name, r#""main"."products""#);
+    }
+
+    #[test]
+    fn skips_preview_source_for_join_query() {
+        assert!(
+            preview_source_for_sql(
+                "select p.id from products p join categories c on c.id = p.category_id"
+            )
+            .is_none()
         );
     }
 }

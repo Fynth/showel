@@ -1,0 +1,127 @@
+name: Publish APT Repo
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v"
+        required: true
+        type: string
+
+concurrency:
+  group: apt-repo-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb-package:
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: write
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Debian packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            dpkg-dev \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libxdo-dev
+
+      - name: Build release binary
+        run: cargo build --locked --release -p app --features desktop
+
+      - name: Build Debian package
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/build-deb-package.sh scripts/build-apt-repo.sh scripts/resolve-pkgrel.sh
+          mkdir -p packaging/deb/generated
+          scripts/build-deb-package.sh "${{ steps.meta.outputs.version }}" packaging/deb/generated
+
+      - name: Build APT repository metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apt-site/apt/pool/main/s/showel
+          cp packaging/deb/generated/*.deb apt-site/apt/pool/main/s/showel/
+          scripts/build-apt-repo.sh \
+            apt-site/apt \
+            "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt"
+
+      - name: Upload Debian package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: showel-deb-package
+          path: packaging/deb/generated/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload APT repository artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apt-site
+
+      - name: Publish GitHub release assets
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          files: |
+            packaging/deb/generated/*.deb
+
+  deploy-pages:
+    needs: build-deb-package
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy APT repository to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

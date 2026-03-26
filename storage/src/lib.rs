@@ -16,3 +16,10 @@ pub use saved_queries::{delete_saved_query, load_saved_queries, save_saved_query
 pub use settings::{
     load_app_ui_settings, load_sql_format_settings, save_app_ui_settings, save_sql_format_settings,
 };
+
+pub fn acp_workspace_root() -> Result<std::path::PathBuf, String> {
+    let path = fs_store::acp_workspace_root();
+    std::fs::create_dir_all(&path)
+        .map_err(|err| format!("failed to create ACP workspace {}: {err}", path.display()))?;
+    Ok(path)
+}

@@ -774,18 +774,45 @@ async fn run_acp_worker(
 
 fn normalize_cwd(cwd: &str) -> Result<PathBuf, String> {
     let trimmed = cwd.trim();
-    if trimmed.is_empty() {
-        return std::env::current_dir().map_err(|err| format!("Failed to resolve cwd: {err}"));
+    let resolved = if trimmed.is_empty() {
+        std::env::current_dir().map_err(|err| format!("Failed to resolve cwd: {err}"))?
+    } else {
+        let path = PathBuf::from(trimmed);
+        if path.is_absolute() {
+            path
+        } else {
+            std::env::current_dir()
+                .map(|current_dir| current_dir.join(path))
+                .map_err(|err| format!("Failed to resolve cwd: {err}"))?
+        }
+    };
+
+    normalize_cwd_path(resolved)
+}
+
+fn normalize_cwd_path(path: PathBuf) -> Result<PathBuf, String> {
+    if let Ok(metadata) = std::fs::metadata(&path) {
+        if metadata.is_dir() {
+            return Ok(path);
+        }
+
+        if metadata.is_file() {
+            return path
+                .parent()
+                .map(PathBuf::from)
+                .ok_or_else(|| format!("ACP cwd has no parent directory: {}", path.display()));
+        }
     }
 
-    let path = PathBuf::from(trimmed);
-    if path.is_absolute() {
-        return Ok(path);
+    let mut ancestor = path.parent();
+    while let Some(parent) = ancestor {
+        if parent.is_dir() {
+            return Ok(parent.to_path_buf());
+        }
+        ancestor = parent.parent();
     }
 
-    std::env::current_dir()
-        .map(|current_dir| current_dir.join(path))
-        .map_err(|err| format!("Failed to resolve cwd: {err}"))
+    Ok(path)
 }
 
 fn resolve_workspace_path(
@@ -1054,4 +1081,34 @@ fn respond_to_permission_request(
     sender
         .send(response)
         .map_err(|_| "Permission request receiver dropped".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_cwd_path;
+
+    #[test]
+    fn normalize_cwd_path_keeps_existing_directory() {
+        let dir = std::env::temp_dir();
+        assert_eq!(normalize_cwd_path(dir.clone()).unwrap(), dir);
+    }
+
+    #[test]
+    fn normalize_cwd_path_uses_parent_for_existing_file() {
+        let temp_root =
+            std::env::temp_dir().join(format!("showel-acp-runtime-test-{}", std::process::id()));
+        std::fs::create_dir_all(&temp_root).unwrap();
+        let file = temp_root.join("workspace.db");
+        std::fs::write(&file, b"test").unwrap();
+
+        assert_eq!(normalize_cwd_path(file).unwrap(), temp_root);
+    }
+
+    #[test]
+    fn normalize_cwd_path_uses_existing_parent_for_missing_file_like_path() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("missing").join("project.db");
+
+        assert_eq!(normalize_cwd_path(path).unwrap(), dir);
+    }
 }

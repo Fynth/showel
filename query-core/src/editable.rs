@@ -106,11 +106,13 @@ fn split_qualified_name(table_ref: &str) -> (Option<String>, String) {
     let mut parts = Vec::new();
     let mut start = 0usize;
     let mut in_double = false;
+    let mut in_backtick = false;
 
     for (idx, ch) in table_ref.char_indices() {
         match ch {
-            '"' => in_double = !in_double,
-            '.' if !in_double => {
+            '"' if !in_backtick => in_double = !in_double,
+            '`' if !in_double => in_backtick = !in_backtick,
+            '.' if !in_double && !in_backtick => {
                 parts.push(table_ref[start..idx].trim().to_string());
                 start = idx + 1;
             }
@@ -130,6 +132,8 @@ fn unquote_identifier(identifier: &str) -> String {
     let trimmed = identifier.trim();
     if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
         trimmed[1..trimmed.len() - 1].replace("\"\"", "\"")
+    } else if trimmed.starts_with('`') && trimmed.ends_with('`') && trimmed.len() >= 2 {
+        trimmed[1..trimmed.len() - 1].replace("``", "`")
     } else {
         trimmed.to_string()
     }
@@ -188,7 +192,9 @@ fn is_simple_column_ref(item: &str) -> bool {
         if part.is_empty() {
             return false;
         }
-        if part.starts_with('"') && part.ends_with('"') {
+        if (part.starts_with('"') && part.ends_with('"'))
+            || (part.starts_with('`') && part.ends_with('`'))
+        {
             return true;
         }
         part.chars()
@@ -264,5 +270,15 @@ mod tests {
 
         assert_eq!(plan.source.qualified_name, r#""products""#);
         assert!(plan.tail.is_empty());
+    }
+
+    #[test]
+    fn editable_select_plan_unquotes_clickhouse_identifiers() {
+        let plan = editable_select_plan("select `id` from `dwh_ogs`.`source_statistics` limit 100")
+            .unwrap();
+
+        assert_eq!(plan.source.schema.as_deref(), Some("dwh_ogs"));
+        assert_eq!(plan.source.table_name, "source_statistics");
+        assert_eq!(plan.source.qualified_name, "`dwh_ogs`.`source_statistics`");
     }
 }

@@ -1,6 +1,6 @@
 use crate::app_state::{activate_session, remove_session};
 use crate::screens::workspace::actions::{
-    ensure_tab_for_session, run_table_preview_for_tab, set_active_tab_sql, tab_connection_or_error,
+    ensure_tab_for_session, run_table_preview_for_tab, tab_connection_or_error,
 };
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
@@ -274,8 +274,6 @@ fn ExplorerObjectRow(
     next_tab_id: Signal<u64>,
     selected_node: Signal<String>,
 ) -> Element {
-    let preview_sql = format!("select * from {} limit 100;", node.qualified_name);
-    let object_name = node.name.clone();
     let preview_source = TablePreviewSource {
         schema: node.schema.clone(),
         table_name: node.name.clone(),
@@ -301,18 +299,10 @@ fn ExplorerObjectRow(
                 "tree__object"
             },
             onclick: {
-                let sql = preview_sql.clone();
                 let qualified_name = node.qualified_name.clone();
                 move |_| {
                     selected_node.set(qualified_name.clone());
-                    let target_tab_id =
-                        ensure_tab_for_session(tabs, active_tab_id, next_tab_id, session_id);
-                    set_active_tab_sql(
-                        tabs,
-                        target_tab_id,
-                        sql.clone(),
-                        format!("Preview query ready for {object_name}. Double-click to load rows."),
-                    );
+                    activate_session(session_id);
                 }
             },
             ondoubleclick: {

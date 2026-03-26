@@ -162,10 +162,9 @@ pub fn open_structure_tab(
     next_tab_id += 1;
 
     let title = format!("Structure · {}", source.table_name);
-    let comment = format!("-- Structure for {}", source.qualified_name);
 
     tabs.with_mut(|all_tabs| {
-        let mut tab = new_query_tab(tab_id, session_id, title, comment);
+        let mut tab = new_query_tab(tab_id, session_id, title, String::new());
         tab.tab_kind = WorkspaceTabKind::Structure;
         tab.status = format!("Loading structure for {}...", source.table_name);
         all_tabs.push(tab);
@@ -377,11 +376,6 @@ pub fn run_table_preview_for_tab(
         }
     });
 
-    let preview_sql = format!(
-        "select * from {} limit {};",
-        source.qualified_name, page_size
-    );
-
     spawn(async move {
         match query::load_table_preview_page(
             connection,
@@ -406,12 +400,14 @@ pub fn run_table_preview_for_tab(
 
                 tabs.with_mut(|all_tabs| {
                     if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
-                        tab.sql = preview_sql.clone();
                         tab.result = Some(output);
                         tab.status = status;
                         tab.current_offset = offset;
                         tab.page_size = page_size;
-                        tab.last_run_sql = Some(preview_sql.clone());
+                        tab.last_run_sql = Some(format!(
+                            "select * from {} limit {};",
+                            source.qualified_name, page_size
+                        ));
                         tab.preview_source = Some(source.clone());
                         tab.is_loading_more = false;
                     }

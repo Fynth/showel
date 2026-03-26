@@ -54,6 +54,15 @@ case "${package_kind}" in
       "scripts/resolve-pkgrel.sh"
     )
     ;;
+  deb)
+    paths=(
+      ".github/workflows/apt-repo.yml"
+      "packaging/arch/showel.desktop"
+      "scripts/build-apt-repo.sh"
+      "scripts/build-deb-package.sh"
+      "scripts/resolve-pkgrel.sh"
+    )
+    ;;
   *)
     echo "unknown package kind: ${package_kind}" >&2
     exit 1
