@@ -550,9 +550,9 @@ textarea {
 
 .workspace__sidebar .button.button--small.button--icon,
 .workspace__inspector .button.button--small.button--icon {
-  width: 22px;
-  min-width: 22px;
-  height: 22px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
 }
 
 .workspace__empty {
@@ -813,28 +813,29 @@ textarea {
 }
 
 .button--icon {
-  width: 28px;
-  min-width: 28px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
   padding: 0;
   overflow: visible;
 }
 
 .button--small.button--icon {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   padding: 0;
 }
 
 .button__icon {
-  width: 15px;
-  height: 15px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
 }
 
 .button__icon--close {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   stroke-width: 2.35;
 }
 
@@ -1686,8 +1687,8 @@ select.input:focus-visible {
   background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-elevated, var(--color-panel)));
 }
 .tree__connection-actions .button__icon--close {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   stroke-width: 2.75;
   opacity: 1;
 }
@@ -1886,9 +1887,9 @@ select.input:focus-visible {
   transition: opacity 120ms ease;
 }
 .tree__object-actions .button--icon {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
   padding: 0;
 }
 
