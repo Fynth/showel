@@ -10,9 +10,9 @@ pub use connection::connect_to_db;
 pub use connection::release_ssh_tunnel;
 pub use explorer::{describe_table, load_connection_tree, load_table_columns};
 pub use query::{
-    delete_table_row, execute_query, execute_query_page, export_query_page_csv,
-    export_query_page_json, export_query_page_xlsx, format_sql, import_csv_into_table,
-    insert_table_row, insert_table_row_with_values, load_table_preview_page,
+    create_table, delete_table_row, drop_table, execute_query, execute_query_page,
+    export_query_page_csv, export_query_page_json, export_query_page_xlsx, format_sql,
+    import_csv_into_table, insert_table_row, insert_table_row_with_values, load_table_preview_page,
     next_table_primary_key_id, update_table_cell,
 };
 pub use storage::{

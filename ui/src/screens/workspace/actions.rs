@@ -619,6 +619,51 @@ pub fn refresh_tab_result(
     }
 }
 
+pub fn mark_table_deleted(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    session_id: u64,
+    source: TablePreviewSource,
+) {
+    tabs.with_mut(|all_tabs| {
+        for tab in all_tabs
+            .iter_mut()
+            .filter(|tab| tab.session_id == session_id)
+        {
+            let matches_preview = tab.preview_source.as_ref() == Some(&source);
+            let matches_sql = tab
+                .last_run_sql
+                .as_deref()
+                .and_then(query::preview_source_for_sql)
+                .as_ref()
+                == Some(&source);
+
+            if !matches_preview && !matches_sql {
+                continue;
+            }
+
+            tab.result = None;
+            tab.current_offset = 0;
+            tab.preview_source = None;
+            tab.filter = None;
+            tab.sort = None;
+            tab.is_loading_more = false;
+            tab.pending_table_changes = PendingTableChanges::default();
+            tab.status = if matches_preview {
+                format!("Table {} was deleted", source.table_name)
+            } else {
+                format!(
+                    "Referenced table {} was deleted. Update the SQL and run it again.",
+                    source.table_name
+                )
+            };
+
+            if matches_preview {
+                tab.last_run_sql = None;
+            }
+        }
+    });
+}
+
 pub fn toggle_active_tab_sort(
     mut tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: u64,

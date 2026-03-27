@@ -1,3 +1,4 @@
+use crate::app_state::{hide_tooltip, show_tooltip};
 use dioxus::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -13,6 +14,7 @@ pub enum ActionIcon {
     Clear,
     Format,
     Generate,
+    CreateTable,
     Structure,
     ExportCsv,
     ExportJson,
@@ -57,16 +59,28 @@ pub fn IconButton(
     rsx! {
         button {
             class: class_name,
-            title: label.clone(),
             disabled,
+            "aria-label": label.clone(),
+            onmouseenter: {
+                let label = label.clone();
+                move |event| {
+                    let position = event.client_coordinates();
+                    show_tooltip(label.clone(), position.x, position.y);
+                }
+            },
+            onmousemove: {
+                let label = label.clone();
+                move |event| {
+                    let position = event.client_coordinates();
+                    show_tooltip(label.clone(), position.x, position.y);
+                }
+            },
+            onmouseleave: move |_| hide_tooltip(),
+            onmousedown: move |_| hide_tooltip(),
+            onblur: move |_| hide_tooltip(),
             onclick: move |event| onclick.call(event),
             IconGlyph { icon }
             span { class: "button__sr-label", "{label}" }
-            span {
-                class: "button__tooltip",
-                "aria-hidden": "true",
-                "{label}"
-            }
         }
     }
 }
@@ -155,6 +169,13 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "m17.5 6.5-2.8 2.8" }
                     path { d: "m9.3 14.7-2.8 2.8" }
                     circle { cx: "12", cy: "12", r: "2.2" }
+                },
+                ActionIcon::CreateTable => rsx! {
+                    rect { x: "4", y: "5", width: "12", height: "14", rx: "2" }
+                    path { d: "M4 10h12" }
+                    path { d: "M10 5v14" }
+                    path { d: "M19 9v8" }
+                    path { d: "M15 13h8" }
                 },
                 ActionIcon::Structure => rsx! {
                     rect { x: "4", y: "5", width: "16", height: "14", rx: "2" }

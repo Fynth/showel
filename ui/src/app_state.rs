@@ -4,6 +4,13 @@ use models::{
     DatabaseConnection, SqlFormatSettings,
 };
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppTooltip {
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+}
+
 pub static APP_STATE: GlobalSignal<AppState> = Signal::global(AppState::default);
 pub static APP_THEME: GlobalSignal<String> =
     Signal::global(|| AppThemePreference::Dark.css_class().to_string());
@@ -12,6 +19,7 @@ pub static APP_SQL_FORMAT_SETTINGS: GlobalSignal<SqlFormatSettings> =
     Signal::global(SqlFormatSettings::default);
 pub static APP_SHOW_HISTORY: GlobalSignal<bool> = Signal::global(|| false);
 pub static APP_SHOW_SETTINGS_MODAL: GlobalSignal<bool> = Signal::global(|| false);
+pub static APP_TOOLTIP: GlobalSignal<Option<AppTooltip>> = Signal::global(|| None);
 
 pub fn open_settings_modal() {
     *APP_SHOW_SETTINGS_MODAL.write() = true;
@@ -19,6 +27,14 @@ pub fn open_settings_modal() {
 
 pub fn close_settings_modal() {
     *APP_SHOW_SETTINGS_MODAL.write() = false;
+}
+
+pub fn show_tooltip(label: String, x: f64, y: f64) {
+    *APP_TOOLTIP.write() = Some(AppTooltip { label, x, y });
+}
+
+pub fn hide_tooltip() {
+    *APP_TOOLTIP.write() = None;
 }
 
 pub fn open_connection_screen() {

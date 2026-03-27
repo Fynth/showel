@@ -45,6 +45,107 @@ pub async fn execute_query(
     execute_query_page(connection, sql, 100, 0, None, None).await
 }
 
+pub async fn create_table(
+    connection: DatabaseConnection,
+    schema: Option<String>,
+    table_name: String,
+    columns_sql: String,
+    clickhouse_engine: Option<String>,
+) -> Result<(), DatabaseError> {
+    let table_name = table_name.trim();
+    let columns_sql = columns_sql.trim().trim_end_matches(';').trim();
+    if table_name.is_empty() {
+        return Err(DatabaseError::UnsupportedDriver(
+            "Table name is empty".to_string(),
+        ));
+    }
+    if columns_sql.is_empty() {
+        return Err(DatabaseError::UnsupportedDriver(
+            "Table definition is empty".to_string(),
+        ));
+    }
+
+    let columns_sql = if columns_sql.starts_with('(') {
+        columns_sql.to_string()
+    } else {
+        format!("(\n{columns_sql}\n)")
+    };
+
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            let qualified_name = qualified_sqlite_table_name(schema.as_deref(), table_name);
+            let sql = format!("create table {qualified_name} {columns_sql}");
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+            Ok(())
+        }
+        DatabaseConnection::Postgres(pool) => {
+            let qualified_name = qualified_postgres_table_name(schema.as_deref(), table_name);
+            let sql = format!("create table {qualified_name} {columns_sql}");
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::ClickHouse(config) => {
+            let engine = clickhouse_engine
+                .map(|engine| engine.trim().trim_end_matches(';').trim().to_string())
+                .filter(|engine| !engine.is_empty())
+                .ok_or_else(|| {
+                    DatabaseError::UnsupportedDriver(
+                        "ClickHouse engine clause is empty".to_string(),
+                    )
+                })?;
+            let qualified_name = qualified_clickhouse_table_name(
+                schema.as_deref(),
+                table_name,
+                config.effective_database(),
+            );
+            let sql = format!("create table {qualified_name} {columns_sql} {engine}");
+            execute_text_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(())
+        }
+    }
+}
+
+pub async fn drop_table(
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+) -> Result<(), DatabaseError> {
+    let sql = format!(
+        "drop table if exists {}",
+        source.qualified_name.trim().trim_end_matches(';')
+    );
+
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+            Ok(())
+        }
+        DatabaseConnection::Postgres(pool) => {
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::ClickHouse(config) => {
+            execute_text_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(())
+        }
+    }
+}
+
 pub fn is_read_only_sql(sql: &str) -> bool {
     matches!(
         leading_sql_keyword(sql).as_deref(),
@@ -806,10 +907,11 @@ async fn postgres_single_primary_key_column(
 #[cfg(test)]
 mod tests {
     use super::{
-        execute_query_page, is_read_only_sql, parse_clickhouse_primary_key_expression,
-        preview_source_for_sql, reorder_clickhouse_primary_key_columns,
+        create_table, drop_table, execute_query_page, is_read_only_sql,
+        parse_clickhouse_primary_key_expression, preview_source_for_sql,
+        reorder_clickhouse_primary_key_columns,
     };
-    use models::{DatabaseConnection, QueryOutput};
+    use models::{DatabaseConnection, QueryOutput, TablePreviewSource};
     use sqlx::SqlitePool;
 
     #[test]
@@ -873,6 +975,77 @@ mod tests {
             }
             other => panic!("expected table result, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn create_table_creates_sqlite_table() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+        create_table(
+            DatabaseConnection::Sqlite(pool.clone()),
+            Some("main".to_string()),
+            "products".to_string(),
+            "id integer primary key,\nname text not null".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let remaining = sqlx::query_scalar::<_, i64>(
+            r#"
+            select count(*)
+            from sqlite_master
+            where type = 'table'
+              and name = 'products'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(remaining, 1);
+    }
+
+    #[tokio::test]
+    async fn drop_table_removes_sqlite_table() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            create table "products" (
+                id integer primary key,
+                name text not null
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        drop_table(
+            DatabaseConnection::Sqlite(pool.clone()),
+            TablePreviewSource {
+                schema: Some("main".to_string()),
+                table_name: "products".to_string(),
+                qualified_name: r#""products""#.to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let remaining = sqlx::query_scalar::<_, i64>(
+            r#"
+            select count(*)
+            from sqlite_master
+            where type = 'table'
+              and name = 'products'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(remaining, 0);
     }
 
     #[test]
@@ -955,6 +1128,44 @@ fn clickhouse_type_supports_auto_id(data_type: &str) -> bool {
     matches!(
         data_type.to_ascii_lowercase().as_str(),
         "int8" | "int16" | "int32" | "int64" | "uint8" | "uint16" | "uint32" | "uint64"
+    )
+}
+
+fn qualified_sqlite_table_name(schema: Option<&str>, table_name: &str) -> String {
+    match schema.map(str::trim).filter(|schema| !schema.is_empty()) {
+        Some(schema) => format!(
+            "{}.{}",
+            quote_identifier(schema),
+            quote_identifier(table_name)
+        ),
+        None => quote_identifier(table_name),
+    }
+}
+
+fn qualified_postgres_table_name(schema: Option<&str>, table_name: &str) -> String {
+    match schema.map(str::trim).filter(|schema| !schema.is_empty()) {
+        Some(schema) => format!(
+            "{}.{}",
+            quote_identifier(schema),
+            quote_identifier(table_name)
+        ),
+        None => quote_identifier(table_name),
+    }
+}
+
+fn qualified_clickhouse_table_name(
+    schema: Option<&str>,
+    table_name: &str,
+    fallback_database: &str,
+) -> String {
+    let schema = schema
+        .map(str::trim)
+        .filter(|schema| !schema.is_empty())
+        .unwrap_or(fallback_database);
+    format!(
+        "{}.{}",
+        quote_identifier_clickhouse(schema),
+        quote_identifier_clickhouse(table_name)
     )
 }
 

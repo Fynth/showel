@@ -36,3 +36,33 @@
   background: var(--color-backdrop);
   backdrop-filter: blur(10px);
 }
+
+.app__tooltip-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.app__tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 5px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: $radius-sm;
+  background: color-mix(in srgb, var(--editor-bg) 94%, black);
+  color: var(--color-text);
+  font-size: $font-size-xs;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: $shadow-md;
+  transform: translate(-50%, calc(-100% - 12px));
+}
+
+@media (max-width: 760px) {
+  .app__tooltip-layer {
+    display: none;
+  }
+}

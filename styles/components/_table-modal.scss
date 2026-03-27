@@ -1,0 +1,162 @@
+@use "../base/tokens" as *;
+
+.table-modal {
+  width: min(760px, 100%);
+}
+
+.table-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.table-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.table-modal__section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.table-modal__section-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.table-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: $spacing-sm;
+}
+
+.table-modal__hint {
+  margin: 0;
+  color: var(--color-text-dim);
+  font-size: $font-size-sm;
+  line-height: 1.45;
+}
+
+.table-modal__hint--boxed {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 76%,
+    transparent
+  );
+}
+
+.table-modal__columns {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.table-modal__column-card {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 72%,
+    transparent
+  );
+}
+
+.table-modal__column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.table-modal__column-title {
+  color: var(--color-text);
+  font-size: $font-size-sm;
+  font-weight: 600;
+}
+
+.table-modal__column-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: $spacing-sm;
+}
+
+.table-modal__column-toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: $spacing-sm;
+}
+
+.table-modal__preview {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.table-modal__preview-sql {
+  min-height: 112px;
+  padding: $spacing-sm;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(
+    in srgb,
+    var(--color-surface-contrast, var(--color-panel-2)) 78%,
+    transparent
+  );
+  color: var(--color-text);
+  font-family: "Iosevka", "JetBrains Mono", monospace;
+  font-size: $font-size-sm;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.table-modal__error {
+  padding: $spacing-sm;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 34%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: color-mix(in srgb, var(--color-danger) 86%, white 14%);
+  font-size: $font-size-sm;
+}
+
+.table-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .table-modal {
+    width: 100%;
+  }
+
+  .table-modal__section-header,
+  .table-modal__column-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .table-modal__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .table-modal__column-grid,
+  .table-modal__column-toggles {
+    grid-template-columns: 1fr;
+  }
+}

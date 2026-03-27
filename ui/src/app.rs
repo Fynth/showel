@@ -1,7 +1,7 @@
 use crate::{
     app_state::{
         APP_SHOW_HISTORY, APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_STATE, APP_THEME,
-        APP_UI_SETTINGS, restore_connection_sessions,
+        APP_TOOLTIP, APP_UI_SETTINGS, restore_connection_sessions,
     },
     layout::{SettingsModal, StatusBar, Toolbar},
     screens::{DbConnect, Workspace},
@@ -153,6 +153,16 @@ pub fn App() -> Element {
                 }
                 if APP_SHOW_SETTINGS_MODAL() {
                     SettingsModal {}
+                }
+                if let Some(tooltip) = APP_TOOLTIP() {
+                    div {
+                        class: "app__tooltip-layer",
+                        div {
+                            class: "app__tooltip",
+                            style: format!("left: {:.0}px; top: {:.0}px;", tooltip.x, tooltip.y),
+                            "{tooltip.label}"
+                        }
+                    }
                 }
             }
             StatusBar {}
