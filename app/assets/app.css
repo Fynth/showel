@@ -2984,6 +2984,118 @@ select.input:focus-visible {
   color: var(--color-text);
 }
 
+.agent-panel__message-markdown {
+  display: grid;
+  gap: 8px;
+  white-space: normal;
+}
+
+.agent-panel__message-markdown > * {
+  margin: 0;
+}
+
+.agent-panel__message-markdown p,
+.agent-panel__message-markdown ul,
+.agent-panel__message-markdown ol,
+.agent-panel__message-markdown blockquote,
+.agent-panel__message-markdown pre,
+.agent-panel__message-markdown table {
+  margin: 0;
+}
+
+.agent-panel__message-markdown ul,
+.agent-panel__message-markdown ol {
+  padding-left: 18px;
+}
+
+.agent-panel__message-markdown li + li {
+  margin-top: 4px;
+}
+
+.agent-panel__message-markdown h1,
+.agent-panel__message-markdown h2,
+.agent-panel__message-markdown h3,
+.agent-panel__message-markdown h4,
+.agent-panel__message-markdown h5,
+.agent-panel__message-markdown h6 {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.agent-panel__message-markdown h1 {
+  font-size: 1.15rem;
+}
+
+.agent-panel__message-markdown h2 {
+  font-size: 1.05rem;
+}
+
+.agent-panel__message-markdown h3,
+.agent-panel__message-markdown h4,
+.agent-panel__message-markdown h5,
+.agent-panel__message-markdown h6 {
+  font-size: 1rem;
+}
+
+.agent-panel__message-markdown a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.agent-panel__message-markdown blockquote {
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  color: var(--color-text-muted);
+}
+
+.agent-panel__message-markdown code {
+  display: inline;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 76%, black 24%);
+  color: color-mix(in srgb, var(--color-text) 96%, white 4%);
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 0.95em;
+}
+
+.agent-panel__message-markdown pre {
+  overflow-x: auto;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 82%, black 18%);
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+}
+
+.agent-panel__message-markdown pre code {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.agent-panel__message-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.agent-panel__message-markdown th,
+.agent-panel__message-markdown td {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 74%, var(--color-border));
+  text-align: left;
+}
+
+.agent-panel__message-markdown th {
+  color: var(--color-text);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--color-surface-contrast, var(--color-panel-2)) 84%, transparent);
+}
+
 .agent-panel__inline-code {
   display: inline;
   padding: 1px 5px;

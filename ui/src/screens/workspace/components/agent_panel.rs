@@ -5,12 +5,14 @@ mod registry_card;
 #[path = "agent_panel/state.rs"]
 mod state;
 
+use ammonia::clean as sanitize_html;
 use dioxus::prelude::*;
 use explorer::load_connection_tree;
 use models::{
     AcpMessageKind, AcpPanelState, AcpUiMessage, ChatArtifact, ChatThreadSummary,
     DatabaseConnection, ExplorerNode, QueryTabState, TablePreviewSource,
 };
+use pulldown_cmark::{Event, Options, Parser, html};
 use query::preview_source_for_sql;
 use std::collections::BTreeSet;
 
@@ -1194,21 +1196,15 @@ enum MessageChunk {
     },
 }
 
-#[derive(Clone, PartialEq, Eq)]
-enum TextSegment {
-    Plain(String),
-    InlineCode(String),
-}
-
 fn parse_message_chunks(text: &str) -> Vec<MessageChunk> {
     let mut chunks = Vec::new();
     let mut cursor = 0;
 
     while let Some(start_offset) = text[cursor..].find("```") {
         let start = cursor + start_offset;
-        let before = text[cursor..start].trim();
-        if !before.is_empty() {
-            chunks.push(MessageChunk::Text(before.to_string()));
+        let before = &text[cursor..start];
+        if !before.trim().is_empty() {
+            chunks.push(MessageChunk::Text(trim_message_chunk(before)));
         }
 
         let fence_meta_start = start + 3;
@@ -1234,55 +1230,39 @@ fn parse_message_chunks(text: &str) -> Vec<MessageChunk> {
         cursor = code_end + 3;
     }
 
-    let remaining = text[cursor..].trim();
-    if !remaining.is_empty() {
-        chunks.push(MessageChunk::Text(remaining.to_string()));
+    let remaining = &text[cursor..];
+    if !remaining.trim().is_empty() {
+        chunks.push(MessageChunk::Text(trim_message_chunk(remaining)));
     }
 
     if chunks.is_empty() && !text.trim().is_empty() {
-        chunks.push(MessageChunk::Text(text.trim().to_string()));
+        chunks.push(MessageChunk::Text(trim_message_chunk(text)));
     }
 
     chunks
 }
 
-fn parse_inline_code_segments(text: &str) -> Vec<TextSegment> {
-    let mut segments = Vec::new();
-    let mut cursor = 0;
+fn trim_message_chunk(text: &str) -> String {
+    text.trim_matches(|character| matches!(character, '\n' | '\r'))
+        .to_string()
+}
 
-    while let Some(start_offset) = text[cursor..].find('`') {
-        let start = cursor + start_offset;
-        if start > cursor {
-            segments.push(TextSegment::Plain(text[cursor..start].to_string()));
-        }
+fn render_message_markdown_html(text: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_SMART_PUNCTUATION);
 
-        let code_start = start + 1;
-        let Some(end_offset) = text[code_start..].find('`') else {
-            segments.push(TextSegment::Plain(text[start..].to_string()));
-            cursor = text.len();
-            break;
-        };
-        let code_end = code_start + end_offset;
-        let code = &text[code_start..code_end];
+    let parser = Parser::new_ext(text, options).map(|event| match event {
+        Event::SoftBreak => Event::HardBreak,
+        other => other,
+    });
 
-        if code.is_empty() {
-            segments.push(TextSegment::Plain("``".to_string()));
-        } else {
-            segments.push(TextSegment::InlineCode(code.to_string()));
-        }
+    let mut rendered_html = String::new();
+    html::push_html(&mut rendered_html, parser);
 
-        cursor = code_end + 1;
-    }
-
-    if cursor < text.len() {
-        segments.push(TextSegment::Plain(text[cursor..].to_string()));
-    }
-
-    if segments.is_empty() {
-        segments.push(TextSegment::Plain(text.to_string()));
-    }
-
-    segments
+    sanitize_html(&rendered_html)
 }
 
 fn code_chunk_sql(language: Option<&str>, code: &str) -> Option<String> {
@@ -1603,7 +1583,7 @@ mod tests {
         artifact_title, build_explain_sql, build_thread_meta, clickhouse_catalog_contains_source,
         clickhouse_match_is_confident, clickhouse_source_display_name, compact_connection_label,
         compact_header_title, is_visible_message, ranked_clickhouse_source_matches,
-        rewrite_simple_select_source, should_render_message_text,
+        render_message_markdown_html, rewrite_simple_select_source, should_render_message_text,
     };
     use models::{
         AcpMessageKind, AcpOllamaConfig, AcpPanelState, AcpUiMessage, ChatArtifact, ExplorerNode,
@@ -1892,6 +1872,30 @@ mod tests {
             rewrite_simple_select_source(sql, &source, &replacement),
             "SELECT * FROM `dwh_ogs`.`source_statistics_test_debug_buffer`"
         );
+    }
+
+    #[test]
+    fn renders_markdown_emphasis_for_agent_messages() {
+        let html =
+            render_message_markdown_html("**Assumptions:** None - it doesn't query any tables");
+
+        assert!(html.contains("<strong>Assumptions:</strong>"));
+    }
+
+    #[test]
+    fn preserves_inline_code_while_rendering_markdown() {
+        let html = render_message_markdown_html("Run `SELECT 1` against the active connection.");
+
+        assert!(html.contains("<code>SELECT 1</code>"));
+    }
+
+    #[test]
+    fn sanitizes_raw_html_in_markdown_messages() {
+        let html = render_message_markdown_html("hello <script>alert(1)</script> world");
+
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("hello"));
+        assert!(html.contains("world"));
     }
 }
 
@@ -2246,15 +2250,12 @@ pub fn AcpAgentPanel(
                                             if should_render_message_text(&message) {
                                                 for chunk in message_chunks {
                                                     match chunk {
-                                                        MessageChunk::Text(text) => rsx! {
-                                                            p { class: "agent-panel__message-text",
-                                                                for segment in parse_inline_code_segments(&text) {
-                                                                    match segment {
-                                                                        TextSegment::Plain(value) => rsx! { span { "{value}" } },
-                                                                        TextSegment::InlineCode(value) => rsx! {
-                                                                            code { class: "agent-panel__inline-code", "{value}" }
-                                                                        },
-                                                                    }
+                                                        MessageChunk::Text(text) => {
+                                                            let rendered_html = render_message_markdown_html(&text);
+                                                            rsx! {
+                                                                div {
+                                                                    class: "agent-panel__message-text agent-panel__message-markdown",
+                                                                    dangerous_inner_html: rendered_html,
                                                                 }
                                                             }
                                                         },
