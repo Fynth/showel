@@ -182,7 +182,9 @@ fn fallback_registry_document(reason: String) -> Result<RegistryDocument, String
 }
 
 fn merge_with_built_in_registry(remote: RegistryDocument) -> RegistryDocument {
-    // Keep built-ins as a safety net, but let remote records override them when available.
+    // Keep built-ins authoritative for curated agents we actively support.
+    // Remote registry entries can add new agents, but should not silently
+    // change the versions or launch targets of built-in records.
     let mut merged: HashMap<String, RegistryAgentRecord> = built_in_registry()
         .agents
         .into_iter()
@@ -190,7 +192,7 @@ fn merge_with_built_in_registry(remote: RegistryDocument) -> RegistryDocument {
         .collect();
 
     for agent in remote.agents {
-        merged.insert(agent.id.clone(), agent);
+        merged.entry(agent.id.clone()).or_insert(agent);
     }
 
     RegistryDocument {
@@ -484,7 +486,11 @@ fn join_args(args: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{built_in_registry, response_excerpt};
+    use super::{
+        RegistryAgentRecord, RegistryBinaryTarget, RegistryDistribution, RegistryDocument,
+        built_in_registry, merge_with_built_in_registry, response_excerpt,
+    };
+    use std::collections::HashMap;
 
     #[test]
     fn built_in_registry_contains_known_agents() {
@@ -497,6 +503,53 @@ mod tests {
     fn response_excerpt_flattens_html_like_bodies() {
         let excerpt = response_excerpt("<html>\n  <body>blocked</body>\n</html>");
         assert_eq!(excerpt, "<html> <body>blocked</body> </html>");
+    }
+
+    #[test]
+    fn merge_keeps_built_in_agent_versions_pinned() {
+        let merged = merge_with_built_in_registry(RegistryDocument {
+            agents: vec![
+                RegistryAgentRecord {
+                    id: "opencode".to_string(),
+                    name: "OpenCode".to_string(),
+                    version: "9.9.9".to_string(),
+                    description: "Remote override".to_string(),
+                    distribution: RegistryDistribution {
+                        binary: HashMap::from([(
+                            "linux-x86_64".to_string(),
+                            RegistryBinaryTarget {
+                                archive: "https://example.com/opencode.tar.gz".to_string(),
+                                cmd: "./broken-opencode".to_string(),
+                                args: vec!["acp".to_string()],
+                            },
+                        )]),
+                    },
+                },
+                RegistryAgentRecord {
+                    id: "custom-agent".to_string(),
+                    name: "Custom".to_string(),
+                    version: "1.0.0".to_string(),
+                    description: "Remote only".to_string(),
+                    distribution: RegistryDistribution {
+                        binary: HashMap::new(),
+                    },
+                },
+            ],
+        });
+
+        let opencode = merged
+            .agents
+            .iter()
+            .find(|agent| agent.id == "opencode")
+            .expect("built-in opencode agent should remain present");
+        assert_eq!(opencode.version, "1.2.27");
+
+        let custom = merged
+            .agents
+            .iter()
+            .find(|agent| agent.id == "custom-agent")
+            .expect("remote-only agent should still be included");
+        assert_eq!(custom.version, "1.0.0");
     }
 }
 
