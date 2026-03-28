@@ -7,6 +7,7 @@ use url::Url;
 pub enum DatabaseKind {
     Sqlite,
     Postgres,
+    MySql,
     ClickHouse,
 }
 
@@ -42,6 +43,7 @@ impl SshTunnelConfig {
 pub enum DatabaseConnection {
     Sqlite(sqlx::SqlitePool),
     Postgres(sqlx::PgPool),
+    MySql(sqlx::MySqlPool),
     ClickHouse(ClickHouseFormData),
 }
 
@@ -49,6 +51,7 @@ pub enum DatabaseConnection {
 pub enum DatabaseError {
     Sqlite(sqlx::Error),
     Postgres(sqlx::Error),
+    MySql(sqlx::Error),
     ClickHouse(String),
     Tunnel(String),
     UnsupportedDriver(String),
@@ -61,6 +64,17 @@ pub struct SqliteFormData {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PostgresFormData {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub database: String,
+    #[serde(default)]
+    pub ssh_tunnel: Option<SshTunnelConfig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MySqlFormData {
     pub host: String,
     pub port: u16,
     pub username: String,
@@ -104,6 +118,7 @@ impl fmt::Display for DatabaseError {
         match self {
             Self::Sqlite(err) => write!(f, "SQLite error: {err}"),
             Self::Postgres(err) => write!(f, "PostgreSQL error: {err}"),
+            Self::MySql(err) => write!(f, "MySQL error: {err}"),
             Self::ClickHouse(err) => write!(f, "ClickHouse error: {err}"),
             Self::Tunnel(err) => write!(f, "SSH tunnel error: {err}"),
             Self::UnsupportedDriver(err) => write!(f, "{err}"),
@@ -117,6 +132,7 @@ impl Error for DatabaseError {}
 pub enum ConnectionRequest {
     Sqlite(SqliteFormData),
     Postgres(PostgresFormData),
+    MySql(MySqlFormData),
     ClickHouse(ClickHouseFormData),
 }
 
@@ -131,6 +147,7 @@ impl ConnectionRequest {
         match self {
             ConnectionRequest::Sqlite(_) => DatabaseKind::Sqlite,
             ConnectionRequest::Postgres(_) => DatabaseKind::Postgres,
+            ConnectionRequest::MySql(_) => DatabaseKind::MySql,
             ConnectionRequest::ClickHouse(_) => DatabaseKind::ClickHouse,
         }
     }
@@ -142,6 +159,17 @@ impl ConnectionRequest {
                 let endpoint = normalized_postgres_endpoint(data);
                 let mut label = format!(
                     "PostgreSQL · {}@{}:{}/{}",
+                    endpoint.username, endpoint.host, endpoint.port, endpoint.database
+                );
+                if let Some(tunnel) = data.ssh_tunnel.as_ref().filter(|cfg| cfg.is_configured()) {
+                    label.push_str(&format!(" via SSH {}", tunnel.display_name()));
+                }
+                label
+            }
+            ConnectionRequest::MySql(data) => {
+                let endpoint = normalized_mysql_endpoint(data);
+                let mut label = format!(
+                    "MySQL · {}@{}:{}/{}",
                     endpoint.username, endpoint.host, endpoint.port, endpoint.database
                 );
                 if let Some(tunnel) = data.ssh_tunnel.as_ref().filter(|cfg| cfg.is_configured()) {
@@ -173,6 +201,7 @@ impl ConnectionRequest {
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| data.path.trim().to_string()),
             ConnectionRequest::Postgres(data) => normalized_postgres_endpoint(data).database,
+            ConnectionRequest::MySql(data) => normalized_mysql_endpoint(data).database,
             ConnectionRequest::ClickHouse(data) => data.effective_database().to_string(),
         }
     }
@@ -184,6 +213,17 @@ impl ConnectionRequest {
                 let endpoint = normalized_postgres_endpoint(data);
                 format!(
                     "postgres:{}@{}:{}/{}{}",
+                    endpoint.username,
+                    endpoint.host.to_ascii_lowercase(),
+                    endpoint.port,
+                    endpoint.database,
+                    ssh_identity_suffix(data.ssh_tunnel.as_ref())
+                )
+            }
+            ConnectionRequest::MySql(data) => {
+                let endpoint = normalized_mysql_endpoint(data);
+                format!(
+                    "mysql:{}@{}:{}/{}{}",
                     endpoint.username,
                     endpoint.host.to_ascii_lowercase(),
                     endpoint.port,
@@ -210,6 +250,14 @@ struct NormalizedPostgresEndpoint {
     database: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct NormalizedMySqlEndpoint {
+    host: String,
+    port: u16,
+    username: String,
+    database: String,
+}
+
 fn normalized_postgres_endpoint(data: &PostgresFormData) -> NormalizedPostgresEndpoint {
     if let Some(endpoint) = parsed_postgres_dsn(data.host.trim(), &data.username, &data.database) {
         return endpoint;
@@ -220,6 +268,23 @@ fn normalized_postgres_endpoint(data: &PostgresFormData) -> NormalizedPostgresEn
     let username = normalized_postgres_username(&data.username);
     let database = normalized_postgres_database(&data.database, &username);
     NormalizedPostgresEndpoint {
+        host,
+        port,
+        username,
+        database,
+    }
+}
+
+fn normalized_mysql_endpoint(data: &MySqlFormData) -> NormalizedMySqlEndpoint {
+    if let Some(endpoint) = parsed_mysql_dsn(data.host.trim(), &data.username, &data.database) {
+        return endpoint;
+    }
+
+    let host = normalized_mysql_host(&data.host);
+    let port = if data.port == 0 { 3306 } else { data.port };
+    let username = normalized_mysql_username(&data.username);
+    let database = normalized_mysql_database(&data.database);
+    NormalizedMySqlEndpoint {
         host,
         port,
         username,
@@ -241,6 +306,20 @@ fn normalized_postgres_host(host: &str) -> String {
     }
 }
 
+fn looks_like_mysql_dsn(value: &str) -> bool {
+    let value = value.trim().to_ascii_lowercase();
+    value.starts_with("mysql://") || value.starts_with("mariadb://")
+}
+
+fn normalized_mysql_host(host: &str) -> String {
+    let host = host.trim();
+    if host.is_empty() {
+        "localhost".to_string()
+    } else {
+        host.to_string()
+    }
+}
+
 fn normalized_postgres_username(username: &str) -> String {
     let username = username.trim();
     if username.is_empty() {
@@ -250,10 +329,28 @@ fn normalized_postgres_username(username: &str) -> String {
     }
 }
 
+fn normalized_mysql_username(username: &str) -> String {
+    let username = username.trim();
+    if username.is_empty() {
+        "root".to_string()
+    } else {
+        username.to_string()
+    }
+}
+
 fn normalized_postgres_database(database: &str, username: &str) -> String {
     let database = database.trim();
     if database.is_empty() {
         username.to_string()
+    } else {
+        database.to_string()
+    }
+}
+
+fn normalized_mysql_database(database: &str) -> String {
+    let database = database.trim();
+    if database.is_empty() {
+        "mysql".to_string()
     } else {
         database.to_string()
     }
@@ -283,6 +380,37 @@ fn parsed_postgres_dsn(
         .unwrap_or_else(|| normalized_postgres_database(fallback_database, &username));
 
     Some(NormalizedPostgresEndpoint {
+        host,
+        port,
+        username,
+        database,
+    })
+}
+
+fn parsed_mysql_dsn(
+    value: &str,
+    fallback_username: &str,
+    fallback_database: &str,
+) -> Option<NormalizedMySqlEndpoint> {
+    if !looks_like_mysql_dsn(value) {
+        return None;
+    }
+
+    let url = Url::parse(value).ok()?;
+    let host = url.host_str()?.to_string();
+    let port = url.port().unwrap_or(3306);
+    let username = if url.username().is_empty() {
+        normalized_mysql_username(fallback_username)
+    } else {
+        url.username().to_string()
+    };
+    let database = url
+        .path_segments()
+        .and_then(|mut segments| segments.find(|segment| !segment.is_empty()))
+        .map(str::to_string)
+        .unwrap_or_else(|| normalized_mysql_database(fallback_database));
+
+    Some(NormalizedMySqlEndpoint {
         host,
         port,
         username,
@@ -378,7 +506,8 @@ fn ssh_identity_suffix(config: Option<&SshTunnelConfig>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClickHouseFormData, ConnectionRequest, PostgresFormData, SqliteFormData, SshTunnelConfig,
+        ClickHouseFormData, ConnectionRequest, MySqlFormData, PostgresFormData, SqliteFormData,
+        SshTunnelConfig,
     };
 
     #[test]
@@ -456,5 +585,25 @@ mod tests {
 
         assert_eq!(request.display_name(), "SQLite · /tmp/app.db");
         assert_eq!(request.identity_key(), "sqlite:/tmp/app.db");
+    }
+
+    #[test]
+    fn mysql_dsn_display_name_redacts_password() {
+        let request = ConnectionRequest::MySql(MySqlFormData {
+            host: "mysql://alice:super-secret@db.example.com:3307/app".to_string(),
+            port: 3306,
+            username: String::new(),
+            password: "ignored".to_string(),
+            database: String::new(),
+            ssh_tunnel: None,
+        });
+
+        assert_eq!(
+            request.display_name(),
+            "MySQL · alice@db.example.com:3307/app"
+        );
+        assert_eq!(request.short_name(), "app");
+        assert!(!request.display_name().contains("super-secret"));
+        assert!(!request.identity_key().contains("super-secret"));
     }
 }
