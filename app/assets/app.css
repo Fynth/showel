@@ -56,48 +56,48 @@ textarea {
 
 .theme-dark {
   color-scheme: dark;
-  --color-bg: #11111b;
-  --color-surface-shell: #11111b;
-  --color-surface-sidebar: #181825;
-  --color-surface-main: #1e1e2e;
-  --color-surface-inspector: #181825;
-  --color-surface-elevated: #313244;
-  --color-surface-contrast: #45475a;
-  --color-panel: #1e1e2e;
-  --color-panel-2: #313244;
-  --color-panel-3: #585b70;
-  --color-border: #45475a;
-  --color-border-strong: #585b70;
+  --color-bg: #0f1119;
+  --color-surface-shell: #0f1119;
+  --color-surface-sidebar: #141625;
+  --color-surface-main: #171924;
+  --color-surface-inspector: #141625;
+  --color-surface-elevated: #222536;
+  --color-surface-contrast: #2c3145;
+  --color-panel: #171924;
+  --color-panel-2: #222536;
+  --color-panel-3: #3c415c;
+  --color-border: #343953;
+  --color-border-strong: #474d69;
   --color-text: #cdd6f4;
   --color-text-muted: #a6adc8;
   --color-text-dim: #7f849c;
-  --color-primary: #cba6f7;
+  --color-primary: #89b4fa;
   --color-primary-hover: #b4befe;
-  --color-primary-active: #b89cf0;
-  --color-info: #89b4fa;
+  --color-primary-active: #74c7ec;
+  --color-info: #74c7ec;
   --color-success: #a6e3a1;
   --color-danger: #f38ba8;
   --color-warning: #f9e2af;
-  --color-focus: rgba(203, 166, 247, 0.32);
+  --color-focus: rgba(137, 180, 250, 0.32);
   --color-hover: rgba(255, 255, 255, 0.045);
-  --color-active: rgba(203, 166, 247, 0.16);
-  --color-backdrop: rgba(17, 17, 27, 0.76);
-  --editor-bg: #181825;
+  --color-active: rgba(137, 180, 250, 0.16);
+  --color-backdrop: rgba(10, 11, 18, 0.82);
+  --editor-bg: #10121b;
   --editor-overlay: rgba(255, 255, 255, 0.03);
-  --editor-line: rgba(147, 153, 178, 0.16);
+  --editor-line: rgba(137, 180, 250, 0.12);
   --editor-token-plain: #cdd6f4;
-  --editor-token-keyword: #cba6f7;
+  --editor-token-keyword: #89b4fa;
   --editor-token-string: #a6e3a1;
   --editor-token-number: #fab387;
   --editor-token-comment: #6c7086;
-  --editor-token-function: #89b4fa;
+  --editor-token-function: #b4befe;
   --editor-token-type: #f9e2af;
   --editor-token-identifier: #bac2de;
-  --editor-token-attribute: #f5c2e7;
+  --editor-token-attribute: #74c7ec;
   --editor-token-operator: #89dceb;
   --editor-token-punctuation: #9399b2;
-  --grid-header: #313244;
-  --grid-row-hover: rgba(203, 166, 247, 0.08);
+  --grid-header: #222536;
+  --grid-row-hover: rgba(137, 180, 250, 0.08);
 }
 
 .theme-light {
@@ -154,7 +154,7 @@ textarea {
   min-height: 100dvh;
   display: grid;
   grid-template-rows: minmax(44px, auto) 1fr minmax(26px, auto);
-  background: radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 28%), radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 9%, transparent), transparent 24%), linear-gradient(180deg, color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 96%, black 4%), var(--color-surface-shell, var(--color-bg)));
+  background: radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 28%), radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 9%, transparent), transparent 24%), linear-gradient(180deg, color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 90%, black 10%), var(--color-surface-shell, var(--color-bg)));
   color: var(--color-text);
   overflow: hidden;
   isolation: isolate;
@@ -220,7 +220,7 @@ textarea {
   grid-template-columns: minmax(220px, var(--workspace-sidebar-width, clamp(240px, 21vw, 320px))) 10px minmax(0, 1fr);
   gap: 8px;
   padding: 8px;
-  background: radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 24%), radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 6%, transparent), transparent 22%), linear-gradient(180deg, color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 96%, black 4%), var(--color-surface-shell, var(--color-bg)));
+  background: radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 24%), radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 6%, transparent), transparent 22%), linear-gradient(180deg, color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 90%, black 10%), var(--color-surface-shell, var(--color-bg)));
   overflow: hidden;
 }
 

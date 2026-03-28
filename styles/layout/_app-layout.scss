@@ -13,7 +13,7 @@
     radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 9%, transparent), transparent 24%),
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 96%, black 4%),
+      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 90%, black 10%),
       var(--color-surface-shell, var(--color-bg))
     );
   color: var(--color-text);
