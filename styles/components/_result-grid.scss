@@ -8,19 +8,22 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: $radius-md;
   background:
     linear-gradient(
       180deg,
       color-mix(
         in srgb,
-        var(--color-surface-contrast, var(--color-panel-2)) 28%,
+        var(--color-surface-contrast, var(--color-panel-2)) 30%,
         transparent
       ),
       transparent 120px
     ),
     var(--color-surface-elevated, var(--color-panel));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    0 12px 22px rgba(8, 10, 14, 0.1);
 }
 
 .results__layout {
@@ -49,12 +52,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 8px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(
     in srgb,
-    var(--color-surface-contrast, var(--color-panel-2)) 78%,
+    var(--color-surface-contrast, var(--color-panel-2)) 76%,
     transparent
   );
 }
@@ -71,7 +74,7 @@
 .results__toolbar-chip {
   flex-shrink: 0;
   max-width: min(240px, 30vw);
-  padding: 1px 6px;
+  padding: 3px 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: 999px;
   color: var(--color-text-muted);
@@ -82,7 +85,7 @@
   text-overflow: ellipsis;
   background: color-mix(
     in srgb,
-    var(--color-surface-main, var(--color-panel)) 82%,
+    var(--color-surface-main, var(--color-panel)) 88%,
     transparent
   );
 }
@@ -109,12 +112,12 @@
 .results__filters {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 6px;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(
     in srgb,
-    var(--color-surface-contrast, var(--color-panel-2)) 78%,
+    var(--color-surface-contrast, var(--color-panel-2)) 80%,
     transparent
   );
 }
@@ -166,7 +169,7 @@
 }
 
 .results__summary {
-  padding: 6px;
+  padding: 8px 10px;
   color: var(--color-text-muted);
 }
 
@@ -205,7 +208,7 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 0 3px 3px;
+  padding: 0 6px 6px;
   scrollbar-gutter: stable both-edges;
   overscroll-behavior: contain;
   background:
@@ -225,7 +228,7 @@
   align-items: center;
   justify-content: center;
   min-height: 30px;
-  padding: 0 6px 6px;
+  padding: 0 10px 10px;
   color: var(--color-text-muted);
   font-size: $font-size-sm;
   border-top: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
@@ -244,13 +247,15 @@
   font-size: $font-size-sm;
   background: color-mix(
     in srgb,
-    var(--color-surface-main, var(--color-panel)) 72%,
+    var(--color-surface-main, var(--color-panel)) 78%,
     var(--color-surface-elevated, var(--color-panel-2))
   );
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: $radius-md;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 14px 28px rgba(2, 8, 18, 0.08);
 }
 
 .results__head {
@@ -287,7 +292,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   border: 0;
   background: transparent;
   color: var(--color-text);
@@ -298,7 +303,7 @@
 }
 
 .results__sort-button:hover {
-  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
 }
 
 .results__sort-button--active {
@@ -322,29 +327,29 @@
 .results__row:nth-child(even) {
   background: color-mix(
     in srgb,
-    var(--color-surface-contrast, var(--color-panel-2)) 30%,
+    var(--color-surface-contrast, var(--color-panel-2)) 32%,
     transparent
   );
 }
 
 .results__row--selected {
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 
 .results__row--selected:hover {
-  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
-}
-
-.results__row--draft {
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
+.results__row--draft {
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+}
+
 .results__row--draft:hover {
-  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
 }
 
 .results__cell {
-  padding: 6px;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--color-border);
   border-right: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   white-space: nowrap;
@@ -372,7 +377,7 @@
 }
 
 .results__cell--pending {
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 
 .results__cell-input {
@@ -401,12 +406,12 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-primary) 8%, transparent),
+      color-mix(in srgb, var(--color-primary) 10%, transparent),
       transparent 140px
     ),
     color-mix(
       in srgb,
-      var(--color-surface-inspector, var(--color-panel-2)) 82%,
+      var(--color-surface-inspector, var(--color-panel-2)) 86%,
       transparent
     );
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.02);
@@ -416,8 +421,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 6px;
-  padding: 6px;
+  gap: 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -442,7 +447,7 @@
   display: flex;
   align-items: center;
   gap: $spacing-xs;
-  padding: 3px 6px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -457,20 +462,20 @@
 .results__details-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 4px 6px 6px;
+  gap: 8px;
+  padding: 8px 6px 8px 8px;
 }
 
 .results__details-field {
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
-  padding: 5px;
+  padding: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: $radius-md;
   background: color-mix(
     in srgb,
-    var(--color-surface-elevated, var(--color-panel)) 88%,
+    var(--color-surface-elevated, var(--color-panel)) 92%,
     transparent
   );
 }

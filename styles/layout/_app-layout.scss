@@ -1,13 +1,21 @@
 @use "../base/tokens" as *;
 
 .app {
+  position: relative;
   height: 100vh;
   min-height: 100vh;
   height: 100dvh;
   min-height: 100dvh;
   display: grid;
   grid-template-rows: minmax($toolbar-height, auto) 1fr minmax($statusbar-height, auto);
-  background: var(--color-surface-shell, var(--color-bg));
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 28%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 9%, transparent), transparent 24%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 96%, black 4%),
+      var(--color-surface-shell, var(--color-bg))
+    );
   color: var(--color-text);
   overflow: hidden;
   isolation: isolate;
@@ -34,7 +42,7 @@
   place-items: center;
   padding: clamp($spacing-sm, 2.5vw, $spacing-xl);
   background: var(--color-backdrop);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(16px) saturate(105%);
 }
 
 .app__tooltip-layer {
@@ -49,15 +57,20 @@
   left: 0;
   top: 0;
   max-width: min(280px, calc(100vw - 24px));
-  padding: 5px 8px;
-  border: 1px solid var(--color-border-strong);
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border-strong));
   border-radius: $radius-sm;
-  background: color-mix(in srgb, var(--editor-bg) 94%, black);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--editor-bg) 96%, white 2%),
+      color-mix(in srgb, var(--editor-bg) 94%, black 4%)
+    );
   color: var(--color-text);
   font-size: $font-size-xs;
   line-height: 1.2;
   white-space: nowrap;
-  box-shadow: $shadow-md;
+  box-shadow: 0 14px 36px rgba(2, 10, 24, 0.38);
   transform: translate(-50%, calc(-100% - 12px));
 }
 

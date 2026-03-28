@@ -4,16 +4,18 @@
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 clamp(6px, 1vw, $spacing-sm);
+  gap: 12px;
+  padding: 0 clamp(10px, 1vw, $spacing-md);
   border-bottom: 1px solid var(--color-border);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 94%, white 2%),
-      var(--color-surface-sidebar, var(--color-panel))
+      color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 98%, white 1%),
+      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 18%, var(--color-surface-sidebar, var(--color-panel)))
     );
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.02);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.025),
+    0 8px 22px rgba(8, 10, 14, 0.12);
   min-width: 0;
   overflow: hidden;
 }
@@ -21,14 +23,15 @@
 .toolbar__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .toolbar__logo {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   display: block;
   flex: 0 0 auto;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.14));
 }
 
 .toolbar__logo svg {
@@ -40,7 +43,7 @@
 .toolbar__brand-copy {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
   line-height: 1;
 }
@@ -49,39 +52,51 @@
   color: var(--color-text-dim);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
   line-height: 1;
 }
 
 .toolbar__title {
-  font-size: $font-size-md;
+  font-size: $font-size-lg;
+  font-weight: 600;
   line-height: 1.05;
 }
 
 .toolbar__connection {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 90%, white 1%),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 94%, transparent)
+    );
   color: var(--color-text-muted);
   font-size: $font-size-sm;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .toolbar__connection-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   background: var(--color-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 15%, transparent);
 }
 
 .toolbar__actions {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }

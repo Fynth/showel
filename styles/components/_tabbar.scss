@@ -5,16 +5,16 @@
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  min-height: 34px;
+  min-height: 40px;
   display: flex;
   align-items: center;
-  gap: $spacing-xs;
-  padding: 3px 6px 0;
+  gap: 6px;
+  padding: 8px 10px 0;
   margin-bottom: -1px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 90%, white 2%),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, white 2%),
       var(--color-surface-main, var(--color-panel))
     );
   overflow-x: auto;
@@ -23,11 +23,11 @@
 
 .tabbar__tab,
 .tabbar__add {
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-top-left-radius: $radius-md;
-  border-top-right-radius: $radius-md;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
   color: var(--color-text-muted);
   cursor: pointer;
   @include interactive;
@@ -37,13 +37,18 @@
 .tabbar__tab--active {
   position: relative;
   z-index: 1;
-  background: var(--editor-bg);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--editor-bg) 96%, white 2%),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 10%, var(--editor-bg))
+    );
   border-color: var(--color-border);
   border-bottom-color: transparent;
   color: var(--color-text);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 -8px 18px rgba(0, 0, 0, 0.1);
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 -10px 24px rgba(2, 8, 18, 0.16);
 }
 
 .tabbar__tab {
@@ -52,8 +57,15 @@
   gap: 6px;
   max-width: clamp(140px, 18vw, 220px);
   min-width: 0;
-  background: var(--color-surface-elevated, var(--color-panel-2));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel-2)) 88%, white 2%),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 8%, var(--color-surface-elevated, var(--color-panel-2)))
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 10px 18px rgba(2, 8, 18, 0.08);
 }
 
 .tabbar__copy {
@@ -80,8 +92,8 @@
 
 .tabbar__close {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   margin-right: -4px;
   border-radius: 999px;
   color: var(--color-text-dim);
