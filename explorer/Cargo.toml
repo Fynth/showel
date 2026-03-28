@@ -7,4 +7,4 @@ edition = "2024"
 driver-clickhouse.workspace = true
 models.workspace = true
 serde_json = "1.0.140"
-sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "postgres", "runtime-tokio-rustls"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "postgres", "mysql", "runtime-tokio-rustls"] }

@@ -701,6 +701,9 @@ fn DuplicateTableModal(
                                 DatabaseKind::Postgres => {
                                     "PostgreSQL duplicates the table with LIKE INCLUDING ALL and can optionally copy all rows."
                                 }
+                                DatabaseKind::MySql => {
+                                    "MySQL duplicates the table with CREATE TABLE LIKE and can optionally copy all rows."
+                                }
                                 DatabaseKind::ClickHouse => {
                                     "ClickHouse duplicates the CREATE TABLE definition and can optionally copy all rows with INSERT SELECT."
                                 }
@@ -1359,7 +1362,7 @@ fn table_mutation_confirmation_description(
         TableMutationKind::Truncate => {
             let sql = match kind {
                 DatabaseKind::Sqlite => format!("DELETE FROM {}", source.qualified_name),
-                DatabaseKind::Postgres | DatabaseKind::ClickHouse => {
+                DatabaseKind::Postgres | DatabaseKind::MySql | DatabaseKind::ClickHouse => {
                     format!("TRUNCATE TABLE {}", source.qualified_name)
                 }
             };
@@ -1440,6 +1443,7 @@ fn default_schema_name(kind: DatabaseKind) -> String {
     match kind {
         DatabaseKind::Sqlite => "main".to_string(),
         DatabaseKind::Postgres => "public".to_string(),
+        DatabaseKind::MySql => "mysql".to_string(),
         DatabaseKind::ClickHouse => "default".to_string(),
     }
 }
@@ -1505,6 +1509,14 @@ fn duplicate_table_preview_sql(
                 format!("{create_sql};")
             }
         }
+        DatabaseKind::MySql => {
+            let create_sql = format!("CREATE TABLE {target_name} LIKE {source_name}");
+            if draft.copy_data {
+                format!("{create_sql};\nINSERT INTO {target_name} SELECT * FROM {source_name};")
+            } else {
+                format!("{create_sql};")
+            }
+        }
         DatabaseKind::ClickHouse => {
             let create_sql =
                 format!("CREATE TABLE {target_name} /* definition copied from {source_name} */");
@@ -1524,7 +1536,7 @@ fn duplicated_qualified_name(
 ) -> String {
     match kind {
         DatabaseKind::Sqlite => quote_sql_identifier(table_name.trim()),
-        DatabaseKind::Postgres | DatabaseKind::ClickHouse => {
+        DatabaseKind::Postgres | DatabaseKind::MySql | DatabaseKind::ClickHouse => {
             quoted_table_name_preview(kind, source.schema.as_deref(), table_name.trim())
         }
     }
@@ -1584,6 +1596,35 @@ fn default_create_table_columns(kind: DatabaseKind) -> Vec<CreateTableColumnDraf
                 name: "created_at".to_string(),
                 data_type: "TIMESTAMPTZ".to_string(),
                 default_value: "now()".to_string(),
+                not_null: true,
+                key: false,
+                unique: false,
+                auto_increment: false,
+            },
+        ],
+        DatabaseKind::MySql => vec![
+            CreateTableColumnDraft {
+                name: "id".to_string(),
+                data_type: "BIGINT".to_string(),
+                default_value: String::new(),
+                not_null: true,
+                key: true,
+                unique: false,
+                auto_increment: true,
+            },
+            CreateTableColumnDraft {
+                name: "name".to_string(),
+                data_type: "VARCHAR(255)".to_string(),
+                default_value: String::new(),
+                not_null: true,
+                key: false,
+                unique: false,
+                auto_increment: false,
+            },
+            CreateTableColumnDraft {
+                name: "created_at".to_string(),
+                data_type: "TIMESTAMP".to_string(),
+                default_value: "CURRENT_TIMESTAMP".to_string(),
                 not_null: true,
                 key: false,
                 unique: false,
@@ -1650,6 +1691,13 @@ fn create_table_default_type(kind: DatabaseKind, is_identity: bool) -> &'static 
                 "TEXT"
             }
         }
+        DatabaseKind::MySql => {
+            if is_identity {
+                "BIGINT"
+            } else {
+                "VARCHAR(255)"
+            }
+        }
         DatabaseKind::ClickHouse => {
             if is_identity {
                 "UInt64"
@@ -1666,6 +1714,8 @@ fn create_table_type_placeholder(kind: DatabaseKind, index: usize) -> &'static s
         (DatabaseKind::Sqlite, _) => "TEXT",
         (DatabaseKind::Postgres, 0) => "BIGINT",
         (DatabaseKind::Postgres, _) => "TEXT",
+        (DatabaseKind::MySql, 0) => "BIGINT",
+        (DatabaseKind::MySql, _) => "VARCHAR(255)",
         (DatabaseKind::ClickHouse, 0) => "UInt64",
         (DatabaseKind::ClickHouse, _) => "String",
     }
@@ -1691,6 +1741,24 @@ fn create_table_type_options(kind: DatabaseKind) -> &'static [&'static str] {
             "DATE",
             "TIMESTAMPTZ",
             "BYTEA",
+        ],
+        DatabaseKind::MySql => &[
+            "TINYINT",
+            "SMALLINT",
+            "INT",
+            "BIGINT",
+            "DECIMAL(18,2)",
+            "FLOAT",
+            "DOUBLE",
+            "BOOLEAN",
+            "VARCHAR(255)",
+            "TEXT",
+            "JSON",
+            "DATE",
+            "DATETIME",
+            "TIMESTAMP",
+            "BLOB",
+            "UUID",
         ],
         DatabaseKind::ClickHouse => &[
             "Int32",
@@ -1745,6 +1813,7 @@ fn create_table_default_placeholder(kind: DatabaseKind, index: usize) -> &'stati
     match (kind, index) {
         (DatabaseKind::Sqlite, 2) => "CURRENT_TIMESTAMP",
         (DatabaseKind::Postgres, 2) => "now()",
+        (DatabaseKind::MySql, 2) => "CURRENT_TIMESTAMP",
         (DatabaseKind::ClickHouse, 2) => "now()",
         _ => "Optional expression",
     }
@@ -1753,14 +1822,14 @@ fn create_table_default_placeholder(kind: DatabaseKind, index: usize) -> &'stati
 fn column_required_label(kind: DatabaseKind) -> &'static str {
     match kind {
         DatabaseKind::ClickHouse => "Required",
-        DatabaseKind::Sqlite | DatabaseKind::Postgres => "Not null",
+        DatabaseKind::Sqlite | DatabaseKind::Postgres | DatabaseKind::MySql => "Not null",
     }
 }
 
 fn column_key_label(kind: DatabaseKind) -> &'static str {
     match kind {
         DatabaseKind::ClickHouse => "Sort key",
-        DatabaseKind::Sqlite | DatabaseKind::Postgres => "Primary key",
+        DatabaseKind::Sqlite | DatabaseKind::Postgres | DatabaseKind::MySql => "Primary key",
     }
 }
 
@@ -1768,6 +1837,7 @@ fn column_auto_increment_label(kind: DatabaseKind) -> &'static str {
     match kind {
         DatabaseKind::Sqlite => "Auto id",
         DatabaseKind::Postgres => "Identity",
+        DatabaseKind::MySql => "Auto increment",
         DatabaseKind::ClickHouse => "",
     }
 }
@@ -1786,11 +1856,20 @@ fn preview_create_table_columns_sql(
         .map(|column| preview_create_table_column_sql(kind, column, key_count))
         .collect::<Vec<_>>();
 
-    if matches!(kind, DatabaseKind::Sqlite | DatabaseKind::Postgres) && key_count > 1 {
+    if matches!(
+        kind,
+        DatabaseKind::Sqlite | DatabaseKind::Postgres | DatabaseKind::MySql
+    ) && key_count > 1
+    {
         let keys = columns
             .iter()
             .filter(|column| column.key)
-            .map(|column| quote_sql_identifier(preview_column_name(column)))
+            .map(|column| match kind {
+                DatabaseKind::MySql => quote_clickhouse_identifier(preview_column_name(column)),
+                DatabaseKind::Sqlite | DatabaseKind::Postgres | DatabaseKind::ClickHouse => {
+                    quote_sql_identifier(preview_column_name(column))
+                }
+            })
             .collect::<Vec<_>>()
             .join(", ");
         lines.push(format!("PRIMARY KEY ({keys})"));
@@ -1805,7 +1884,9 @@ fn preview_create_table_column_sql(
     key_count: usize,
 ) -> String {
     let name = match kind {
-        DatabaseKind::ClickHouse => quote_clickhouse_identifier(preview_column_name(column)),
+        DatabaseKind::ClickHouse | DatabaseKind::MySql => {
+            quote_clickhouse_identifier(preview_column_name(column))
+        }
         DatabaseKind::Sqlite | DatabaseKind::Postgres => {
             quote_sql_identifier(preview_column_name(column))
         }
@@ -1850,6 +1931,25 @@ fn preview_create_table_column_sql(
             let mut parts = vec![format!("{name} {data_type}")];
             if column.auto_increment {
                 parts.push("GENERATED BY DEFAULT AS IDENTITY".to_string());
+            }
+            if !default_value.is_empty() {
+                parts.push(format!("DEFAULT {default_value}"));
+            }
+            if column.not_null && !(key_count == 1 && column.key) {
+                parts.push("NOT NULL".to_string());
+            }
+            if column.unique && !column.key {
+                parts.push("UNIQUE".to_string());
+            }
+            if key_count == 1 && column.key {
+                parts.push("PRIMARY KEY".to_string());
+            }
+            parts.join(" ")
+        }
+        DatabaseKind::MySql => {
+            let mut parts = vec![format!("{name} {data_type}")];
+            if column.auto_increment {
+                parts.push("AUTO_INCREMENT".to_string());
             }
             if !default_value.is_empty() {
                 parts.push(format!("DEFAULT {default_value}"));
@@ -1928,11 +2028,17 @@ fn resolve_create_table_columns(
         .filter(|column| column.auto_increment)
         .count();
 
-    if matches!(kind, DatabaseKind::Sqlite | DatabaseKind::Postgres) && auto_increment_count > 1 {
+    if matches!(
+        kind,
+        DatabaseKind::Sqlite | DatabaseKind::Postgres | DatabaseKind::MySql
+    ) && auto_increment_count > 1
+    {
         return Err("Only one auto-generated key column is supported.".to_string());
     }
-    if matches!(kind, DatabaseKind::Sqlite | DatabaseKind::Postgres)
-        && auto_increment_count == 1
+    if matches!(
+        kind,
+        DatabaseKind::Sqlite | DatabaseKind::Postgres | DatabaseKind::MySql
+    ) && auto_increment_count == 1
         && key_count != 1
     {
         return Err("Auto-generated keys require exactly one primary key column.".to_string());
@@ -1963,6 +2069,9 @@ fn resolve_create_table_columns(
                 }
                 DatabaseKind::Postgres => {
                     resolve_postgres_create_table_column(column, data_type, key_count)
+                }
+                DatabaseKind::MySql => {
+                    resolve_mysql_create_table_column(column, data_type, key_count)
                 }
                 DatabaseKind::ClickHouse => {
                     resolve_clickhouse_create_table_column(column, data_type)
@@ -2105,6 +2214,56 @@ fn resolve_clickhouse_create_table_column(
     })
 }
 
+fn resolve_mysql_create_table_column(
+    column: &CreateTableColumnDraft,
+    data_type: &str,
+    key_count: usize,
+) -> Result<ResolvedCreateTableColumn, String> {
+    let name = column.name.trim();
+    let default_value = column.default_value.trim();
+    let quoted_name = quote_clickhouse_identifier(name);
+
+    if column.auto_increment && !column.key {
+        return Err(format!(
+            "MySQL auto increment requires {} to be part of the primary key.",
+            name
+        ));
+    }
+    if column.auto_increment && !mysql_identity_type_supported(data_type) {
+        return Err(format!(
+            "MySQL auto increment requires an integer type for {name}."
+        ));
+    }
+    if column.auto_increment && !default_value.is_empty() {
+        return Err(format!(
+            "MySQL auto increment column {name} cannot also define DEFAULT."
+        ));
+    }
+
+    let mut parts = vec![format!("{quoted_name} {data_type}")];
+    if column.auto_increment {
+        parts.push("AUTO_INCREMENT".to_string());
+    }
+    if !default_value.is_empty() {
+        parts.push(format!("DEFAULT {default_value}"));
+    }
+    if column.not_null && !(key_count == 1 && column.key) {
+        parts.push("NOT NULL".to_string());
+    }
+    if column.unique && !column.key {
+        parts.push("UNIQUE".to_string());
+    }
+    if key_count == 1 && column.key {
+        parts.push("PRIMARY KEY".to_string());
+    }
+
+    Ok(ResolvedCreateTableColumn {
+        name: name.to_string(),
+        sql: parts.join(" "),
+        key: column.key,
+    })
+}
+
 fn format_columns_block(lines: Vec<String>) -> String {
     if lines.is_empty() {
         "(\n  -- add at least one column\n)".to_string()
@@ -2192,6 +2351,14 @@ fn quoted_table_name_preview(kind: DatabaseKind, schema: Option<&str>, table_nam
             ),
             None => quote_sql_identifier(table_name),
         },
+        DatabaseKind::MySql => match schema {
+            Some(schema) => format!(
+                "{}.{}",
+                quote_clickhouse_identifier(schema),
+                quote_clickhouse_identifier(table_name)
+            ),
+            None => quote_clickhouse_identifier(table_name),
+        },
         DatabaseKind::ClickHouse => {
             let schema = schema.unwrap_or("default");
             format!(
@@ -2234,11 +2401,18 @@ fn postgres_identity_type_supported(data_type: &str) -> bool {
     )
 }
 
+fn mysql_identity_type_supported(data_type: &str) -> bool {
+    matches!(
+        data_type.trim().to_ascii_lowercase().as_str(),
+        "tinyint" | "smallint" | "mediumint" | "int" | "integer" | "bigint"
+    )
+}
+
 impl ClickHouseEnginePreset {
     fn default_for(kind: DatabaseKind) -> Self {
         match kind {
             DatabaseKind::ClickHouse => Self::MergeTree,
-            DatabaseKind::Sqlite | DatabaseKind::Postgres => Self::Log,
+            DatabaseKind::Sqlite | DatabaseKind::Postgres | DatabaseKind::MySql => Self::Log,
         }
     }
 
@@ -2433,6 +2607,42 @@ mod tests {
     }
 
     #[test]
+    fn builds_mysql_create_table_from_ui_fields() {
+        let draft = CreateTableDraft {
+            schema: "app".to_string(),
+            table_name: "events".to_string(),
+            columns: vec![
+                CreateTableColumnDraft {
+                    name: "id".to_string(),
+                    data_type: "BIGINT".to_string(),
+                    default_value: String::new(),
+                    not_null: true,
+                    key: true,
+                    unique: false,
+                    auto_increment: true,
+                },
+                CreateTableColumnDraft {
+                    name: "name".to_string(),
+                    data_type: "VARCHAR(255)".to_string(),
+                    default_value: String::new(),
+                    not_null: true,
+                    key: false,
+                    unique: false,
+                    auto_increment: false,
+                },
+            ],
+            clickhouse_engine: ClickHouseEnginePreset::Log,
+        };
+
+        let request = build_create_table_request(DatabaseKind::MySql, &draft).expect("request");
+        assert_eq!(
+            request.columns_sql,
+            "(\n`id` BIGINT AUTO_INCREMENT PRIMARY KEY,\n`name` VARCHAR(255) NOT NULL\n)"
+        );
+        assert!(request.clickhouse_engine.is_none());
+    }
+
+    #[test]
     fn previews_clickhouse_engine_from_sort_key_columns() {
         let draft = CreateTableDraft {
             schema: "default".to_string(),
@@ -2490,6 +2700,11 @@ mod tests {
             table_name: "products".to_string(),
             qualified_name: r#""public"."products""#.to_string(),
         };
+        let mysql_source = TablePreviewSource {
+            schema: Some("app".to_string()),
+            table_name: "products".to_string(),
+            qualified_name: "`app`.`products`".to_string(),
+        };
 
         assert_eq!(
             duplicated_qualified_name(&sqlite_source, DatabaseKind::Sqlite, "products_copy"),
@@ -2498,6 +2713,10 @@ mod tests {
         assert_eq!(
             duplicated_qualified_name(&postgres_source, DatabaseKind::Postgres, "products_copy"),
             r#""public"."products_copy""#
+        );
+        assert_eq!(
+            duplicated_qualified_name(&mysql_source, DatabaseKind::MySql, "products_copy"),
+            "`app`.`products_copy`"
         );
     }
 }

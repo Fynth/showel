@@ -1,7 +1,7 @@
 use keyring::{Entry, Error as KeyringError};
 use models::{
-    ClickHouseFormData, ConnectionRequest, PostgresFormData, QueryHistoryItem, SavedConnection,
-    SqliteFormData, SshTunnelConfig,
+    ClickHouseFormData, ConnectionRequest, MySqlFormData, PostgresFormData, QueryHistoryItem,
+    SavedConnection, SqliteFormData, SshTunnelConfig,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -29,11 +29,22 @@ struct PersistedSavedConnection {
 enum PersistedConnectionRequest {
     Sqlite(SqliteFormData),
     Postgres(PostgresConnectionMetadata),
+    MySql(MySqlConnectionMetadata),
     ClickHouse(ClickHouseConnectionMetadata),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct PostgresConnectionMetadata {
+    host: String,
+    port: u16,
+    username: String,
+    database: String,
+    #[serde(default)]
+    ssh_tunnel: Option<SshTunnelConfig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct MySqlConnectionMetadata {
     host: String,
     port: u16,
     username: String,
@@ -267,6 +278,15 @@ fn to_persisted_connection(saved_connection: SavedConnection) -> PersistedSavedC
                 ssh_tunnel: data.ssh_tunnel,
             })
         }
+        ConnectionRequest::MySql(data) => {
+            PersistedConnectionRequest::MySql(MySqlConnectionMetadata {
+                host: data.host,
+                port: data.port,
+                username: data.username,
+                database: data.database,
+                ssh_tunnel: data.ssh_tunnel,
+            })
+        }
         ConnectionRequest::ClickHouse(data) => {
             PersistedConnectionRequest::ClickHouse(ClickHouseConnectionMetadata {
                 host: data.host,
@@ -290,6 +310,9 @@ fn sync_connection_secret(saved_connection: &SavedConnection) -> Result<(), Stri
             delete_connection_secret(&saved_connection.name, &saved_connection.request)?;
         }
         ConnectionRequest::Postgres(data) => {
+            store_connection_secret(saved_connection, &data.password)?;
+        }
+        ConnectionRequest::MySql(data) => {
             store_connection_secret(saved_connection, &data.password)?;
         }
         ConnectionRequest::ClickHouse(data) => {
@@ -416,6 +439,14 @@ fn persisted_request_without_password(request: &PersistedConnectionRequest) -> C
                 ssh_tunnel: data.ssh_tunnel.clone(),
             })
         }
+        PersistedConnectionRequest::MySql(data) => ConnectionRequest::MySql(MySqlFormData {
+            host: data.host.clone(),
+            port: data.port,
+            username: data.username.clone(),
+            password: String::new(),
+            database: data.database.clone(),
+            ssh_tunnel: data.ssh_tunnel.clone(),
+        }),
         PersistedConnectionRequest::ClickHouse(data) => {
             ConnectionRequest::ClickHouse(ClickHouseFormData {
                 host: data.host.clone(),
@@ -445,6 +476,14 @@ fn persisted_request_with_password(
                 ssh_tunnel: data.ssh_tunnel,
             })
         }
+        PersistedConnectionRequest::MySql(data) => ConnectionRequest::MySql(MySqlFormData {
+            host: data.host,
+            port: data.port,
+            username: data.username,
+            password: password.clone().unwrap_or_default(),
+            database: data.database,
+            ssh_tunnel: data.ssh_tunnel,
+        }),
         PersistedConnectionRequest::ClickHouse(data) => {
             ConnectionRequest::ClickHouse(ClickHouseFormData {
                 host: data.host,

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use models::{
-    ClickHouseFormData, ConnectionRequest, DatabaseKind, PostgresFormData, SavedConnection,
-    SqliteFormData, SshTunnelConfig,
+    ClickHouseFormData, ConnectionRequest, DatabaseKind, MySqlFormData, PostgresFormData,
+    SavedConnection, SqliteFormData, SshTunnelConfig,
 };
 use rfd::AsyncFileDialog;
 
@@ -52,6 +52,21 @@ impl RemoteConnectionDraft {
         }
     }
 
+    fn mysql_default() -> Self {
+        Self {
+            host: "localhost".to_string(),
+            port: "3306".to_string(),
+            username: "root".to_string(),
+            password: String::new(),
+            database: "mysql".to_string(),
+            ssh_enabled: false,
+            ssh_host: String::new(),
+            ssh_port: "22".to_string(),
+            ssh_username: String::new(),
+            ssh_private_key_path: String::new(),
+        }
+    }
+
     fn from_postgres_request(request: &ConnectionRequest) -> Self {
         match request {
             ConnectionRequest::Postgres(data) => Self::from_postgres(data),
@@ -63,6 +78,13 @@ impl RemoteConnectionDraft {
         match request {
             ConnectionRequest::ClickHouse(data) => Self::from_clickhouse(data),
             _ => Self::clickhouse_default(),
+        }
+    }
+
+    fn from_mysql_request(request: &ConnectionRequest) -> Self {
+        match request {
+            ConnectionRequest::MySql(data) => Self::from_mysql(data),
+            _ => Self::mysql_default(),
         }
     }
 
@@ -128,6 +150,37 @@ impl RemoteConnectionDraft {
         }
     }
 
+    fn from_mysql(data: &MySqlFormData) -> Self {
+        Self {
+            host: data.host.clone(),
+            port: data.port.to_string(),
+            username: data.username.clone(),
+            password: data.password.clone(),
+            database: data.database.clone(),
+            ssh_enabled: data.ssh_tunnel.is_some(),
+            ssh_host: data
+                .ssh_tunnel
+                .as_ref()
+                .map(|ssh| ssh.host.clone())
+                .unwrap_or_default(),
+            ssh_port: data
+                .ssh_tunnel
+                .as_ref()
+                .map(|ssh| ssh.port.to_string())
+                .unwrap_or_else(|| "22".to_string()),
+            ssh_username: data
+                .ssh_tunnel
+                .as_ref()
+                .map(|ssh| ssh.username.clone())
+                .unwrap_or_default(),
+            ssh_private_key_path: data
+                .ssh_tunnel
+                .as_ref()
+                .map(|ssh| ssh.private_key_path.clone())
+                .unwrap_or_default(),
+        }
+    }
+
     fn ssh_tunnel(&self) -> Option<SshTunnelConfig> {
         if !self.ssh_enabled {
             return None;
@@ -156,6 +209,8 @@ pub fn EditConnectionModal(
     });
     let postgres_draft =
         use_signal(|| RemoteConnectionDraft::from_postgres_request(&saved_connection.request));
+    let mysql_draft =
+        use_signal(|| RemoteConnectionDraft::from_mysql_request(&saved_connection.request));
     let clickhouse_draft =
         use_signal(|| RemoteConnectionDraft::from_clickhouse_request(&saved_connection.request));
     let mut save_status = use_signal(String::new);
@@ -212,6 +267,18 @@ pub fn EditConnectionModal(
                                 ConnectionRequest::Postgres(PostgresFormData {
                                     host: draft.host,
                                     port: draft.port.parse().unwrap_or(5432),
+                                    username: draft.username,
+                                    password: draft.password,
+                                    database: draft.database,
+                                    ssh_tunnel,
+                                })
+                            }
+                            DatabaseKind::MySql => {
+                                let draft = mysql_draft();
+                                let ssh_tunnel = draft.ssh_tunnel();
+                                ConnectionRequest::MySql(MySqlFormData {
+                                    host: draft.host,
+                                    port: draft.port.parse().unwrap_or(3306),
                                     username: draft.username,
                                     password: draft.password,
                                     database: draft.database,
@@ -275,6 +342,13 @@ pub fn EditConnectionModal(
                                 RemoteEditorFields {
                                     draft: postgres_draft,
                                     kind: DatabaseKind::Postgres,
+                                    disabled: save_inflight(),
+                                }
+                            },
+                            DatabaseKind::MySql => rsx! {
+                                RemoteEditorFields {
+                                    draft: mysql_draft,
+                                    kind: DatabaseKind::MySql,
                                     disabled: save_inflight(),
                                 }
                             },
@@ -378,6 +452,13 @@ fn RemoteEditorFields(
                 "postgres",
                 "postgres",
                 "5432",
+            ),
+            DatabaseKind::MySql => (
+                "Host",
+                "localhost or mysql://user:pass@host:3306/db",
+                "root",
+                "mysql",
+                "3306",
             ),
             DatabaseKind::ClickHouse => (
                 "Host",

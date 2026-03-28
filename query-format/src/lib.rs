@@ -29,6 +29,9 @@ pub fn format_sql(kind: Option<DatabaseKind>, sql: &str, settings: &SqlFormatSet
         ),
         dialect: match kind {
             Some(DatabaseKind::Postgres) => Dialect::PostgreSql,
+            Some(DatabaseKind::MySql)
+            | Some(DatabaseKind::Sqlite)
+            | Some(DatabaseKind::ClickHouse) => Dialect::Generic,
             _ => Dialect::Generic,
         },
         ..FormatOptions::default()

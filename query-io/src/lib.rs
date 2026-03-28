@@ -106,6 +106,31 @@ pub async fn import_csv_into_table(
                 .await
                 .map_err(|err| format!("failed to commit PostgreSQL import: {err}"))?;
         }
+        DatabaseConnection::MySql(pool) => {
+            let mut transaction = pool
+                .begin()
+                .await
+                .map_err(|err| format!("failed to start MySQL import transaction: {err}"))?;
+
+            for chunk in import.rows.chunks(IMPORT_BATCH_SIZE) {
+                let sql = build_insert_sql(
+                    &source,
+                    &import.headers,
+                    chunk,
+                    quote_clickhouse_identifier,
+                    sql_literal,
+                );
+                sqlx::query(&sql)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(|err| format!("MySQL import failed: {err}"))?;
+            }
+
+            transaction
+                .commit()
+                .await
+                .map_err(|err| format!("failed to commit MySQL import: {err}"))?;
+        }
         DatabaseConnection::ClickHouse(config) => {
             for chunk in import.rows.chunks(IMPORT_BATCH_SIZE) {
                 let sql = build_insert_sql(

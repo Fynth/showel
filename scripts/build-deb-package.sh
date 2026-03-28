@@ -34,7 +34,7 @@ Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libjavascriptcoregtk-4.1-0, libsoup-3.
 Maintainer: Showel Maintainers <opensource@showel.app>
 Homepage: https://github.com/Fynth/showel
 Description: Fast native desktop database client built with Rust and Dioxus
- Showel is a native desktop database client for SQLite, PostgreSQL, and ClickHouse.
+ Showel is a native desktop database client for SQLite, PostgreSQL, MySQL, and ClickHouse.
  It includes an explorer, SQL editor, result grid, and ACP-powered assistant workflows.
 EOF
 

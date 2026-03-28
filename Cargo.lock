@@ -822,6 +822,7 @@ dependencies = [
  "connection-ssh",
  "database",
  "driver-clickhouse",
+ "driver-mysql",
  "driver-postgres",
  "driver-sqlite",
  "models",
@@ -1940,6 +1941,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "driver-mysql"
+version = "0.1.0"
+dependencies = [
+ "database",
+ "sqlx",
+]
+
+[[package]]
 name = "driver-postgres"
 version = "0.1.0"
 dependencies = [
@@ -1961,6 +1970,7 @@ name = "drivers"
 version = "0.1.0"
 dependencies = [
  "driver-clickhouse",
+ "driver-mysql",
  "driver-postgres",
  "driver-sqlite",
 ]

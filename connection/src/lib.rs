@@ -1,6 +1,7 @@
 use connection_ssh::{open_ssh_tunnel, register_ssh_tunnel};
 use database::DatabaseDriver;
 use driver_clickhouse::ClickHouseDriver;
+use driver_mysql::{MySqlConfig, MySqlDriver};
 use driver_postgres::{PgConfig, PgDriver};
 use driver_sqlite::SqliteDriver;
 use models::{ClickHouseFormData, ConnectionRequest, DatabaseConnection, DatabaseError};
@@ -74,6 +75,58 @@ pub async fn connect_to_db(
 
             result
         }
+        ConnectionRequest::MySql(mut data) => {
+            let tunnel = if let Some(config) = data.ssh_tunnel.as_ref() {
+                if !config.is_configured() {
+                    return Err(DatabaseError::Tunnel(
+                        "SSH tunnel is enabled, but SSH host or username is empty".to_string(),
+                    ));
+                }
+
+                if looks_like_mysql_dsn(&data.host) {
+                    return Err(DatabaseError::Tunnel(
+                        "SSH tunnel is not supported with MySQL DSN input. Use host and port fields.".to_string(),
+                    ));
+                }
+
+                let remote_host = normalize_mysql_host(&data.host);
+                let remote_port = if data.port == 0 { 3306 } else { data.port };
+                let tunnel = open_ssh_tunnel(config, &remote_host, remote_port)
+                    .await
+                    .map_err(DatabaseError::Tunnel)?;
+                data.host = "127.0.0.1".to_string();
+                data.port = tunnel.local_port;
+                Some(tunnel)
+            } else {
+                None
+            };
+
+            let connect_mysql = || async {
+                let config = MySqlConfig {
+                    host: data.host.clone(),
+                    port: data.port,
+                    username: data.username.clone(),
+                    password: data.password.clone(),
+                    database: data.database.clone(),
+                };
+                MySqlDriver::connect(config)
+                    .await
+                    .map_err(DatabaseError::MySql)
+                    .map(DatabaseConnection::MySql)
+            };
+
+            let result = connect_mysql().await;
+
+            if let Some(tunnel) = tunnel {
+                if result.is_ok() {
+                    register_ssh_tunnel(session_key, tunnel);
+                } else {
+                    release_ssh_tunnel(&session_key);
+                }
+            }
+
+            result
+        }
         ConnectionRequest::ClickHouse(mut data) => {
             let tunnel = if let Some(config) = data.ssh_tunnel.as_ref() {
                 if !config.is_configured() {
@@ -123,6 +176,20 @@ fn looks_like_postgres_dsn(value: &str) -> bool {
 }
 
 fn normalize_postgres_host(host: &str) -> String {
+    let host = host.trim();
+    if host.is_empty() {
+        "localhost".to_string()
+    } else {
+        host.to_string()
+    }
+}
+
+fn looks_like_mysql_dsn(value: &str) -> bool {
+    let value = value.trim().to_ascii_lowercase();
+    value.starts_with("mysql://") || value.starts_with("mariadb://")
+}
+
+fn normalize_mysql_host(host: &str) -> String {
     let host = host.trim();
     if host.is_empty() {
         "localhost".to_string()

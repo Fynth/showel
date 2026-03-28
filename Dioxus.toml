@@ -21,7 +21,7 @@ publisher = "Showel"
 category = "DeveloperTool"
 short_description = "Fast native desktop database client built with Rust and Dioxus."
 long_description = """
-Showel is a lightweight native desktop database client for SQLite, PostgreSQL, and ClickHouse.
+Showel is a lightweight native desktop database client for SQLite, PostgreSQL, MySQL, and ClickHouse.
 """
 resources = []
 

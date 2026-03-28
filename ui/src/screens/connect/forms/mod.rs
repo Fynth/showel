@@ -1,9 +1,11 @@
 mod clickhouse;
+mod mysql;
 mod postgres;
 mod sqlite;
 mod ssh_tunnel;
 
 pub use clickhouse::ClickHouseForm;
+pub use mysql::MySqlForm;
 pub use postgres::PostgresForm;
 pub use sqlite::SqliteForm;
 pub use ssh_tunnel::SshTunnelFields;

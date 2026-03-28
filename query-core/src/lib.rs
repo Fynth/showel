@@ -11,12 +11,14 @@ use sqlx::Row;
 use self::{
     build::{
         SqlBuildDialect, build_editable_paginated_query, build_outer_paginated_query,
-        build_paginated_query, clickhouse_filter_expression, postgres_filter_expression,
-        quote_identifier, quote_identifier_clickhouse, sql_literal, sqlite_filter_expression,
+        build_paginated_query, clickhouse_filter_expression, mysql_filter_expression,
+        postgres_filter_expression, quote_identifier, quote_identifier_clickhouse, sql_literal,
+        sqlite_filter_expression,
     },
     editable::editable_select_plan,
     rows::{
         clickhouse_rows_to_page, clickhouse_rows_to_paginated_page, invalid_sqlite_locator,
+        mysql_preview_rows_to_paginated_page, mysql_rows_to_page, mysql_rows_to_paginated_page,
         postgres_preview_rows_to_paginated_page, postgres_rows_to_paginated_page,
         sqlite_preview_rows_to_paginated_page, sqlite_rows_to_paginated_page,
     },
@@ -30,6 +32,10 @@ const SQLITE_DIALECT: SqlBuildDialect = SqlBuildDialect {
 const POSTGRES_DIALECT: SqlBuildDialect = SqlBuildDialect {
     quote_identifier,
     filter_expression: postgres_filter_expression,
+};
+const MYSQL_DIALECT: SqlBuildDialect = SqlBuildDialect {
+    quote_identifier: quote_identifier_clickhouse,
+    filter_expression: mysql_filter_expression,
 };
 const CLICKHOUSE_DIALECT: SqlBuildDialect = SqlBuildDialect {
     quote_identifier: quote_identifier_clickhouse,
@@ -90,6 +96,15 @@ pub async fn create_table(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
+        DatabaseConnection::MySql(pool) => {
+            let qualified_name = qualified_mysql_table_name(schema.as_deref(), table_name);
+            let sql = format!("create table {qualified_name} {columns_sql}");
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+            Ok(())
+        }
         DatabaseConnection::ClickHouse(config) => {
             let engine = clickhouse_engine
                 .map(|engine| engine.trim().trim_end_matches(';').trim().to_string())
@@ -137,6 +152,13 @@ pub async fn drop_table(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
+        DatabaseConnection::MySql(pool) => {
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+            Ok(())
+        }
         DatabaseConnection::ClickHouse(config) => {
             execute_text_query(&config, &sql)
                 .await
@@ -167,6 +189,14 @@ pub async fn truncate_table(
                 .execute(&pool)
                 .await
                 .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::MySql(pool) => {
+            let sql = format!("truncate table {qualified_name}");
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
             Ok(())
         }
         DatabaseConnection::ClickHouse(config) => {
@@ -250,6 +280,28 @@ pub async fn duplicate_table(
                     .execute(&pool)
                     .await
                     .map_err(DatabaseError::Postgres)?;
+            }
+
+            Ok(())
+        }
+        DatabaseConnection::MySql(pool) => {
+            let target_qualified_name =
+                qualified_mysql_table_name(source.schema.as_deref(), new_table_name);
+            let create_sql =
+                format!("create table {target_qualified_name} like {source_qualified_name}");
+            sqlx::query(&create_sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+
+            if copy_data {
+                let insert_sql = format!(
+                    "insert into {target_qualified_name} select * from {source_qualified_name}"
+                );
+                sqlx::query(&insert_sql)
+                    .execute(&pool)
+                    .await
+                    .map_err(DatabaseError::MySql)?;
             }
 
             Ok(())
@@ -342,6 +394,53 @@ pub async fn load_table_preview_page(
             Ok(QueryOutput::Table(postgres_preview_rows_to_paginated_page(
                 rows, source, page_size, offset,
             )))
+        }
+        DatabaseConnection::MySql(pool) => {
+            let schema_name = mysql_effective_schema_name(&pool, source.schema.as_deref()).await?;
+            let primary_key_columns =
+                mysql_primary_key_columns(&pool, &schema_name, &source.table_name).await?;
+
+            if primary_key_columns.is_empty() {
+                let sql = build_outer_paginated_query(
+                    format!(r#"select * from {}"#, source.qualified_name),
+                    page_size,
+                    offset,
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    MYSQL_DIALECT,
+                );
+                let rows = sqlx::query(&sql)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(DatabaseError::MySql)?;
+                Ok(QueryOutput::Table(mysql_rows_to_paginated_page(
+                    rows, page_size, offset,
+                )))
+            } else {
+                let locator_expr = mysql_locator_expression(&primary_key_columns);
+                let sql = build_outer_paginated_query(
+                    format!(
+                        r#"select {locator_expr} as "{LOCATOR_COLUMN}", * from {}"#,
+                        source.qualified_name
+                    ),
+                    page_size,
+                    offset,
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    MYSQL_DIALECT,
+                );
+                let rows = sqlx::query(&sql)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(DatabaseError::MySql)?;
+                let source = models::TablePreviewSource {
+                    schema: Some(schema_name),
+                    ..source
+                };
+                Ok(QueryOutput::Table(mysql_preview_rows_to_paginated_page(
+                    rows, source, page_size, offset,
+                )))
+            }
         }
         DatabaseConnection::ClickHouse(config) => {
             let schema_name = source
@@ -481,6 +580,29 @@ pub async fn update_table_cell(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
+        DatabaseConnection::MySql(pool) => {
+            let schema_name = mysql_effective_schema_name(&pool, source.schema.as_deref()).await?;
+            let primary_key_columns =
+                mysql_primary_key_columns(&pool, &schema_name, &source.table_name).await?;
+            if primary_key_columns.is_empty() {
+                return Err(DatabaseError::UnsupportedDriver(
+                    "MySQL table must have a primary key for updates".to_string(),
+                ));
+            }
+
+            let conditions = parse_mysql_locator(&locator, &primary_key_columns)?;
+            let where_clause = conditions.join(" AND ");
+            let column = quote_identifier_clickhouse(&column_name);
+            let sql = format!(
+                "update {} set {} = {} where {}",
+                source.qualified_name, column, value_literal, where_clause
+            );
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+            Ok(())
+        }
         DatabaseConnection::ClickHouse(config) => {
             let schema_name = source
                 .schema
@@ -546,6 +668,14 @@ pub async fn insert_table_row(
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
+        DatabaseConnection::MySql(pool) => {
+            let sql = format!("insert into {} values ()", source.qualified_name);
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+            Ok(())
+        }
         DatabaseConnection::ClickHouse(_) => Err(DatabaseError::UnsupportedDriver(
             "ClickHouse row inserts are not supported yet".to_string(),
         )),
@@ -559,7 +689,7 @@ pub async fn insert_table_row_with_values(
 ) -> Result<(), DatabaseError> {
     match connection {
         DatabaseConnection::Sqlite(pool) => {
-            let sql = build_insert_row_sql(&source, &column_values);
+            let sql = build_insert_row_sql(&source, &column_values, quote_identifier);
             sqlx::query(&sql)
                 .execute(&pool)
                 .await
@@ -567,16 +697,23 @@ pub async fn insert_table_row_with_values(
             Ok(())
         }
         DatabaseConnection::Postgres(pool) => {
-            let sql = build_insert_row_sql(&source, &column_values);
+            let sql = build_insert_row_sql(&source, &column_values, quote_identifier);
             sqlx::query(&sql)
                 .execute(&pool)
                 .await
                 .map_err(DatabaseError::Postgres)?;
             Ok(())
         }
+        DatabaseConnection::MySql(pool) => {
+            let sql = build_insert_row_sql(&source, &column_values, quote_identifier_clickhouse);
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+            Ok(())
+        }
         DatabaseConnection::ClickHouse(config) => {
-            let sql = build_insert_row_sql(&source, &column_values);
-            let sql = sql.replace('"', "`");
+            let sql = build_insert_row_sql(&source, &column_values, quote_identifier_clickhouse);
 
             execute_text_query(&config, &sql)
                 .await
@@ -647,6 +784,34 @@ pub async fn next_table_primary_key_id(
                 parse_next_numeric_id(
                     row.try_get::<String, _>(0)
                         .map_err(DatabaseError::Postgres)?,
+                    &column_name,
+                )?,
+            )))
+        }
+        DatabaseConnection::MySql(pool) => {
+            let schema_name = mysql_effective_schema_name(&pool, source.schema.as_deref()).await?;
+            let Some((column_name, data_type)) =
+                mysql_single_primary_key_column(&pool, &schema_name, &source.table_name).await?
+            else {
+                return Ok(None);
+            };
+            if !mysql_type_supports_auto_id(&data_type) {
+                return Ok(None);
+            }
+
+            let column = quote_identifier_clickhouse(&column_name);
+            let sql = format!(
+                "select cast(coalesce(max({column}), 0) + 1 as char) from {}",
+                source.qualified_name
+            );
+            let row = sqlx::query(&sql)
+                .fetch_one(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+            Ok(Some((
+                column_name.clone(),
+                parse_next_numeric_id(
+                    row.try_get::<String, _>(0).map_err(DatabaseError::MySql)?,
                     &column_name,
                 )?,
             )))
@@ -723,6 +888,28 @@ pub async fn delete_table_row(
                 .execute(&pool)
                 .await
                 .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::MySql(pool) => {
+            let schema_name = mysql_effective_schema_name(&pool, source.schema.as_deref()).await?;
+            let primary_key_columns =
+                mysql_primary_key_columns(&pool, &schema_name, &source.table_name).await?;
+            if primary_key_columns.is_empty() {
+                return Err(DatabaseError::UnsupportedDriver(
+                    "MySQL table must have a primary key for deletes".to_string(),
+                ));
+            }
+
+            let conditions = parse_mysql_locator(&locator, &primary_key_columns)?;
+            let where_clause = conditions.join(" AND ");
+            let sql = format!(
+                "delete from {} where {}",
+                source.qualified_name, where_clause
+            );
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
             Ok(())
         }
         DatabaseConnection::ClickHouse(config) => {
@@ -877,6 +1064,81 @@ pub async fn execute_query_page(
                 Ok(QueryOutput::AffectedRows(result.rows_affected()))
             }
         }
+        DatabaseConnection::MySql(pool) => {
+            if let Some(plan) = editable_select_plan(&sql) {
+                let schema_name =
+                    mysql_effective_schema_name(&pool, plan.source.schema.as_deref()).await?;
+                let primary_key_columns =
+                    mysql_primary_key_columns(&pool, &schema_name, &plan.source.table_name).await?;
+
+                if primary_key_columns.is_empty() {
+                    let rows = sqlx::query(&build_paginated_query(
+                        &sql,
+                        page_size,
+                        offset,
+                        filter.as_ref(),
+                        sort.as_ref(),
+                        MYSQL_DIALECT,
+                    ))
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(DatabaseError::MySql)?;
+                    Ok(QueryOutput::Table(mysql_rows_to_paginated_page(
+                        rows, page_size, offset,
+                    )))
+                } else {
+                    let locator_expr = mysql_locator_expression(&primary_key_columns);
+                    let mut plan = plan;
+                    plan.source.schema = Some(schema_name);
+                    let query = build_editable_paginated_query(
+                        &plan,
+                        page_size,
+                        offset,
+                        &locator_expr,
+                        filter.as_ref(),
+                        sort.as_ref(),
+                        MYSQL_DIALECT,
+                    );
+                    let rows = sqlx::query(&query)
+                        .fetch_all(&pool)
+                        .await
+                        .map_err(DatabaseError::MySql)?;
+                    Ok(QueryOutput::Table(mysql_preview_rows_to_paginated_page(
+                        rows,
+                        plan.source,
+                        page_size,
+                        offset,
+                    )))
+                }
+            } else if is_paginated_query(&normalized) {
+                let rows = sqlx::query(&build_paginated_query(
+                    &sql,
+                    page_size,
+                    offset,
+                    filter.as_ref(),
+                    sort.as_ref(),
+                    MYSQL_DIALECT,
+                ))
+                .fetch_all(&pool)
+                .await
+                .map_err(DatabaseError::MySql)?;
+                Ok(QueryOutput::Table(mysql_rows_to_paginated_page(
+                    rows, page_size, offset,
+                )))
+            } else if is_tabular_query(&normalized) {
+                let rows = sqlx::query(&sql)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(DatabaseError::MySql)?;
+                Ok(QueryOutput::Table(mysql_rows_to_page(rows)))
+            } else {
+                let result = sqlx::query(&sql)
+                    .execute(&pool)
+                    .await
+                    .map_err(DatabaseError::MySql)?;
+                Ok(QueryOutput::AffectedRows(result.rows_affected()))
+            }
+        }
         DatabaseConnection::ClickHouse(config) => {
             if is_paginated_query(&normalized) {
                 let response = execute_json_query(
@@ -926,14 +1188,18 @@ fn leading_sql_keyword(sql: &str) -> Option<String> {
         .map(str::to_ascii_lowercase)
 }
 
-fn build_insert_row_sql(source: &TablePreviewSource, column_values: &[(String, String)]) -> String {
+fn build_insert_row_sql(
+    source: &TablePreviewSource,
+    column_values: &[(String, String)],
+    quote_identifier_fn: fn(&str) -> String,
+) -> String {
     if column_values.is_empty() {
         return format!("insert into {} default values", source.qualified_name);
     }
 
     let columns = column_values
         .iter()
-        .map(|(column_name, _)| quote_identifier(column_name))
+        .map(|(column_name, _)| quote_identifier_fn(column_name))
         .collect::<Vec<_>>()
         .join(", ");
     let values = column_values
@@ -1137,8 +1403,8 @@ async fn postgres_single_primary_key_column(
 mod tests {
     use super::{
         create_table, drop_table, duplicate_table, execute_query_page, is_read_only_sql,
-        parse_clickhouse_primary_key_expression, preview_source_for_sql,
-        reorder_clickhouse_primary_key_columns, truncate_table,
+        mysql_locator_expression, parse_clickhouse_primary_key_expression, parse_mysql_locator,
+        preview_source_for_sql, reorder_clickhouse_primary_key_columns, truncate_table,
     };
     use models::{DatabaseConnection, QueryOutput, TablePreviewSource};
     use sqlx::SqlitePool;
@@ -1153,6 +1419,24 @@ mod tests {
         assert!(is_read_only_sql("pragma table_info(products)"));
         assert!(!is_read_only_sql("update products set price = 10"));
         assert!(!is_read_only_sql("delete from products"));
+    }
+
+    #[test]
+    fn mysql_locator_round_trip_uses_json_array_encoding() {
+        let locator = r#"["42","tenant-a"]"#;
+        let pk_columns = vec!["id".to_string(), "tenant_id".to_string()];
+
+        assert_eq!(
+            mysql_locator_expression(&pk_columns),
+            "json_array(cast(`id` as char), cast(`tenant_id` as char))"
+        );
+        assert_eq!(
+            parse_mysql_locator(locator, &pk_columns).unwrap(),
+            vec![
+                "cast(`id` as char) = '42'",
+                "cast(`tenant_id` as char) = 'tenant-a'"
+            ]
+        );
     }
 
     #[tokio::test]
@@ -1503,6 +1787,13 @@ fn postgres_type_supports_auto_id(data_type: &str) -> bool {
     )
 }
 
+fn mysql_type_supports_auto_id(data_type: &str) -> bool {
+    matches!(
+        data_type.to_ascii_lowercase().as_str(),
+        "tinyint" | "smallint" | "mediumint" | "int" | "integer" | "bigint"
+    )
+}
+
 fn clickhouse_type_supports_auto_id(data_type: &str) -> bool {
     matches!(
         data_type.to_ascii_lowercase().as_str(),
@@ -1529,6 +1820,17 @@ fn qualified_postgres_table_name(schema: Option<&str>, table_name: &str) -> Stri
             quote_identifier(table_name)
         ),
         None => quote_identifier(table_name),
+    }
+}
+
+fn qualified_mysql_table_name(schema: Option<&str>, table_name: &str) -> String {
+    match schema.map(str::trim).filter(|schema| !schema.is_empty()) {
+        Some(schema) => format!(
+            "{}.{}",
+            quote_identifier_clickhouse(schema),
+            quote_identifier_clickhouse(table_name)
+        ),
+        None => quote_identifier_clickhouse(table_name),
     }
 }
 
@@ -1611,6 +1913,134 @@ async fn clickhouse_get_primary_key_columns(
         .collect();
 
     Ok(Some((pk_column_names, first_type)))
+}
+
+async fn mysql_effective_schema_name(
+    pool: &sqlx::MySqlPool,
+    schema: Option<&str>,
+) -> Result<String, DatabaseError> {
+    if let Some(schema) = schema.map(str::trim).filter(|schema| !schema.is_empty()) {
+        return Ok(schema.to_string());
+    }
+
+    let current_database = sqlx::query_scalar::<_, Option<String>>("select database()")
+        .fetch_one(pool)
+        .await
+        .map_err(DatabaseError::MySql)?
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "mysql".to_string());
+
+    Ok(current_database)
+}
+
+async fn mysql_primary_key_columns(
+    pool: &sqlx::MySqlPool,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<Vec<String>, DatabaseError> {
+    let rows = sqlx::query(
+        r#"
+        select kcu.column_name
+        from information_schema.table_constraints tc
+        join information_schema.key_column_usage kcu
+          on tc.constraint_name = kcu.constraint_name
+         and tc.table_schema = kcu.table_schema
+         and tc.table_name = kcu.table_name
+        where tc.constraint_type = 'PRIMARY KEY'
+          and tc.table_schema = ?
+          and tc.table_name = ?
+        order by kcu.ordinal_position
+        "#,
+    )
+    .bind(schema_name)
+    .bind(table_name)
+    .fetch_all(pool)
+    .await
+    .map_err(DatabaseError::MySql)?;
+
+    rows.into_iter()
+        .map(|row| {
+            row.try_get::<String, _>("column_name")
+                .map_err(DatabaseError::MySql)
+        })
+        .collect()
+}
+
+async fn mysql_single_primary_key_column(
+    pool: &sqlx::MySqlPool,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<Option<(String, String)>, DatabaseError> {
+    let rows = sqlx::query(
+        r#"
+        select
+          kcu.column_name,
+          cols.data_type
+        from information_schema.table_constraints tc
+        join information_schema.key_column_usage kcu
+          on tc.constraint_name = kcu.constraint_name
+         and tc.table_schema = kcu.table_schema
+         and tc.table_name = kcu.table_name
+        join information_schema.columns cols
+          on cols.table_schema = kcu.table_schema
+         and cols.table_name = kcu.table_name
+         and cols.column_name = kcu.column_name
+        where tc.constraint_type = 'PRIMARY KEY'
+          and tc.table_schema = ?
+          and tc.table_name = ?
+        order by kcu.ordinal_position
+        "#,
+    )
+    .bind(schema_name)
+    .bind(table_name)
+    .fetch_all(pool)
+    .await
+    .map_err(DatabaseError::MySql)?;
+
+    if rows.len() != 1 {
+        return Ok(None);
+    }
+
+    let row = &rows[0];
+    let column_name = row
+        .try_get::<String, _>("column_name")
+        .map_err(DatabaseError::MySql)?;
+    let data_type = row
+        .try_get::<String, _>("data_type")
+        .unwrap_or_else(|_| String::new());
+    Ok(Some((column_name, data_type)))
+}
+
+fn mysql_locator_expression(pk_columns: &[String]) -> String {
+    let args = pk_columns
+        .iter()
+        .map(|column| format!("cast({} as char)", quote_identifier_clickhouse(column)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("json_array({args})")
+}
+
+fn parse_mysql_locator(locator: &str, pk_columns: &[String]) -> Result<Vec<String>, DatabaseError> {
+    let values = serde_json::from_str::<Vec<String>>(locator)
+        .map_err(|_| DatabaseError::UnsupportedDriver("Invalid MySQL row locator".to_string()))?;
+
+    if values.len() != pk_columns.len() {
+        return Err(DatabaseError::UnsupportedDriver(
+            "Invalid MySQL row locator".to_string(),
+        ));
+    }
+
+    Ok(pk_columns
+        .iter()
+        .zip(values)
+        .map(|(column, value)| {
+            format!(
+                "cast({} as char) = {}",
+                quote_identifier_clickhouse(column),
+                sql_literal(&value)
+            )
+        })
+        .collect())
 }
 
 fn reorder_clickhouse_primary_key_columns(

@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use models::DatabaseKind;
 
 use self::{
-    forms::{ClickHouseForm, PostgresForm, SqliteForm},
+    forms::{ClickHouseForm, MySqlForm, PostgresForm, SqliteForm},
     kind_selector::KindSelector,
     recent_connections::RecentConnections,
 };
@@ -66,6 +66,7 @@ pub fn DbConnect() -> Element {
                     match selected_kind() {
                         DatabaseKind::Sqlite => rsx! { SqliteForm {} },
                         DatabaseKind::Postgres => rsx! { PostgresForm {} },
+                        DatabaseKind::MySql => rsx! { MySqlForm {} },
                         DatabaseKind::ClickHouse => rsx! { ClickHouseForm {} },
                     }
                 }

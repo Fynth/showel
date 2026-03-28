@@ -25,6 +25,7 @@ pub fn SessionRail(
             let kind_label = match session.kind {
                 models::DatabaseKind::Sqlite => "SQLite",
                 models::DatabaseKind::Postgres => "PostgreSQL",
+                models::DatabaseKind::MySql => "MySQL",
                 models::DatabaseKind::ClickHouse => "ClickHouse",
             };
             let target_label = session_target_label(&session.request);

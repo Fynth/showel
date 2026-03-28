@@ -6,6 +6,7 @@ pub fn KindSelector(mut selected_kind: Signal<DatabaseKind>) -> Element {
     let current_value = match selected_kind() {
         DatabaseKind::Sqlite => "sqlite",
         DatabaseKind::Postgres => "postgres",
+        DatabaseKind::MySql => "mysql",
         DatabaseKind::ClickHouse => "clickhouse",
     };
 
@@ -24,6 +25,7 @@ pub fn KindSelector(mut selected_kind: Signal<DatabaseKind>) -> Element {
                     let next_kind = match event.value().as_str() {
                         "sqlite" => DatabaseKind::Sqlite,
                         "postgres" => DatabaseKind::Postgres,
+                        "mysql" => DatabaseKind::MySql,
                         "clickhouse" => DatabaseKind::ClickHouse,
                         _ => DatabaseKind::Sqlite,
                     };
@@ -31,6 +33,7 @@ pub fn KindSelector(mut selected_kind: Signal<DatabaseKind>) -> Element {
                 },
                 option { value: "sqlite", "SQLite" }
                 option { value: "postgres", "PostgreSQL" }
+                option { value: "mysql", "MySQL" }
                 option { value: "clickhouse", "ClickHouse" }
             }
         }

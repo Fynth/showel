@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  SQLite • PostgreSQL • ClickHouse • Rust • Dioxus • ACP • Ollama
+  SQLite • PostgreSQL • MySQL • ClickHouse • Rust • Dioxus • ACP • Ollama
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@ It is built for people who want a responsive database tool that feels closer to 
 | --- | --- |
 | Chat | Persistent database chat threads, context-aware prompts, SQL generation, agent-guided execution |
 | Querying | Multi-tab SQL editor, query history, structure tabs, formatting, pagination |
-| Data exploration | Connection explorer, schemas, tables, views, column loading |
+| Data exploration | Connection explorer, schemas/databases, tables, views, column loading |
 | Result workflows | Sort, filter, inspect rows, JSON view, row details |
 | Editing | Draft inserts, cell edits, deletes, apply/discard changes for editable table views |
 | Import / export | CSV import, CSV/JSON/XLSX export |
@@ -56,6 +56,7 @@ It is built for people who want a responsive database tool that feels closer to 
 | --- | --- | --- | --- | --- | --- |
 | SQLite | Yes | Yes | Yes | Yes | Yes |
 | PostgreSQL | Yes | Yes | Yes | Yes | Yes |
+| MySQL | Yes | Yes | Yes | Yes | Yes |
 | ClickHouse | Yes | Yes | Yes | Yes | Not yet |
 
 ## AI / ACP Support

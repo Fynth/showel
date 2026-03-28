@@ -239,6 +239,38 @@ pub(super) fn clickhouse_filter_expression(
     }
 }
 
+pub(super) fn mysql_filter_expression(
+    column_name: &str,
+    operator: QueryFilterOperator,
+    value: &str,
+) -> String {
+    let column = quote_identifier_clickhouse(column_name);
+    let text_expr = format!("lower(cast({column} as char))");
+    let lower_literal = format!("lower({})", sql_literal(value));
+    match operator {
+        QueryFilterOperator::Contains => format!(
+            "{text_expr} like lower({}) escape '\\\\'",
+            sql_contains_literal(value)
+        ),
+        QueryFilterOperator::NotContains => format!(
+            "{text_expr} not like lower({}) escape '\\\\'",
+            sql_contains_literal(value)
+        ),
+        QueryFilterOperator::Equals => format!("{text_expr} = {lower_literal}"),
+        QueryFilterOperator::NotEquals => format!("{text_expr} != {lower_literal}"),
+        QueryFilterOperator::StartsWith => format!(
+            "{text_expr} like lower({}) escape '\\\\'",
+            sql_prefix_literal(value)
+        ),
+        QueryFilterOperator::EndsWith => format!(
+            "{text_expr} like lower({}) escape '\\\\'",
+            sql_suffix_literal(value)
+        ),
+        QueryFilterOperator::IsNull => format!("{column} is null"),
+        QueryFilterOperator::IsNotNull => format!("{column} is not null"),
+    }
+}
+
 pub(super) fn sql_literal(value: &str) -> String {
     if value.eq_ignore_ascii_case("null") {
         "NULL".to_string()

@@ -8,7 +8,7 @@ bigdecimal = "0.4.7"
 driver-clickhouse.workspace = true
 models.workspace = true
 serde_json = "1.0.140"
-sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "postgres", "runtime-tokio-rustls", "uuid", "time", "json", "bigdecimal"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "postgres", "mysql", "runtime-tokio-rustls", "uuid", "time", "json", "bigdecimal"] }
 time = "0.3.41"
 uuid = "1.17.0"
 

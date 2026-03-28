@@ -105,6 +105,7 @@ async fn load_explorer_section(
     let kind_label = match session.kind {
         models::DatabaseKind::Sqlite => "SQLite".to_string(),
         models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+        models::DatabaseKind::MySql => "MySQL".to_string(),
         models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
     };
 
@@ -140,6 +141,7 @@ fn unloaded_explorer_section(
     let kind_label = match session.kind {
         models::DatabaseKind::Sqlite => "SQLite".to_string(),
         models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+        models::DatabaseKind::MySql => "MySQL".to_string(),
         models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
     };
 

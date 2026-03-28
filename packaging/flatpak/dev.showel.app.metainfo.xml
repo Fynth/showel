@@ -12,7 +12,7 @@
   <url type="vcs-browser">https://github.com/Fynth/showel</url>
   <description>
     <p>
-      Showel is a native desktop database client for SQLite, PostgreSQL, and ClickHouse.
+      Showel is a native desktop database client for SQLite, PostgreSQL, MySQL, and ClickHouse.
       It includes a schema explorer, SQL editor, result grid, connection history, and ACP-powered AI workflows.
     </p>
   </description>
