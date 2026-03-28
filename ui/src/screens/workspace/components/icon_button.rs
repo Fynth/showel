@@ -24,6 +24,8 @@ pub enum ActionIcon {
     Apply,
     Undo,
     Delete,
+    Truncate,
+    Duplicate,
     Details,
     AddRule,
     FilterApply,
@@ -227,6 +229,17 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "M8 7l.8 12h6.4L16 7" }
                     path { d: "M10 11v5" }
                     path { d: "M14 11v5" }
+                },
+                ActionIcon::Truncate => rsx! {
+                    rect { x: "4", y: "5", width: "16", height: "9", rx: "2" }
+                    path { d: "M4 9.5h16" }
+                    path { d: "M8 18h8" }
+                    path { d: "M10 14v4" }
+                    path { d: "M14 14v4" }
+                },
+                ActionIcon::Duplicate => rsx! {
+                    rect { x: "8", y: "8", width: "10", height: "10", rx: "2" }
+                    path { d: "M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" }
                 },
                 ActionIcon::Details => rsx! {
                     rect { x: "4", y: "5", width: "16", height: "14", rx: "2" }

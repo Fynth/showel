@@ -146,6 +146,143 @@ pub async fn drop_table(
     }
 }
 
+pub async fn truncate_table(
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+) -> Result<(), DatabaseError> {
+    let qualified_name = source.qualified_name.trim().trim_end_matches(';');
+
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            let sql = format!("delete from {qualified_name}");
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+            Ok(())
+        }
+        DatabaseConnection::Postgres(pool) => {
+            let sql = format!("truncate table {qualified_name}");
+            sqlx::query(&sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+            Ok(())
+        }
+        DatabaseConnection::ClickHouse(config) => {
+            let sql = format!("truncate table {qualified_name}");
+            execute_text_query(&config, &sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+            Ok(())
+        }
+    }
+}
+
+pub async fn duplicate_table(
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+    new_table_name: String,
+    copy_data: bool,
+) -> Result<(), DatabaseError> {
+    let new_table_name = new_table_name.trim();
+    if new_table_name.is_empty() {
+        return Err(DatabaseError::UnsupportedDriver(
+            "New table name is empty".to_string(),
+        ));
+    }
+    if new_table_name == source.table_name.trim() {
+        return Err(DatabaseError::UnsupportedDriver(
+            "New table name must be different from the source table".to_string(),
+        ));
+    }
+
+    let source_qualified_name = source.qualified_name.trim().trim_end_matches(';');
+
+    match connection {
+        DatabaseConnection::Sqlite(pool) => {
+            let schema_name = source
+                .schema
+                .as_deref()
+                .map(str::trim)
+                .filter(|schema| !schema.is_empty())
+                .unwrap_or("main");
+            let target_qualified_name =
+                qualified_sqlite_table_name(source.schema.as_deref(), new_table_name);
+            let create_statement =
+                load_sqlite_create_statement(&pool, schema_name, &source.table_name).await?;
+            let create_sql =
+                rewrite_create_table_statement(&create_statement, &target_qualified_name)?;
+
+            sqlx::query(&create_sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Sqlite)?;
+
+            if copy_data {
+                let insert_sql = format!(
+                    "insert into {target_qualified_name} select * from {source_qualified_name}"
+                );
+                sqlx::query(&insert_sql)
+                    .execute(&pool)
+                    .await
+                    .map_err(DatabaseError::Sqlite)?;
+            }
+
+            Ok(())
+        }
+        DatabaseConnection::Postgres(pool) => {
+            let target_qualified_name =
+                qualified_postgres_table_name(source.schema.as_deref(), new_table_name);
+            let create_sql = format!(
+                "create table {target_qualified_name} (like {source_qualified_name} including all)"
+            );
+            sqlx::query(&create_sql)
+                .execute(&pool)
+                .await
+                .map_err(DatabaseError::Postgres)?;
+
+            if copy_data {
+                let insert_sql = format!(
+                    "insert into {target_qualified_name} select * from {source_qualified_name}"
+                );
+                sqlx::query(&insert_sql)
+                    .execute(&pool)
+                    .await
+                    .map_err(DatabaseError::Postgres)?;
+            }
+
+            Ok(())
+        }
+        DatabaseConnection::ClickHouse(config) => {
+            let target_qualified_name = qualified_clickhouse_table_name(
+                source.schema.as_deref(),
+                new_table_name,
+                config.effective_database(),
+            );
+            let create_statement =
+                load_clickhouse_create_statement(&config, &source.schema, &source.table_name)
+                    .await?;
+            let create_sql =
+                rewrite_create_table_statement(&create_statement, &target_qualified_name)?;
+            execute_text_query(&config, &create_sql)
+                .await
+                .map_err(DatabaseError::ClickHouse)?;
+
+            if copy_data {
+                let insert_sql = format!(
+                    "insert into {target_qualified_name} select * from {source_qualified_name}"
+                );
+                execute_text_query(&config, &insert_sql)
+                    .await
+                    .map_err(DatabaseError::ClickHouse)?;
+            }
+
+            Ok(())
+        }
+    }
+}
+
 pub fn is_read_only_sql(sql: &str) -> bool {
     matches!(
         leading_sql_keyword(sql).as_deref(),
@@ -859,6 +996,97 @@ async fn sqlite_single_primary_key_column(
     Ok(Some((column_name, data_type)))
 }
 
+async fn load_sqlite_create_statement(
+    pool: &sqlx::SqlitePool,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<String, DatabaseError> {
+    sqlx::query_scalar::<_, Option<String>>(&format!(
+        "select sql from {}.sqlite_master where type = 'table' and name = ?1",
+        quote_identifier(schema_name)
+    ))
+    .bind(table_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(DatabaseError::Sqlite)?
+    .flatten()
+    .filter(|sql| !sql.trim().is_empty())
+    .ok_or_else(|| {
+        DatabaseError::UnsupportedDriver(format!(
+            "Could not load CREATE TABLE statement for {}",
+            table_name
+        ))
+    })
+}
+
+async fn load_clickhouse_create_statement(
+    config: &models::ClickHouseFormData,
+    schema: &Option<String>,
+    table_name: &str,
+) -> Result<String, DatabaseError> {
+    let schema_name = schema
+        .as_deref()
+        .map(str::trim)
+        .filter(|schema| !schema.is_empty())
+        .unwrap_or(config.effective_database());
+    let sql = format!(
+        "SHOW CREATE TABLE {}.{}",
+        quote_identifier_clickhouse(schema_name),
+        quote_identifier_clickhouse(table_name),
+    );
+    execute_text_query(config, &sql)
+        .await
+        .map_err(DatabaseError::ClickHouse)
+}
+
+fn rewrite_create_table_statement(
+    create_statement: &str,
+    replacement_qualified_name: &str,
+) -> Result<String, DatabaseError> {
+    let statement = create_statement.trim().trim_end_matches(';').trim();
+    let lower = statement.to_ascii_lowercase();
+    let create_table = "create table";
+    let Some(create_index) = lower.find(create_table) else {
+        return Err(DatabaseError::UnsupportedDriver(
+            "Could not parse CREATE TABLE statement".to_string(),
+        ));
+    };
+
+    let mut name_start = create_index + create_table.len();
+    name_start = skip_sql_whitespace(statement, name_start);
+
+    let if_not_exists = "if not exists";
+    if lower[name_start..].starts_with(if_not_exists) {
+        name_start += if_not_exists.len();
+        name_start = skip_sql_whitespace(statement, name_start);
+    }
+
+    let Some(open_paren_offset) = statement[name_start..].find('(') else {
+        return Err(DatabaseError::UnsupportedDriver(
+            "Could not find the table definition in CREATE TABLE".to_string(),
+        ));
+    };
+    let definition_start = name_start + open_paren_offset;
+
+    Ok(format!(
+        "{}{}{}",
+        &statement[..name_start],
+        replacement_qualified_name,
+        &statement[definition_start..]
+    ))
+}
+
+fn skip_sql_whitespace(sql: &str, mut index: usize) -> usize {
+    while let Some(ch) = sql[index..].chars().next() {
+        if ch.is_whitespace() {
+            index += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    index
+}
+
 async fn postgres_single_primary_key_column(
     pool: &sqlx::PgPool,
     schema_name: &str,
@@ -907,9 +1135,9 @@ async fn postgres_single_primary_key_column(
 #[cfg(test)]
 mod tests {
     use super::{
-        create_table, drop_table, execute_query_page, is_read_only_sql,
+        create_table, drop_table, duplicate_table, execute_query_page, is_read_only_sql,
         parse_clickhouse_primary_key_expression, preview_source_for_sql,
-        reorder_clickhouse_primary_key_columns,
+        reorder_clickhouse_primary_key_columns, truncate_table,
     };
     use models::{DatabaseConnection, QueryOutput, TablePreviewSource};
     use sqlx::SqlitePool;
@@ -1046,6 +1274,156 @@ mod tests {
         .unwrap();
 
         assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn truncate_table_clears_sqlite_rows_without_dropping_table() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            create table "products" (
+                id integer primary key,
+                name text not null
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(r#"insert into "products" (name) values ('Keyboard'), ('Mouse');"#)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        truncate_table(
+            DatabaseConnection::Sqlite(pool.clone()),
+            TablePreviewSource {
+                schema: Some("main".to_string()),
+                table_name: "products".to_string(),
+                qualified_name: r#""products""#.to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let remaining_rows = sqlx::query_scalar::<_, i64>(r#"select count(*) from "products""#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let remaining_tables = sqlx::query_scalar::<_, i64>(
+            r#"
+            select count(*)
+            from sqlite_master
+            where type = 'table'
+              and name = 'products'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(remaining_rows, 0);
+        assert_eq!(remaining_tables, 1);
+    }
+
+    #[tokio::test]
+    async fn duplicate_table_creates_sqlite_copy_with_rows() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            create table "products" (
+                id integer primary key,
+                name text not null
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(r#"insert into "products" (name) values ('Keyboard'), ('Mouse');"#)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        duplicate_table(
+            DatabaseConnection::Sqlite(pool.clone()),
+            TablePreviewSource {
+                schema: Some("main".to_string()),
+                table_name: "products".to_string(),
+                qualified_name: r#""products""#.to_string(),
+            },
+            "products_copy".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
+
+        let copy_rows = sqlx::query_scalar::<_, i64>(r#"select count(*) from "products_copy""#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let copied_create_sql = sqlx::query_scalar::<_, Option<String>>(
+            r#"
+            select sql
+            from sqlite_master
+            where type = 'table'
+              and name = 'products_copy'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(copy_rows, 2);
+        assert!(copied_create_sql.contains("products_copy"));
+    }
+
+    #[tokio::test]
+    async fn duplicate_table_can_copy_structure_only_for_sqlite() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            create table "products" (
+                id integer primary key,
+                name text not null
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(r#"insert into "products" (name) values ('Keyboard');"#)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        duplicate_table(
+            DatabaseConnection::Sqlite(pool.clone()),
+            TablePreviewSource {
+                schema: Some("main".to_string()),
+                table_name: "products".to_string(),
+                qualified_name: r#""products""#.to_string(),
+            },
+            "products_empty_copy".to_string(),
+            false,
+        )
+        .await
+        .unwrap();
+
+        let copy_rows =
+            sqlx::query_scalar::<_, i64>(r#"select count(*) from "products_empty_copy""#)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert_eq!(copy_rows, 0);
     }
 
     #[test]

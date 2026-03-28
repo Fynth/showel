@@ -94,20 +94,22 @@ pub async fn load_saved_connections() -> Result<Vec<SavedConnection>, String> {
 pub async fn save_connection_request(request: ConnectionRequest) -> Result<(), String> {
     let mut saved_connections = load_saved_connections().await.unwrap_or_default();
     let previous_connections = saved_connections.clone();
-    let name = request.display_name();
-    let request_key = request.identity_key();
+    upsert_saved_connection(&mut saved_connections, request, None);
 
-    saved_connections.retain(|saved| saved.request.identity_key() != request_key);
-    saved_connections.insert(
-        0,
-        SavedConnection {
-            name: name.clone(),
-            request,
-        },
+    persist_saved_connections(&saved_connections, &previous_connections).await
+}
+
+pub async fn replace_connection_request(
+    previous_identity_key: String,
+    request: ConnectionRequest,
+) -> Result<(), String> {
+    let mut saved_connections = load_saved_connections().await.unwrap_or_default();
+    let previous_connections = saved_connections.clone();
+    upsert_saved_connection(
+        &mut saved_connections,
+        request,
+        Some(previous_identity_key.as_str()),
     );
-    if saved_connections.len() > MAX_SAVED_CONNECTIONS {
-        saved_connections.truncate(MAX_SAVED_CONNECTIONS);
-    }
 
     persist_saved_connections(&saved_connections, &previous_connections).await
 }
@@ -200,6 +202,29 @@ async fn persist_saved_connections(
             "saved connection metadata, but secure storage had issues: {}",
             secret_errors.join("; ")
         ))
+    }
+}
+
+fn upsert_saved_connection(
+    saved_connections: &mut Vec<SavedConnection>,
+    request: ConnectionRequest,
+    replaced_identity_key: Option<&str>,
+) {
+    if let Some(previous_identity_key) = replaced_identity_key {
+        saved_connections.retain(|saved| saved.request.identity_key() != previous_identity_key);
+    }
+
+    let request_key = request.identity_key();
+    saved_connections.retain(|saved| saved.request.identity_key() != request_key);
+    saved_connections.insert(
+        0,
+        SavedConnection {
+            name: request.display_name(),
+            request,
+        },
+    );
+    if saved_connections.len() > MAX_SAVED_CONNECTIONS {
+        saved_connections.truncate(MAX_SAVED_CONNECTIONS);
     }
 }
 
@@ -545,4 +570,57 @@ fn write_session_state_sync(path: PathBuf, value: &PersistedSessionState) -> Res
     let json = serde_json::to_string_pretty(value)
         .map_err(|err| format!("failed to serialize {}: {err}", path.display()))?;
     fs::write(&path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::upsert_saved_connection;
+    use models::{ConnectionRequest, SavedConnection, SqliteFormData};
+
+    fn sqlite_request(path: &str) -> ConnectionRequest {
+        ConnectionRequest::Sqlite(SqliteFormData {
+            path: path.to_string(),
+        })
+    }
+
+    #[test]
+    fn upsert_saved_connection_replaces_previous_identity_key() {
+        let old_request = sqlite_request("/tmp/old.db");
+        let new_request = sqlite_request("/tmp/new.db");
+        let mut saved_connections = vec![SavedConnection {
+            name: old_request.display_name(),
+            request: old_request.clone(),
+        }];
+
+        upsert_saved_connection(
+            &mut saved_connections,
+            new_request.clone(),
+            Some(&old_request.identity_key()),
+        );
+
+        assert_eq!(saved_connections.len(), 1);
+        assert_eq!(saved_connections[0].request, new_request);
+    }
+
+    #[test]
+    fn upsert_saved_connection_moves_existing_connection_to_front() {
+        let first_request = sqlite_request("/tmp/first.db");
+        let second_request = sqlite_request("/tmp/second.db");
+        let mut saved_connections = vec![
+            SavedConnection {
+                name: first_request.display_name(),
+                request: first_request.clone(),
+            },
+            SavedConnection {
+                name: second_request.display_name(),
+                request: second_request.clone(),
+            },
+        ];
+
+        upsert_saved_connection(&mut saved_connections, first_request.clone(), None);
+
+        assert_eq!(saved_connections.len(), 2);
+        assert_eq!(saved_connections[0].request, first_request);
+        assert_eq!(saved_connections[1].request, second_request);
+    }
 }

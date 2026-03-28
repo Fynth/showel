@@ -1393,6 +1393,15 @@ select.input:focus-visible {
   background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 76%, var(--color-surface-elevated, var(--color-panel-2)));
 }
 
+.recent-connection__actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .recent-connection__name {
   font-size: 12px;
   font-weight: 600;
@@ -1407,6 +1416,21 @@ select.input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.connect-screen__editor-modal {
+  width: min(720px, 100vw - 24px);
+}
+
+.connect-screen__editor-actions {
+  align-items: flex-end;
+}
+
+.connect-screen__editor-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 980px) {
@@ -1443,6 +1467,15 @@ select.input:focus-visible {
   .recent-connection {
     flex-direction: column;
     align-items: stretch;
+  }
+  .recent-connection__actions,
+.connect-screen__editor-buttons {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .recent-connection__actions .button,
+.connect-screen__editor-buttons .button {
+    flex: 1 1 0;
   }
 }
 .empty-state {

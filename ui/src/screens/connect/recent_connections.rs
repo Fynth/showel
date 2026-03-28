@@ -2,11 +2,16 @@ use crate::app_state::add_connection_session;
 use dioxus::prelude::*;
 use models::SavedConnection;
 
+use super::edit_connection_modal::EditConnectionModal;
 use super::forms::connection_status_class;
 
 #[component]
-pub fn RecentConnections(saved_connections: Option<Vec<SavedConnection>>) -> Element {
+pub fn RecentConnections(
+    saved_connections: Option<Vec<SavedConnection>>,
+    saved_connections_revision: Signal<u64>,
+) -> Element {
     let mut status = use_signal(String::new);
+    let mut editing_connection = use_signal(|| None::<SavedConnection>);
     let status_value = status();
     let status_class = connection_status_class(&status_value);
 
@@ -28,37 +33,48 @@ pub fn RecentConnections(saved_connections: Option<Vec<SavedConnection>>) -> Ele
                                     class: "recent-connection__meta",
                                     p { class: "recent-connection__name", "{saved_connection.name}" }
                                 }
-                                button {
-                                    class: "button button--ghost",
-                                    onclick: {
-                                        let request = saved_connection.request.clone();
-                                        move |_| {
-                                            let request_to_connect = request.clone();
-                                            let request_to_save = request.clone();
-                                            let request_to_register = request.clone();
-                                            spawn(async move {
-                                                match connection::connect_to_db(request_to_connect).await {
-                                                    Ok(connection) => {
-                                                        let save_result = storage::save_connection_request(
-                                                            request_to_save,
-                                                        )
-                                                        .await;
-                                                        add_connection_session(request_to_register, connection);
-                                                        match save_result {
-                                                            Ok(()) => status.set("Connected".to_string()),
-                                                            Err(err) => status.set(format!(
-                                                                "Connected, but failed to update saved connections: {err}"
-                                                            )),
+                                div {
+                                    class: "recent-connection__actions",
+                                    button {
+                                        class: "button button--ghost button--small",
+                                        onclick: {
+                                            let connection_to_edit = saved_connection.clone();
+                                            move |_| editing_connection.set(Some(connection_to_edit.clone()))
+                                        },
+                                        "Edit"
+                                    }
+                                    button {
+                                        class: "button button--ghost",
+                                        onclick: {
+                                            let request = saved_connection.request.clone();
+                                            move |_| {
+                                                let request_to_connect = request.clone();
+                                                let request_to_save = request.clone();
+                                                let request_to_register = request.clone();
+                                                spawn(async move {
+                                                    match connection::connect_to_db(request_to_connect).await {
+                                                        Ok(connection) => {
+                                                            let save_result = storage::save_connection_request(
+                                                                request_to_save,
+                                                            )
+                                                            .await;
+                                                            add_connection_session(request_to_register, connection);
+                                                            match save_result {
+                                                                Ok(()) => status.set("Connected".to_string()),
+                                                                Err(err) => status.set(format!(
+                                                                    "Connected, but failed to update saved connections: {err}"
+                                                                )),
+                                                            }
+                                                        }
+                                                        Err(err) => {
+                                                            status.set(format!("Error: {err:?}"));
                                                         }
                                                     }
-                                                    Err(err) => {
-                                                        status.set(format!("Error: {err:?}"));
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    },
-                                    "Connect"
+                                                });
+                                            }
+                                        },
+                                        "Connect"
+                                    }
                                 }
                             }
                         }
@@ -70,6 +86,15 @@ pub fn RecentConnections(saved_connections: Option<Vec<SavedConnection>>) -> Ele
             }
             if !status().is_empty() {
                 p { class: "{status_class}", "{status_value}" }
+            }
+
+            if let Some(saved_connection) = editing_connection() {
+                EditConnectionModal {
+                    saved_connection,
+                    editing_connection,
+                    saved_connections_revision,
+                    status,
+                }
             }
         }
     }

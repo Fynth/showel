@@ -1,6 +1,7 @@
 use crate::app_state::{APP_STATE, activate_session, remove_session, session_connection};
 use crate::screens::workspace::actions::{
-    ensure_tab_for_session, mark_table_deleted, run_table_preview_for_tab, tab_connection_or_error,
+    ensure_tab_for_session, mark_table_deleted, mark_table_truncated, run_table_preview_for_tab,
+    tab_connection_or_error,
 };
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
@@ -29,6 +30,14 @@ struct CreateTableTarget {
 }
 
 #[derive(Clone, PartialEq)]
+struct DuplicateTableTarget {
+    session_id: u64,
+    connection_name: String,
+    kind: DatabaseKind,
+    source: TablePreviewSource,
+}
+
+#[derive(Clone, PartialEq)]
 struct CreateTableDraft {
     schema: String,
     table_name: String,
@@ -53,11 +62,23 @@ struct CreateTableRequestPayload {
     clickhouse_engine: Option<String>,
 }
 
+#[derive(Clone, PartialEq)]
+struct DuplicateTableDraft {
+    table_name: String,
+    copy_data: bool,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ClickHouseEnginePreset {
     MergeTree,
     ReplacingMergeTree,
     Log,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TableMutationKind {
+    Truncate,
+    Drop,
 }
 
 #[component]
@@ -587,6 +608,205 @@ fn CreateTableModal(
 }
 
 #[component]
+fn DuplicateTableModal(
+    target: DuplicateTableTarget,
+    tree_reload: Signal<u64>,
+    selected_node: Signal<String>,
+    mut show_duplicate_table: Signal<bool>,
+) -> Element {
+    let mut draft = use_signal(|| default_duplicate_table_draft(&target));
+    let mut duplicate_error = use_signal(String::new);
+    let mut duplicate_inflight = use_signal(|| false);
+    let current_draft = draft();
+    let can_submit = duplicate_table_form_valid(&target, &current_draft) && !duplicate_inflight();
+    let preview_sql = duplicate_table_preview_sql(&target, &current_draft);
+
+    rsx! {
+        div {
+            class: "settings-modal__backdrop",
+            onclick: move |_| {
+                if !duplicate_inflight() {
+                    show_duplicate_table.set(false);
+                }
+            },
+            div {
+                class: "settings-modal table-modal",
+                onclick: move |event| event.stop_propagation(),
+                div {
+                    class: "settings-modal__header",
+                    div {
+                        class: "settings-modal__header-copy",
+                        h2 { class: "settings-modal__title", "Duplicate Table" }
+                        p {
+                            class: "settings-modal__hint",
+                            "Create a copy of {target.source.qualified_name} in {target.connection_name}."
+                        }
+                    }
+                    button {
+                        class: "button button--ghost button--small",
+                        disabled: duplicate_inflight(),
+                        onclick: move |_| show_duplicate_table.set(false),
+                        "Close"
+                    }
+                }
+
+                div {
+                    class: "table-modal__body",
+                    div {
+                        class: "table-modal__grid",
+                        div {
+                            class: "field",
+                            span { class: "field__label", "Source table" }
+                            input {
+                                class: "input",
+                                value: target.source.qualified_name.clone(),
+                                readonly: true,
+                            }
+                        }
+                        div {
+                            class: "field",
+                            span { class: "field__label", "New table name" }
+                            input {
+                                class: "input",
+                                value: current_draft.table_name.clone(),
+                                placeholder: "products_copy",
+                                oninput: move |event| {
+                                    let value = event.value();
+                                    draft.with_mut(|draft| draft.table_name = value);
+                                },
+                            }
+                        }
+                    }
+
+                    div {
+                        class: "table-modal__section",
+                        label {
+                            class: "settings-modal__toggle",
+                            input {
+                                r#type: "checkbox",
+                                checked: current_draft.copy_data,
+                                oninput: move |event| {
+                                    let checked = event.checked();
+                                    draft.with_mut(|draft| draft.copy_data = checked);
+                                },
+                            }
+                            span { "Copy existing rows into the duplicated table" }
+                        }
+                        p {
+                            class: "table-modal__hint table-modal__hint--boxed",
+                            match target.kind {
+                                DatabaseKind::Sqlite => {
+                                    "SQLite duplicates the table definition and can optionally copy all rows. Indexes and triggers are not copied."
+                                }
+                                DatabaseKind::Postgres => {
+                                    "PostgreSQL duplicates the table with LIKE INCLUDING ALL and can optionally copy all rows."
+                                }
+                                DatabaseKind::ClickHouse => {
+                                    "ClickHouse duplicates the CREATE TABLE definition and can optionally copy all rows with INSERT SELECT."
+                                }
+                            }
+                        }
+                    }
+
+                    div {
+                        class: "table-modal__preview",
+                        span { class: "field__label", "Preview" }
+                        pre {
+                            class: "table-modal__preview-sql",
+                            "{preview_sql}"
+                        }
+                    }
+
+                    if !duplicate_error().is_empty() {
+                        p {
+                            class: "table-modal__error",
+                            "{duplicate_error}"
+                        }
+                    }
+
+                    div {
+                        class: "table-modal__actions",
+                        button {
+                            class: "button button--ghost",
+                            disabled: duplicate_inflight(),
+                            onclick: move |_| show_duplicate_table.set(false),
+                            "Cancel"
+                        }
+                        button {
+                            class: "button button--primary",
+                            disabled: !can_submit,
+                            onclick: move |_| {
+                                if duplicate_inflight() {
+                                    return;
+                                }
+
+                                let draft_value = draft();
+                                let source = target.source.clone();
+                                let target_kind = target.kind;
+                                let next_table_name = draft_value.table_name.trim().to_string();
+                                if next_table_name.is_empty() {
+                                    duplicate_error.set("Enter a new table name.".to_string());
+                                    return;
+                                }
+                                if next_table_name == source.table_name {
+                                    duplicate_error.set(
+                                        "New table name must be different from the source table."
+                                            .to_string(),
+                                    );
+                                    return;
+                                }
+
+                                let Some(connection) = session_connection(target.session_id) else {
+                                    duplicate_error.set(
+                                        "The connection was closed before the table could be duplicated."
+                                            .to_string(),
+                                    );
+                                    return;
+                                };
+
+                                duplicate_error.set(String::new());
+                                duplicate_inflight.set(true);
+
+                                spawn(async move {
+                                    let result = query::duplicate_table(
+                                        connection,
+                                        source.clone(),
+                                        next_table_name.clone(),
+                                        draft_value.copy_data,
+                                    )
+                                    .await;
+
+                                    duplicate_inflight.set(false);
+                                    match result {
+                                        Ok(()) => {
+                                            selected_node.set(duplicated_qualified_name(
+                                                &source,
+                                                target_kind,
+                                                &next_table_name,
+                                            ));
+                                            tree_reload += 1;
+                                            show_duplicate_table.set(false);
+                                        }
+                                        Err(err) => {
+                                            duplicate_error.set(err.to_string());
+                                        }
+                                    }
+                                });
+                            },
+                            if duplicate_inflight() {
+                                "Duplicating..."
+                            } else {
+                                "Duplicate table"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn ExplorerConnectionView(
     section: ExplorerConnectionSection,
     tree_reload: Signal<u64>,
@@ -788,13 +1008,21 @@ fn ExplorerObjectRow(
     next_tab_id: Signal<u64>,
     selected_node: Signal<String>,
 ) -> Element {
-    let mut delete_inflight = use_signal(|| false);
+    let mut table_mutation_inflight = use_signal(|| None::<TableMutationKind>);
+    let mut show_duplicate_table = use_signal(|| false);
+    let (connection_name, connection_kind) = APP_STATE
+        .read()
+        .session(session_id)
+        .map(|session| (session.name.clone(), session.kind))
+        .unwrap_or_else(|| ("Connection".to_string(), DatabaseKind::Sqlite));
     let preview_source = TablePreviewSource {
         schema: node.schema.clone(),
         table_name: node.name.clone(),
         qualified_name: node.qualified_name.clone(),
     };
     let selected = selected_node() == node.qualified_name;
+    let can_duplicate_table = node.kind == ExplorerNodeKind::Table;
+    let can_truncate_table = node.kind == ExplorerNodeKind::Table;
     let can_drop_table = node.kind == ExplorerNodeKind::Table;
     let kind_badge = match node.kind {
         ExplorerNodeKind::Table => "T",
@@ -873,23 +1101,128 @@ fn ExplorerObjectRow(
                     div { class: "tree__object-kind", "{kind_label}" }
                 }
             }
-            if can_drop_table {
+            if can_duplicate_table || can_truncate_table || can_drop_table {
                 div { class: "tree__object-actions",
+                    if can_duplicate_table {
+                        IconButton {
+                            icon: ActionIcon::Duplicate,
+                            label: format!("Duplicate table {}", node.name),
+                            small: true,
+                            disabled: table_mutation_inflight().is_some(),
+                            onclick: {
+                                move |event: MouseEvent| {
+                                    event.stop_propagation();
+                                    show_duplicate_table.set(true);
+                                }
+                            },
+                        }
+                    }
+                    if can_truncate_table {
+                        IconButton {
+                            icon: ActionIcon::Truncate,
+                            label: table_mutation_button_label(
+                                TableMutationKind::Truncate,
+                                &node.name,
+                                table_mutation_inflight() == Some(TableMutationKind::Truncate),
+                            ),
+                            small: true,
+                            disabled: table_mutation_inflight().is_some(),
+                            onclick: {
+                                let source = preview_source.clone();
+                                move |event: MouseEvent| {
+                                    event.stop_propagation();
+                                    if table_mutation_inflight().is_some() {
+                                        return;
+                                    }
+
+                                    let source = source.clone();
+
+                                    spawn(async move {
+                                        let confirmation = AsyncMessageDialog::new()
+                                            .set_title(table_mutation_dialog_title(
+                                                TableMutationKind::Truncate,
+                                            ))
+                                            .set_description(table_mutation_confirmation_description(
+                                                TableMutationKind::Truncate,
+                                                connection_kind,
+                                                &source,
+                                            ))
+                                            .set_buttons(MessageButtons::YesNo)
+                                            .set_level(MessageLevel::Warning)
+                                            .show()
+                                            .await;
+
+                                        if confirmation != MessageDialogResult::Yes {
+                                            return;
+                                        }
+
+                                        let Some(connection) = session_connection(session_id) else {
+                                            let _ = AsyncMessageDialog::new()
+                                                .set_title(table_mutation_error_title(
+                                                    TableMutationKind::Truncate,
+                                                ))
+                                                .set_description(table_mutation_connection_closed_description(
+                                                    TableMutationKind::Truncate,
+                                                ))
+                                                .set_buttons(MessageButtons::Ok)
+                                                .set_level(MessageLevel::Error)
+                                                .show()
+                                                .await;
+                                            return;
+                                        };
+
+                                        let refresh_connection = connection.clone();
+                                        table_mutation_inflight
+                                            .set(Some(TableMutationKind::Truncate));
+                                        let result =
+                                            query::truncate_table(connection, source.clone()).await;
+                                        table_mutation_inflight.set(None);
+
+                                        match result {
+                                            Ok(()) => {
+                                                mark_table_truncated(
+                                                    tabs,
+                                                    session_id,
+                                                    refresh_connection,
+                                                    source.clone(),
+                                                );
+                                            }
+                                            Err(err) => {
+                                                let _ = AsyncMessageDialog::new()
+                                                    .set_title(table_mutation_error_title(
+                                                        TableMutationKind::Truncate,
+                                                    ))
+                                                    .set_description(format!(
+                                                        "Failed to truncate {}.\n\n{}",
+                                                        source.qualified_name,
+                                                        err
+                                                    ))
+                                                    .set_buttons(MessageButtons::Ok)
+                                                    .set_level(MessageLevel::Error)
+                                                    .show()
+                                                    .await;
+                                            }
+                                        }
+                                    });
+                                }
+                            },
+                        }
+                    }
                     IconButton {
                         icon: ActionIcon::Delete,
-                        label: if delete_inflight() {
-                            "Deleting table".to_string()
-                        } else {
-                            format!("Delete table {}", node.name)
-                        },
+                        label: table_mutation_button_label(
+                            TableMutationKind::Drop,
+                            &node.name,
+                            table_mutation_inflight() == Some(TableMutationKind::Drop),
+                        ),
                         small: true,
-                        disabled: delete_inflight(),
+                        disabled: table_mutation_inflight().is_some(),
                         onclick: {
                             let source = preview_source.clone();
                             let selected_qualified_name = node.qualified_name.clone();
                             move |event: MouseEvent| {
                                 event.stop_propagation();
-                                if delete_inflight() {
+                                if table_mutation_inflight().is_some() {
                                     return;
                                 }
 
@@ -898,11 +1231,13 @@ fn ExplorerObjectRow(
 
                                 spawn(async move {
                                     let confirmation = AsyncMessageDialog::new()
-                                        .set_title("Delete table")
-                                        .set_description(format!(
-                                            "Delete {}?\n\nThis permanently runs DROP TABLE IF EXISTS {}. Dependent objects may prevent the operation.",
-                                            source.table_name,
-                                            source.qualified_name,
+                                        .set_title(table_mutation_dialog_title(
+                                            TableMutationKind::Drop,
+                                        ))
+                                        .set_description(table_mutation_confirmation_description(
+                                            TableMutationKind::Drop,
+                                            connection_kind,
+                                            &source,
                                         ))
                                         .set_buttons(MessageButtons::YesNo)
                                         .set_level(MessageLevel::Warning)
@@ -915,10 +1250,12 @@ fn ExplorerObjectRow(
 
                                     let Some(connection) = session_connection(session_id) else {
                                         let _ = AsyncMessageDialog::new()
-                                            .set_title("Delete table failed")
-                                            .set_description(
-                                                "The connection was closed before the table could be deleted.",
-                                            )
+                                            .set_title(table_mutation_error_title(
+                                                TableMutationKind::Drop,
+                                            ))
+                                            .set_description(table_mutation_connection_closed_description(
+                                                TableMutationKind::Drop,
+                                            ))
                                             .set_buttons(MessageButtons::Ok)
                                             .set_level(MessageLevel::Error)
                                             .show()
@@ -926,9 +1263,9 @@ fn ExplorerObjectRow(
                                         return;
                                     };
 
-                                    delete_inflight.set(true);
+                                    table_mutation_inflight.set(Some(TableMutationKind::Drop));
                                     let result = query::drop_table(connection, source.clone()).await;
-                                    delete_inflight.set(false);
+                                    table_mutation_inflight.set(None);
 
                                     match result {
                                         Ok(()) => {
@@ -940,9 +1277,11 @@ fn ExplorerObjectRow(
                                         }
                                         Err(err) => {
                                             let _ = AsyncMessageDialog::new()
-                                                .set_title("Delete table failed")
+                                                .set_title(table_mutation_error_title(
+                                                    TableMutationKind::Drop,
+                                                ))
                                                 .set_description(format!(
-                                                    "Failed to delete {}.\n\n{}",
+                                                    "Failed to drop {}.\n\n{}",
                                                     source.qualified_name,
                                                     err
                                                 ))
@@ -958,7 +1297,81 @@ fn ExplorerObjectRow(
                     }
                 }
             }
+            if show_duplicate_table() {
+                DuplicateTableModal {
+                    target: DuplicateTableTarget {
+                        session_id,
+                        connection_name: connection_name.clone(),
+                        kind: connection_kind,
+                        source: preview_source.clone(),
+                    },
+                    tree_reload,
+                    selected_node,
+                    show_duplicate_table,
+                }
+            }
         }
+    }
+}
+
+fn table_mutation_button_label(
+    action: TableMutationKind,
+    table_name: &str,
+    inflight: bool,
+) -> String {
+    match (action, inflight) {
+        (TableMutationKind::Truncate, true) => "Truncating table".to_string(),
+        (TableMutationKind::Truncate, false) => format!("Truncate table {table_name}"),
+        (TableMutationKind::Drop, true) => "Dropping table".to_string(),
+        (TableMutationKind::Drop, false) => format!("Drop table {table_name}"),
+    }
+}
+
+fn table_mutation_dialog_title(action: TableMutationKind) -> &'static str {
+    match action {
+        TableMutationKind::Truncate => "Truncate table",
+        TableMutationKind::Drop => "Drop table",
+    }
+}
+
+fn table_mutation_error_title(action: TableMutationKind) -> &'static str {
+    match action {
+        TableMutationKind::Truncate => "Truncate table failed",
+        TableMutationKind::Drop => "Drop table failed",
+    }
+}
+
+fn table_mutation_connection_closed_description(action: TableMutationKind) -> &'static str {
+    match action {
+        TableMutationKind::Truncate => {
+            "The connection was closed before the table could be truncated."
+        }
+        TableMutationKind::Drop => "The connection was closed before the table could be dropped.",
+    }
+}
+
+fn table_mutation_confirmation_description(
+    action: TableMutationKind,
+    kind: DatabaseKind,
+    source: &TablePreviewSource,
+) -> String {
+    match action {
+        TableMutationKind::Truncate => {
+            let sql = match kind {
+                DatabaseKind::Sqlite => format!("DELETE FROM {}", source.qualified_name),
+                DatabaseKind::Postgres | DatabaseKind::ClickHouse => {
+                    format!("TRUNCATE TABLE {}", source.qualified_name)
+                }
+            };
+            format!(
+                "Truncate {}?\n\nThis removes all rows but keeps the table structure by running {}.",
+                source.table_name, sql,
+            )
+        }
+        TableMutationKind::Drop => format!(
+            "Drop {}?\n\nThis permanently removes the table by running DROP TABLE IF EXISTS {}. Dependent objects may prevent the operation.",
+            source.table_name, source.qualified_name,
+        ),
     }
 }
 
@@ -998,8 +1411,20 @@ fn default_create_table_draft(target: &CreateTableTarget) -> CreateTableDraft {
     }
 }
 
+fn default_duplicate_table_draft(target: &DuplicateTableTarget) -> DuplicateTableDraft {
+    DuplicateTableDraft {
+        table_name: format!("{}_copy", target.source.table_name.trim()),
+        copy_data: true,
+    }
+}
+
 fn create_table_form_valid(kind: DatabaseKind, draft: &CreateTableDraft) -> bool {
     !draft.table_name.trim().is_empty() && build_create_table_request(kind, draft).is_ok()
+}
+
+fn duplicate_table_form_valid(target: &DuplicateTableTarget, draft: &DuplicateTableDraft) -> bool {
+    let table_name = draft.table_name.trim();
+    !table_name.is_empty() && table_name != target.source.table_name.trim()
 }
 
 fn normalized_schema_input(kind: DatabaseKind, value: &str) -> Option<String> {
@@ -1046,6 +1471,62 @@ fn create_table_preview_sql(kind: DatabaseKind, draft: &CreateTableDraft) -> Str
             preview_clickhouse_engine_clause(draft)
         ),
         _ => format!("CREATE TABLE {qualified_name} {definition}"),
+    }
+}
+
+fn duplicate_table_preview_sql(
+    target: &DuplicateTableTarget,
+    draft: &DuplicateTableDraft,
+) -> String {
+    let table_name = draft.table_name.trim();
+    if table_name.is_empty() {
+        return "-- enter a new table name".to_string();
+    }
+
+    let source_name = target.source.qualified_name.trim();
+    let target_name = duplicated_qualified_name(&target.source, target.kind, table_name);
+
+    match target.kind {
+        DatabaseKind::Sqlite => {
+            let create_sql =
+                format!("CREATE TABLE {target_name} /* definition copied from {source_name} */");
+            if draft.copy_data {
+                format!("{create_sql};\nINSERT INTO {target_name} SELECT * FROM {source_name};")
+            } else {
+                format!("{create_sql};")
+            }
+        }
+        DatabaseKind::Postgres => {
+            let create_sql =
+                format!("CREATE TABLE {target_name} (LIKE {source_name} INCLUDING ALL)");
+            if draft.copy_data {
+                format!("{create_sql};\nINSERT INTO {target_name} SELECT * FROM {source_name};")
+            } else {
+                format!("{create_sql};")
+            }
+        }
+        DatabaseKind::ClickHouse => {
+            let create_sql =
+                format!("CREATE TABLE {target_name} /* definition copied from {source_name} */");
+            if draft.copy_data {
+                format!("{create_sql};\nINSERT INTO {target_name} SELECT * FROM {source_name};")
+            } else {
+                format!("{create_sql};")
+            }
+        }
+    }
+}
+
+fn duplicated_qualified_name(
+    source: &TablePreviewSource,
+    kind: DatabaseKind,
+    table_name: &str,
+) -> String {
+    match kind {
+        DatabaseKind::Sqlite => quote_sql_identifier(table_name.trim()),
+        DatabaseKind::Postgres | DatabaseKind::ClickHouse => {
+            quoted_table_name_preview(kind, source.schema.as_deref(), table_name.trim())
+        }
     }
 }
 
@@ -1889,10 +2370,10 @@ fn count_objects(nodes: &[ExplorerNode]) -> usize {
 mod tests {
     use super::{
         ClickHouseEnginePreset, CreateTableColumnDraft, CreateTableDraft,
-        build_create_table_request, preview_clickhouse_engine_clause,
+        build_create_table_request, duplicated_qualified_name, preview_clickhouse_engine_clause,
         selected_create_table_type_value,
     };
-    use models::DatabaseKind;
+    use models::{DatabaseKind, TablePreviewSource};
 
     #[test]
     fn builds_sqlite_create_table_from_ui_fields() {
@@ -1994,6 +2475,29 @@ mod tests {
         assert_eq!(
             selected_create_table_type_value(DatabaseKind::Postgres, "citext"),
             "__custom__"
+        );
+    }
+
+    #[test]
+    fn duplicate_target_name_matches_explorer_qualified_name_format() {
+        let sqlite_source = TablePreviewSource {
+            schema: Some("main".to_string()),
+            table_name: "products".to_string(),
+            qualified_name: r#""products""#.to_string(),
+        };
+        let postgres_source = TablePreviewSource {
+            schema: Some("public".to_string()),
+            table_name: "products".to_string(),
+            qualified_name: r#""public"."products""#.to_string(),
+        };
+
+        assert_eq!(
+            duplicated_qualified_name(&sqlite_source, DatabaseKind::Sqlite, "products_copy"),
+            r#""products_copy""#
+        );
+        assert_eq!(
+            duplicated_qualified_name(&postgres_source, DatabaseKind::Postgres, "products_copy"),
+            r#""public"."products_copy""#
         );
     }
 }

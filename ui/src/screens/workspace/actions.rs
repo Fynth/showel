@@ -664,6 +664,62 @@ pub fn mark_table_deleted(
     });
 }
 
+pub fn mark_table_truncated(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    session_id: u64,
+    connection: DatabaseConnection,
+    source: TablePreviewSource,
+) {
+    let mut preview_tabs = Vec::new();
+
+    tabs.with_mut(|all_tabs| {
+        for tab in all_tabs
+            .iter_mut()
+            .filter(|tab| tab.session_id == session_id)
+        {
+            let matches_preview = tab.preview_source.as_ref() == Some(&source);
+            let matches_sql = tab
+                .last_run_sql
+                .as_deref()
+                .and_then(query::preview_source_for_sql)
+                .as_ref()
+                == Some(&source);
+
+            if !matches_preview && !matches_sql {
+                continue;
+            }
+
+            tab.result = None;
+            tab.current_offset = 0;
+            tab.is_loading_more = false;
+            tab.pending_table_changes = PendingTableChanges::default();
+
+            if matches_preview {
+                preview_tabs.push((tab.id, tab.page_size));
+                continue;
+            }
+
+            tab.filter = None;
+            tab.sort = None;
+            tab.status = format!(
+                "Referenced table {} was truncated. Run the SQL again to refresh.",
+                source.table_name
+            );
+        }
+    });
+
+    for (tab_id, page_size) in preview_tabs {
+        run_table_preview_for_tab(
+            tabs,
+            tab_id,
+            connection.clone(),
+            source.clone(),
+            0,
+            page_size,
+        );
+    }
+}
+
 pub fn toggle_active_tab_sort(
     mut tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: u64,

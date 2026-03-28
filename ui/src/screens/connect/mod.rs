@@ -1,3 +1,4 @@
+mod edit_connection_modal;
 mod forms;
 mod kind_selector;
 mod recent_connections;
@@ -15,11 +16,12 @@ use self::{
 #[component]
 pub fn DbConnect() -> Element {
     let selected_kind = use_signal(|| DatabaseKind::Sqlite);
+    let saved_connections_revision = use_signal(|| 0_u64);
     let has_sessions = APP_STATE.read().has_sessions();
-    let saved_connections =
-        use_resource(
-            move || async move { storage::load_saved_connections().await.unwrap_or_default() },
-        );
+    let saved_connections = use_resource(move || {
+        let _ = saved_connections_revision();
+        async move { storage::load_saved_connections().await.unwrap_or_default() }
+    });
 
     rsx! {
         section {
@@ -54,6 +56,7 @@ pub fn DbConnect() -> Element {
 
                 RecentConnections {
                     saved_connections: saved_connections(),
+                    saved_connections_revision,
                 }
 
                 div {
