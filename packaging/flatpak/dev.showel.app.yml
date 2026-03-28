@@ -22,9 +22,10 @@ build-options:
     CARGO_TARGET_DIR: /run/build/showel/target
 modules:
   - name: libxdo
-    buildsystem: autotools
-    config-opts:
-      - --disable-static
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app INSTALLMAN=/app/share/man
+      - make install PREFIX=/app INSTALLMAN=/app/share/man LDCONFIG=/bin/true
     cleanup:
       - /bin
       - /include
