@@ -659,6 +659,7 @@ fn format_active_sql(
     replace_active_tab_sql(tabs, current_tab.id, formatted, "SQL formatted".to_string());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn submit_generated_sql_request(
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: u64,

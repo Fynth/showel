@@ -278,7 +278,7 @@ fn parsed_postgres_dsn(
     };
     let database = url
         .path_segments()
-        .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next())
+        .and_then(|mut segments| segments.find(|segment| !segment.is_empty()))
         .map(str::to_string)
         .unwrap_or_else(|| normalized_postgres_database(fallback_database, &username));
 

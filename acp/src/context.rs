@@ -43,9 +43,8 @@ pub async fn build_acp_database_context(
     let prioritized_sources = prioritize_table_sources(all_sources, focus_source.clone());
     let preview_sources = prioritized_sources
         .iter()
-        .cloned()
-        .into_iter()
         .take(MAX_PREVIEW_CONTEXT_TABLES)
+        .cloned()
         .collect::<Vec<_>>();
 
     let mut lines = vec![format!("Active database connection: {connection_label}")];

@@ -43,7 +43,7 @@ pub(crate) use self::{
 thread_local! {
     // Keep clipboard ownership alive for Linux/X11/Wayland instead of dropping it right after copy.
     static PERSISTENT_CLIPBOARD: std::cell::RefCell<Option<arboard::Clipboard>> =
-        std::cell::RefCell::new(None);
+        const { std::cell::RefCell::new(None) };
 }
 
 #[derive(Clone)]
@@ -52,6 +52,7 @@ struct ResolvedAgentSql {
     correction_note: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn send_chat_prompt_request(
     mut panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
@@ -150,6 +151,7 @@ fn send_chat_prompt_request(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn send_sql_generation_request(
     mut panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
@@ -738,6 +740,7 @@ fn send_sql_error_fix_request(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_agent_sql_request(
     mut panel_state: Signal<AcpPanelState>,
     mut tabs: Signal<Vec<QueryTabState>>,
@@ -1156,9 +1159,7 @@ fn build_thread_meta(thread_connection_name: &str, state: &AcpPanelState) -> Str
         } else {
             format!("{connection} · {status}")
         }
-    } else if is_noisy_header_status(status) {
-        connection
-    } else if status.is_empty() {
+    } else if is_noisy_header_status(status) || status.is_empty() {
         connection
     } else if connection.is_empty() {
         status.to_string()
@@ -2015,7 +2016,7 @@ pub fn AcpAgentPanel(
         .messages
         .clone()
         .into_iter()
-        .filter(|message| is_visible_message(message))
+        .filter(is_visible_message)
         .collect::<Vec<_>>();
     let visible_message_total = visible_messages.len();
     let mut message_limit = use_signal(|| AGENT_MESSAGE_BATCH);

@@ -485,6 +485,7 @@ fn join_args(args: &[String]) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
         RegistryAgentRecord, RegistryBinaryTarget, RegistryDistribution, RegistryDocument,

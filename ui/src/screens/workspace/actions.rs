@@ -252,11 +252,7 @@ pub fn run_query_for_tab(
             Ok(output) => {
                 let (status, current_offset) = match &output {
                     QueryOutput::Table(page) => (
-                        format!(
-                            "Loaded rows {}-{}",
-                            page.offset + 1,
-                            page.offset + page.rows.len() as u64
-                        ),
+                        format_loaded_rows_status(page.offset, page.rows.len()),
                         page.offset,
                     ),
                     QueryOutput::AffectedRows(rows) => (format!("Rows affected: {rows}"), 0),
@@ -389,11 +385,10 @@ pub fn run_table_preview_for_tab(
         {
             Ok(output) => {
                 let status = match &output {
-                    QueryOutput::Table(page) => format!(
-                        "Loaded rows {}-{} from {}",
-                        page.offset + 1,
-                        page.offset + page.rows.len() as u64,
-                        source.table_name
+                    QueryOutput::Table(page) => format_loaded_rows_from_source_status(
+                        page.offset,
+                        page.rows.len(),
+                        &source.table_name,
                     ),
                     QueryOutput::AffectedRows(rows) => format!("Rows affected: {rows}"),
                 };
@@ -534,7 +529,10 @@ pub fn append_next_tab_page(mut tabs: Signal<Vec<QueryTabState>>, current_tab: Q
 
                     if let Some((offset, last_row)) = loaded_range {
                         tab.current_offset = offset;
-                        tab.status = format!("Loaded rows {}-{}", offset + 1, last_row);
+                        tab.status = format_loaded_rows_status(
+                            offset,
+                            last_row.saturating_sub(offset) as usize,
+                        );
                     }
 
                     tab.is_loading_more = false;
@@ -559,6 +557,39 @@ pub fn append_next_tab_page(mut tabs: Signal<Vec<QueryTabState>>, current_tab: Q
             }
         }
     });
+}
+
+fn loaded_rows_range(offset: u64, row_count: usize) -> Option<(u64, u64)> {
+    if row_count == 0 {
+        None
+    } else {
+        Some((offset + 1, offset + row_count as u64))
+    }
+}
+
+fn format_loaded_rows_status(offset: u64, row_count: usize) -> String {
+    match loaded_rows_range(offset, row_count) {
+        Some((start, end)) => format!("Loaded rows {start}-{end}"),
+        None => "Loaded 0 rows".to_string(),
+    }
+}
+
+fn format_loaded_rows_from_source_status(
+    offset: u64,
+    row_count: usize,
+    source_name: &str,
+) -> String {
+    match loaded_rows_range(offset, row_count) {
+        Some((start, end)) => format!("Loaded rows {start}-{end} from {source_name}"),
+        None => format!("Loaded 0 rows from {source_name}"),
+    }
+}
+
+pub(crate) fn rows_toolbar_summary(offset: u64, row_count: usize, page_size: u32) -> String {
+    match loaded_rows_range(offset, row_count) {
+        Some((start, end)) => format!("Rows {start}-{end} · page size {page_size}"),
+        None => format!("0 rows · page size {page_size}"),
+    }
 }
 
 pub fn load_tab_page(tabs: Signal<Vec<QueryTabState>>, current_tab: QueryTabState, offset: u64) {
@@ -836,5 +867,26 @@ pub fn clear_active_tab_filter(mut tabs: Signal<Vec<QueryTabState>>, active_tab_
         && (tab.last_run_sql.is_some() || tab.preview_source.is_some())
     {
         load_tab_page(tabs, tab, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        format_loaded_rows_from_source_status, format_loaded_rows_status, rows_toolbar_summary,
+    };
+
+    #[test]
+    fn formats_empty_result_status_without_invalid_range() {
+        assert_eq!(format_loaded_rows_status(0, 0), "Loaded 0 rows");
+        assert_eq!(
+            format_loaded_rows_from_source_status(0, 0, "products"),
+            "Loaded 0 rows from products"
+        );
+    }
+
+    #[test]
+    fn formats_empty_result_toolbar_summary_without_invalid_range() {
+        assert_eq!(rows_toolbar_summary(0, 0, 100), "0 rows · page size 100");
     }
 }

@@ -1,6 +1,7 @@
 use crate::screens::workspace::actions::{
     append_next_tab_page, apply_active_tab_filter, clear_active_tab_filter, load_tab_page,
-    refresh_tab_result, set_active_tab_status, tab_connection_or_error, toggle_active_tab_sort,
+    refresh_tab_result, rows_toolbar_summary, set_active_tab_status, tab_connection_or_error,
+    toggle_active_tab_sort,
 };
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
@@ -150,7 +151,7 @@ pub fn ResultTable(
                                             class: "results__toolbar-copy",
                                             span {
                                                 class: "results__toolbar-chip",
-                                                "Rows {page.offset + 1}-{page.offset + page.rows.len() as u64} · page size {page.page_size}"
+                                                "{rows_toolbar_summary(page.offset, page.rows.len(), page.page_size)}"
                                             }
                                             span {
                                                 class: "results__toolbar-chip",
@@ -680,8 +681,10 @@ fn result_error_message(status: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::result_error_message;
+    use crate::screens::workspace::actions::rows_toolbar_summary;
 
     #[test]
     fn extracts_query_error_from_status() {
@@ -694,6 +697,11 @@ mod tests {
     #[test]
     fn ignores_non_error_status() {
         assert_eq!(result_error_message("Loaded rows 1-10"), None);
+    }
+
+    #[test]
+    fn summarizes_empty_page_without_invalid_range() {
+        assert_eq!(rows_toolbar_summary(0, 0, 100), "0 rows · page size 100");
     }
 }
 

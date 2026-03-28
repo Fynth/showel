@@ -504,6 +504,7 @@ fn build_page_result_context(label: &str, page: &QueryPage) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
         MAX_ACTIVE_RESULT_ROWS, build_active_tab_context, build_chat_prompt,

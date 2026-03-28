@@ -651,11 +651,7 @@ async fn run_acp_worker(
         let stderr_buffer = Arc::clone(&stderr_buffer);
         tokio::task::spawn_local(async move {
             let mut chunk = [0_u8; 2048];
-            loop {
-                let read = match stderr.read(&mut chunk).await {
-                    Ok(read) => read,
-                    Err(_) => break,
-                };
+            while let Ok(read) = stderr.read(&mut chunk).await {
                 if read == 0 {
                     break;
                 }

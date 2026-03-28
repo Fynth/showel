@@ -1713,7 +1713,7 @@ fn create_table_type_options(kind: DatabaseKind) -> &'static [&'static str] {
     }
 }
 
-fn selected_create_table_type_value<'a>(kind: DatabaseKind, data_type: &'a str) -> &'a str {
+fn selected_create_table_type_value(kind: DatabaseKind, data_type: &str) -> &str {
     create_table_type_options(kind)
         .iter()
         .copied()
@@ -2139,7 +2139,7 @@ fn preview_clickhouse_engine_clause(draft: &CreateTableDraft) -> String {
         .columns
         .iter()
         .filter(|column| column.key)
-        .map(|column| preview_column_name(column))
+        .map(preview_column_name)
         .collect::<Vec<_>>();
     let order_by = clickhouse_order_by_expression(&key_columns);
     match draft.clickhouse_engine {
