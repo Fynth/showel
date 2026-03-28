@@ -20,6 +20,9 @@ build-options:
     CARGO_HOME: /run/build/showel/cargo
     CARGO_NET_OFFLINE: "true"
     CARGO_TARGET_DIR: /run/build/showel/target
+    LIBRARY_PATH: /app/lib
+    LD_LIBRARY_PATH: /app/lib
+    RUSTFLAGS: "-L native=/app/lib"
 modules:
   - name: libxdo
     buildsystem: simple
