@@ -3,9 +3,11 @@ use agent_client_protocol::{
     RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
 };
 use models::{
-    AcpConnectionInfo, AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpPermissionOption,
-    AcpPermissionRequest,
+    AgentRoutingRequest, AgentRoutingResponse, AgentSpecialist, AcpConnectionInfo, AcpEvent,
+    AcpLaunchRequest, AcpMessageKind, AcpPermissionOption, AcpPermissionRequest,
 };
+
+use crate::agents::AgentCoordinator;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -39,6 +41,9 @@ struct AcpRuntimeHandle {
     permission_registry: PermissionRegistry,
     terminal_registry: TerminalRegistry,
     _thread: thread::JoinHandle<()>,
+    active_specialist: Option<AgentSpecialist>,
+    coordinator: AgentCoordinator,
+    execution_history: Vec<String>,
 }
 
 enum AcpCommand {
@@ -508,6 +513,9 @@ pub async fn connect_acp_agent(request: AcpLaunchRequest) -> Result<AcpConnectio
         permission_registry,
         terminal_registry,
         _thread: thread,
+        active_specialist: None,
+        coordinator: AgentCoordinator::new(),
+        execution_history: Vec::new(),
     });
 
     Ok(connection)
@@ -515,6 +523,182 @@ pub async fn connect_acp_agent(request: AcpLaunchRequest) -> Result<AcpConnectio
 
 pub fn send_acp_prompt(prompt: String) -> Result<(), String> {
     send_command(AcpCommand::Prompt(prompt))
+}
+
+/// Routes an ACP request through the agent coordinator to determine the appropriate specialist.
+/// Returns routing decision with confidence score and reasoning.
+pub fn route_acp_request(
+    request: AgentRoutingRequest,
+) -> Result<AgentRoutingResponse, String> {
+    let mut slot = runtime_slot()
+        .lock()
+        .map_err(|_| "ACP runtime lock poisoned".to_string())?;
+
+    let Some(handle) = slot.as_mut() else {
+        return Err("ACP agent is not connected".to_string());
+    };
+
+    let routing_result = handle.coordinator.route(&request);
+
+    match &routing_result {
+        Ok(response) => {
+            handle.active_specialist = Some(response.specialist);
+            log_routing_decision(&response.specialist, response.confidence, &response.reasoning);
+
+            if response.confidence < 0.7 {
+                eprintln!(
+                    "[acp::routing] Low confidence routing: specialist={:?}, confidence={:.2}",
+                    response.specialist, response.confidence
+                );
+            }
+        }
+        Err(err) => {
+            eprintln!("[acp::routing] Routing failed: {}. Falling back to default.", err);
+            handle.active_specialist = Some(AgentSpecialist::SqlExpert);
+
+            return Ok(AgentRoutingResponse {
+                specialist: AgentSpecialist::SqlExpert,
+                confidence: 0.4,
+                reasoning: format!("Routing failed ({}). Using default specialist.", err),
+            });
+        }
+    }
+
+    routing_result
+}
+
+/// Sends an ACP prompt with agent routing integration.
+/// Augments the prompt with execution history context before sending.
+/// Maintains backward compatibility with the existing signature.
+pub fn send_acp_prompt_with_routing(
+    prompt: String,
+    database_context: String,
+) -> Result<(), String> {
+    let mut slot = runtime_slot()
+        .lock()
+        .map_err(|_| "ACP runtime lock poisoned".to_string())?;
+
+    let Some(handle) = slot.as_mut() else {
+        return Err("ACP agent is not connected".to_string());
+    };
+
+    let routing_request = AgentRoutingRequest {
+        query_text: prompt.clone(),
+        database_context,
+        user_intent: None,
+    };
+
+    let routing_response = handle.coordinator.route(&routing_request);
+
+    match &routing_response {
+        Ok(response) => {
+            handle.active_specialist = Some(response.specialist);
+            log_routing_decision(&response.specialist, response.confidence, &response.reasoning);
+
+            let augmented_prompt = augment_prompt_with_context(&prompt, &handle.execution_history);
+
+            if response.confidence >= 0.7 {
+                if let Ok(specialist_response) =
+                    handle.coordinator.dispatch(response.specialist, &routing_request)
+                {
+                    eprintln!(
+                        "[acp::routing] Dispatched to {:?}: {}",
+                        response.specialist,
+                        specialist_response.lines().next().unwrap_or("no response")
+                    );
+                }
+            }
+
+            drop(slot);
+            send_command(AcpCommand::Prompt(augmented_prompt))
+        }
+        Err(err) => {
+            eprintln!("[acp::routing] Routing failed: {}. Using default.", err);
+            handle.active_specialist = Some(AgentSpecialist::SqlExpert);
+
+            drop(slot);
+            send_command(AcpCommand::Prompt(prompt))
+        }
+    }
+}
+
+/// Logs routing decisions for telemetry and debugging.
+fn log_routing_decision(specialist: &AgentSpecialist, confidence: f32, reasoning: &str) {
+    eprintln!(
+        "[acp::routing] specialist={} confidence={:.2} reasoning={}",
+        specialist.variant_name(),
+        confidence,
+        reasoning
+    );
+}
+
+/// Augments a prompt with execution history context.
+fn augment_prompt_with_context(prompt: &str, execution_history: &[String]) -> String {
+    if execution_history.is_empty() {
+        return prompt.to_string();
+    }
+
+    let mut augmented = String::new();
+    augmented.push_str("## Execution History\n");
+    augmented.push_str("Recent operations:\n");
+
+    for entry in execution_history.iter().rev().take(5) {
+        augmented.push_str(&format!("- {}\n", entry));
+    }
+
+    augmented.push('\n');
+    augmented.push_str("## Current Request\n");
+    augmented.push_str(prompt);
+
+    augmented
+}
+
+/// Clears the currently active specialist.
+pub fn clear_active_specialist() -> Result<(), String> {
+    let mut slot = runtime_slot()
+        .lock()
+        .map_err(|_| "ACP runtime lock poisoned".to_string())?;
+
+    let Some(handle) = slot.as_mut() else {
+        return Err("ACP agent is not connected".to_string());
+    };
+
+    handle.active_specialist = None;
+    handle.coordinator.clear_active();
+
+    Ok(())
+}
+
+/// Returns the currently active specialist, if any.
+pub fn get_active_specialist() -> Result<Option<AgentSpecialist>, String> {
+    let slot = runtime_slot()
+        .lock()
+        .map_err(|_| "ACP runtime lock poisoned".to_string())?;
+
+    let Some(handle) = slot.as_ref() else {
+        return Err("ACP agent is not connected".to_string());
+    };
+
+    Ok(handle.active_specialist)
+}
+
+/// Records an execution entry in the history.
+pub fn record_execution(entry: String) -> Result<(), String> {
+    let mut slot = runtime_slot()
+        .lock()
+        .map_err(|_| "ACP runtime lock poisoned".to_string())?;
+
+    let Some(handle) = slot.as_mut() else {
+        return Err("ACP agent is not connected".to_string());
+    };
+
+    handle.execution_history.push(entry);
+
+    if handle.execution_history.len() > 20 {
+        handle.execution_history.remove(0);
+    }
+
+    Ok(())
 }
 
 pub fn cancel_acp_prompt() -> Result<(), String> {

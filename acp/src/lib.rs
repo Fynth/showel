@@ -24,7 +24,8 @@ pub use ollama::{
     run_embedded_ollama_agent,
 };
 pub use runtime::{
-    cancel_acp_prompt, connect_acp_agent, disconnect_acp_agent, drain_acp_events,
-    respond_acp_permission, send_acp_prompt,
+    cancel_acp_prompt, clear_active_specialist, connect_acp_agent, disconnect_acp_agent,
+    drain_acp_events, get_active_specialist, record_execution, respond_acp_permission,
+    route_acp_request, send_acp_prompt, send_acp_prompt_with_routing,
 };
 pub use semantic_cache::{SemanticCache, SemanticCacheBuilder};
