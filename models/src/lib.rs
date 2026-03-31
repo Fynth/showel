@@ -5,6 +5,7 @@ mod connection;
 mod explorer;
 mod query;
 mod saved_query;
+mod semantic_cache;
 mod settings;
 
 pub use acp::*;
@@ -14,4 +15,5 @@ pub use connection::*;
 pub use explorer::*;
 pub use query::*;
 pub use saved_query::*;
+pub use semantic_cache::*;
 pub use settings::*;
