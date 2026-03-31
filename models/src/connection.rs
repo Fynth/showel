@@ -169,9 +169,13 @@ impl ConnectionRequest {
             ConnectionRequest::MySql(data) => {
                 let endpoint = normalized_mysql_endpoint(data);
                 let mut label = format!(
-                    "MySQL · {}@{}:{}/{}",
-                    endpoint.username, endpoint.host, endpoint.port, endpoint.database
+                    "MySQL · {}@{}:{}",
+                    endpoint.username, endpoint.host, endpoint.port
                 );
+                if !endpoint.database.is_empty() {
+                    label.push('/');
+                    label.push_str(&endpoint.database);
+                }
                 if let Some(tunnel) = data.ssh_tunnel.as_ref().filter(|cfg| cfg.is_configured()) {
                     label.push_str(&format!(" via SSH {}", tunnel.display_name()));
                 }
@@ -201,7 +205,14 @@ impl ConnectionRequest {
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| data.path.trim().to_string()),
             ConnectionRequest::Postgres(data) => normalized_postgres_endpoint(data).database,
-            ConnectionRequest::MySql(data) => normalized_mysql_endpoint(data).database,
+            ConnectionRequest::MySql(data) => {
+                let endpoint = normalized_mysql_endpoint(data);
+                if endpoint.database.is_empty() {
+                    endpoint.host
+                } else {
+                    endpoint.database
+                }
+            }
             ConnectionRequest::ClickHouse(data) => data.effective_database().to_string(),
         }
     }
@@ -223,7 +234,7 @@ impl ConnectionRequest {
             ConnectionRequest::MySql(data) => {
                 let endpoint = normalized_mysql_endpoint(data);
                 format!(
-                    "mysql:{}@{}:{}/{}{}",
+                    "mysql:{}@{}:{}|database:{}{}",
                     endpoint.username,
                     endpoint.host.to_ascii_lowercase(),
                     endpoint.port,
@@ -280,8 +291,9 @@ fn normalized_mysql_endpoint(data: &MySqlFormData) -> NormalizedMySqlEndpoint {
         return endpoint;
     }
 
-    let host = normalized_mysql_host(&data.host);
-    let port = if data.port == 0 { 3306 } else { data.port };
+    let (host, embedded_port) = split_mysql_host_and_port(&data.host);
+    let host = normalized_mysql_host(&host);
+    let port = embedded_port.unwrap_or(if data.port == 0 { 3306 } else { data.port });
     let username = normalized_mysql_username(&data.username);
     let database = normalized_mysql_database(&data.database);
     NormalizedMySqlEndpoint {
@@ -348,12 +360,7 @@ fn normalized_postgres_database(database: &str, username: &str) -> String {
 }
 
 fn normalized_mysql_database(database: &str) -> String {
-    let database = database.trim();
-    if database.is_empty() {
-        "mysql".to_string()
-    } else {
-        database.to_string()
-    }
+    database.trim().to_string()
 }
 
 fn parsed_postgres_dsn(
@@ -416,6 +423,40 @@ fn parsed_mysql_dsn(
         username,
         database,
     })
+}
+
+fn split_mysql_host_and_port(value: &str) -> (String, Option<u16>) {
+    let value = value.trim();
+    if value.is_empty() {
+        return (String::new(), None);
+    }
+
+    if value.starts_with('[')
+        && let Some(end_bracket) = value.find(']')
+    {
+        let host = value[1..end_bracket].to_string();
+        let remainder = value[end_bracket + 1..].trim();
+        if remainder.is_empty() {
+            return (host, None);
+        }
+        if let Some(port) = remainder
+            .strip_prefix(':')
+            .and_then(|port| port.parse::<u16>().ok())
+        {
+            return (host, Some(port));
+        }
+        return (value.to_string(), None);
+    }
+
+    if value.matches(':').count() == 1
+        && let Some((host, port)) = value.rsplit_once(':')
+        && !host.trim().is_empty()
+        && let Ok(port) = port.trim().parse::<u16>()
+    {
+        return (host.trim().to_string(), Some(port));
+    }
+
+    (value.to_string(), None)
 }
 
 fn normalized_clickhouse_endpoint_key(data: &ClickHouseFormData) -> String {
@@ -605,5 +646,24 @@ mod tests {
         assert_eq!(request.short_name(), "app");
         assert!(!request.display_name().contains("super-secret"));
         assert!(!request.identity_key().contains("super-secret"));
+    }
+
+    #[test]
+    fn mysql_empty_database_does_not_force_mysql_system_schema() {
+        let request = ConnectionRequest::MySql(MySqlFormData {
+            host: "db.internal:3307".to_string(),
+            port: 3306,
+            username: "app".to_string(),
+            password: String::new(),
+            database: String::new(),
+            ssh_tunnel: None,
+        });
+
+        assert_eq!(request.display_name(), "MySQL · app@db.internal:3307");
+        assert_eq!(request.short_name(), "db.internal");
+        assert_eq!(
+            request.identity_key(),
+            "mysql:app@db.internal:3307|database:"
+        );
     }
 }
