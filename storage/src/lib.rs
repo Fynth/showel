@@ -8,7 +8,7 @@ mod settings;
 
 pub use chat::{
     create_chat_thread, delete_chat_thread, load_chat_thread_messages, load_chat_threads,
-    save_chat_thread_snapshot,
+    save_chat_thread_snapshot, search_chat_messages, search_chat_sql_artifacts,
 };
 pub use history::{
     load_saved_connections, load_session_state,

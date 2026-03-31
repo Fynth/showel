@@ -213,6 +213,79 @@ pub async fn save_chat_thread_snapshot(
     })
 }
 
+pub async fn search_chat_messages(query: &str, limit: usize) -> Result<Vec<ChatThreadSummary>, String> {
+    let pool = chat_pool().await?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT
+            t.id,
+            t.title,
+            t.connection_name,
+            t.created_at,
+            t.updated_at,
+            coalesce(
+                (
+                    select m.text
+                    from chat_messages m
+                    where m.thread_id = t.id
+                    order by m.position desc, m.id desc
+                    limit 1
+                ),
+                ''
+            ) as last_message_preview
+        FROM chat_threads t
+        JOIN chat_messages_fts f ON t.id = f.thread_id
+        WHERE chat_messages_fts MATCH ?
+        ORDER BY t.updated_at DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(query)
+    .bind(limit as i64)
+    .fetch_all(pool)
+    .await
+    .map_err(|err| format!("failed to search chat messages: {err}"))?;
+
+    rows.into_iter().map(row_to_thread_summary).collect()
+}
+
+pub async fn search_chat_sql_artifacts(limit: usize) -> Result<Vec<ChatThreadSummary>, String> {
+    let pool = chat_pool().await?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT
+            t.id,
+            t.title,
+            t.connection_name,
+            t.created_at,
+            t.updated_at,
+            coalesce(
+                (
+                    select m.text
+                    from chat_messages m
+                    where m.thread_id = t.id
+                    order by m.position desc, m.id desc
+                    limit 1
+                ),
+                ''
+            ) as last_message_preview
+        FROM chat_threads t
+        JOIN chat_messages m ON t.id = m.thread_id
+        WHERE m.kind = 'tool' AND m.artifact_json LIKE '%SqlDraft%'
+        ORDER BY t.updated_at DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(limit as i64)
+    .fetch_all(pool)
+    .await
+    .map_err(|err| format!("failed to search SQL artifacts: {err}"))?;
+
+    rows.into_iter().map(row_to_thread_summary).collect()
+}
+
 pub(crate) async fn chat_pool() -> Result<&'static SqlitePool, String> {
     CHAT_POOL
         .get_or_try_init(|| async {
@@ -289,6 +362,61 @@ async fn initialize_schema(pool: &SqlitePool) -> Result<(), String> {
     .execute(pool)
     .await
     .map_err(|err| format!("failed to initialize chat message index: {err}"))?;
+
+    // FTS5 virtual table for full-text search on chat messages
+    sqlx::query(
+        r#"
+        CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
+            thread_id UNINDEXED,
+            position UNINDEXED,
+            content
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to create chat_messages_fts table: {err}"))?;
+
+    // Trigger to insert into FTS index when a chat message is inserted
+    sqlx::query(
+        r#"
+        CREATE TRIGGER IF NOT EXISTS chat_messages_ai AFTER INSERT ON chat_messages BEGIN
+            INSERT INTO chat_messages_fts (thread_id, position, content)
+            VALUES (new.thread_id, new.position, new.text);
+        END
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to create chat_messages insert trigger: {err}"))?;
+
+    // Trigger to update FTS index when a chat message is updated
+    sqlx::query(
+        r#"
+        CREATE TRIGGER IF NOT EXISTS chat_messages_au AFTER UPDATE ON chat_messages BEGIN
+            INSERT INTO chat_messages_fts (chat_messages_fts, thread_id, position, content)
+            VALUES ('delete', old.thread_id, old.position, old.text);
+            INSERT INTO chat_messages_fts (thread_id, position, content)
+            VALUES (new.thread_id, new.position, new.text);
+        END
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to create chat_messages update trigger: {err}"))?;
+
+    // Trigger to delete from FTS index when a chat message is deleted
+    sqlx::query(
+        r#"
+        CREATE TRIGGER IF NOT EXISTS chat_messages_ad AFTER DELETE ON chat_messages BEGIN
+            INSERT INTO chat_messages_fts (chat_messages_fts, thread_id, position, content)
+            VALUES ('delete', old.thread_id, old.position, old.text);
+        END
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to create chat_messages delete trigger: {err}"))?;
 
     Ok(())
 }
