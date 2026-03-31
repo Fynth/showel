@@ -3,7 +3,7 @@ use crate::{
         APP_SHOW_HISTORY, APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_STATE, APP_THEME,
         APP_TOOLTIP, APP_UI_SETTINGS, restore_connection_sessions,
     },
-    layout::{SettingsModal, StatusBar, Toolbar},
+    layout::{SettingsModal, StatusBar, ToastContainer, Toolbar},
     screens::{DbConnect, Workspace},
 };
 use dioxus::prelude::*;
@@ -141,7 +141,17 @@ pub fn App() -> Element {
                     "app__body app__body--welcome"
                 },
                 if has_sessions {
-                    Workspace {}
+                    ErrorBoundary {
+                        handle_error: |_| {
+                            rsx! {
+                                div {
+                                    class: "workspace-error",
+                                    p { "Something went wrong. Please restart the application." }
+                                }
+                            }
+                        },
+                        Workspace {}
+                    }
                     if should_show_connect {
                         div {
                             class: "app__overlay",
@@ -164,6 +174,7 @@ pub fn App() -> Element {
                         }
                     }
                 }
+                ToastContainer {}
             }
             StatusBar {}
         }

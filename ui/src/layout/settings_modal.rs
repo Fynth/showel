@@ -1,7 +1,7 @@
 use crate::{
     app_state::{
-        APP_SHOW_HISTORY, APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_THEME,
-        APP_UI_SETTINGS, close_settings_modal,
+        close_settings_modal, APP_SHOW_HISTORY, APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS,
+        APP_THEME, APP_UI_SETTINGS,
     },
     screens::SqlFormatSettingsFields,
 };

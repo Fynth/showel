@@ -18,5 +18,7 @@
 @use "components/editor";
 @use "components/agent-panel";
 @use "components/result-grid";
+@use "components/toast";
+@use "components/error-boundary";
 @use "utilities/helpers";
 @use "utilities/scrollbar";

@@ -11,6 +11,21 @@ pub struct AppTooltip {
     pub y: f64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppToast {
+    pub id: u64,
+    pub message: String,
+    pub kind: ToastKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ToastKind {
+    Info,
+    Success,
+    Warning,
+    Error,
+}
+
 pub static APP_STATE: GlobalSignal<AppState> = Signal::global(AppState::default);
 pub static APP_THEME: GlobalSignal<String> =
     Signal::global(|| AppThemePreference::Dark.css_class().to_string());
@@ -20,6 +35,8 @@ pub static APP_SQL_FORMAT_SETTINGS: GlobalSignal<SqlFormatSettings> =
 pub static APP_SHOW_HISTORY: GlobalSignal<bool> = Signal::global(|| false);
 pub static APP_SHOW_SETTINGS_MODAL: GlobalSignal<bool> = Signal::global(|| false);
 pub static APP_TOOLTIP: GlobalSignal<Option<AppTooltip>> = Signal::global(|| None);
+pub static APP_TOAST: GlobalSignal<Vec<AppToast>> = Signal::global(Vec::new);
+static NEXT_TOAST_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 pub fn open_settings_modal() {
     *APP_SHOW_SETTINGS_MODAL.write() = true;
@@ -35,6 +52,45 @@ pub fn show_tooltip(label: String, x: f64, y: f64) {
 
 pub fn hide_tooltip() {
     *APP_TOOLTIP.write() = None;
+}
+
+pub fn show_toast(message: impl Into<String>, kind: ToastKind) {
+    let id = NEXT_TOAST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let toast = AppToast {
+        id,
+        message: message.into(),
+        kind,
+    };
+    APP_TOAST.with_mut(|toasts| {
+        toasts.push(toast);
+    });
+    let toast_id = id;
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        dismiss_toast(toast_id);
+    });
+}
+
+pub fn dismiss_toast(id: u64) {
+    APP_TOAST.with_mut(|toasts| {
+        toasts.retain(|t| t.id != id);
+    });
+}
+
+pub fn toast_error(message: impl Into<String>) {
+    show_toast(message, ToastKind::Error);
+}
+
+pub fn toast_info(message: impl Into<String>) {
+    show_toast(message, ToastKind::Info);
+}
+
+pub fn toast_success(message: impl Into<String>) {
+    show_toast(message, ToastKind::Success);
+}
+
+pub fn toast_warning(message: impl Into<String>) {
+    show_toast(message, ToastKind::Warning);
 }
 
 pub fn open_connection_screen() {

@@ -1,12 +1,14 @@
 mod actions;
 mod components;
+mod context;
 
-use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen};
+use crate::app_state::{toast_error, APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen};
 use dioxus::{html::input_data::MouseButton, prelude::*};
 use models::{
     AcpPanelState, AcpUiMessage, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery,
     WorkspaceToolDock, WorkspaceToolLayout, WorkspaceToolPanel,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashSet, path::Path};
 
@@ -403,7 +405,7 @@ fn create_chat_thread(
                 active_chat_thread_id.set(Some(thread.id));
             }
             Err(err) => {
-                eprintln!("Failed to create chat thread: {err}");
+                toast_error(format!("Failed to create chat thread: {err}"));
             }
         }
     });
@@ -429,7 +431,7 @@ fn delete_chat_thread(
 
     spawn(async move {
         if let Err(err) = storage::delete_chat_thread(thread_id).await {
-            eprintln!("Failed to delete chat thread {thread_id}: {err}");
+            toast_error(format!("Failed to delete chat thread: {err}"));
             return;
         }
 
@@ -457,7 +459,7 @@ fn delete_chat_thread(
                 active_chat_thread_id.set(Some(thread.id));
             }
             Err(err) => {
-                eprintln!("Failed to recreate chat thread after delete: {err}");
+                toast_error(format!("Failed to recreate chat thread: {err}"));
             }
         }
     });
@@ -556,16 +558,20 @@ fn AgentToolPanel(
     mut active_chat_thread_id: Signal<Option<i64>>,
     connection_label: String,
 ) -> Element {
-    let active_chat_thread = chat_threads
-        .read()
-        .iter()
-        .find(|thread| Some(thread.id) == active_chat_thread_id())
-        .cloned();
+    let active_chat_thread = use_memo(move || {
+        chat_threads
+            .read()
+            .iter()
+            .find(|thread| Some(thread.id) == active_chat_thread_id())
+            .cloned()
+    });
     let thread_title = active_chat_thread
+        .read()
         .as_ref()
         .map(|thread| thread.title.clone())
         .unwrap_or_else(|| "New chat".to_string());
     let thread_connection_name = active_chat_thread
+        .read()
         .as_ref()
         .map(|thread| thread.connection_name.clone())
         .unwrap_or_else(|| connection_label.clone());
@@ -1244,6 +1250,20 @@ pub fn Workspace() -> Element {
     let chat_bootstrap_connection_label = connection_label.clone();
     let chat_persist_connection_label = connection_label.clone();
 
+    context::provide_workspace_tab_context(tabs, active_tab_id, next_tab_id);
+    context::provide_workspace_query_context(history, next_history_id, saved_queries, next_saved_query_id);
+    context::provide_workspace_acp_context(context::WorkspaceAcpContext {
+        acp_panel_state,
+        chat_revision,
+        allow_agent_db_read,
+        allow_agent_read_sql_run,
+        allow_agent_write_sql_run,
+        allow_agent_tool_run,
+        chat_threads,
+        active_chat_thread_id,
+        connection_label: connection_label.clone(),
+    });
+
     use_effect(move || {
         let reload_tick = tree_reload();
         let explorer_visible = show_explorer();
@@ -1397,7 +1417,7 @@ pub fn Workspace() -> Element {
                         active_chat_thread_id.set(Some(thread.id));
                     }
                     Err(err) => {
-                        eprintln!("Failed to create default chat thread: {err}");
+                        toast_error(format!("Failed to create default chat thread: {err}"));
                     }
                 }
             } else {
@@ -1431,7 +1451,7 @@ pub fn Workspace() -> Element {
             let messages = match storage::load_chat_thread_messages(thread_id).await {
                 Ok(messages) => messages,
                 Err(err) => {
-                    eprintln!("Failed to load chat thread {thread_id}: {err}");
+                    toast_error(format!("Failed to load chat thread: {err}"));
                     Vec::new()
                 }
             };
@@ -1569,15 +1589,20 @@ pub fn Workspace() -> Element {
                     chat_threads.with_mut(|threads| upsert_chat_thread_summary(threads, summary));
                 }
                 Err(err) => {
-                    eprintln!("Failed to persist chat thread {thread_id}: {err}");
+                    toast_error(format!("Failed to persist chat thread: {err}"));
                 }
             }
         });
     });
 
     use_effect(move || {
-        spawn(async move {
+        static STOP_FLAG: AtomicBool = AtomicBool::new(false);
+        STOP_FLAG.store(false, Ordering::Relaxed);
+        let _ = spawn(async move {
             loop {
+                if STOP_FLAG.load(Ordering::Relaxed) {
+                    break;
+                }
                 let ai_active = ai_features_enabled();
                 let panel_visible = show_agent_panel();
                 let poll_delay = if ai_active && acp_panel_state().connected {
@@ -1594,6 +1619,10 @@ pub fn Workspace() -> Element {
                     let _ = acp::drain_acp_events();
                     tokio::time::sleep(poll_delay).await;
                     continue;
+                }
+
+                if STOP_FLAG.load(Ordering::Relaxed) {
+                    break;
                 }
 
                 let events = acp::drain_acp_events();

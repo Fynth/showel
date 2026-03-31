@@ -69,21 +69,24 @@ pub fn TabsManager(
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
     let mut show_generate_sql_window = use_signal(|| false);
     let mut generate_sql_prompt = use_signal(String::new);
-    let active_tab = tabs
-        .read()
-        .iter()
-        .find(|tab| tab.id == active_tab_id())
-        .cloned();
-    let active_explorer_nodes = active_tab
-        .as_ref()
-        .and_then(|tab| {
-            explorer_sections
-                .read()
-                .iter()
-                .find(|section| section.session_id == tab.session_id)
-                .map(|section| section.nodes.clone())
-        })
-        .unwrap_or_default();
+    let active_tab = use_memo(move || {
+        tabs.read()
+            .iter()
+            .find(|tab| tab.id == active_tab_id())
+            .cloned()
+    });
+    let active_explorer_nodes = use_memo(move || {
+        active_tab()
+            .as_ref()
+            .and_then(|tab| {
+                explorer_sections
+                    .read()
+                    .iter()
+                    .find(|section| section.session_id == tab.session_id)
+                    .map(|section| section.nodes.clone())
+            })
+            .unwrap_or_default()
+    });
 
     let session_labels = {
         let app_state = APP_STATE.read();
@@ -93,7 +96,7 @@ pub fn TabsManager(
             .map(|session| (session.id, session.name.clone()))
             .collect::<std::collections::HashMap<_, _>>()
     };
-    let active_actionable_source = active_tab.as_ref().and_then(actionable_table_source);
+    let active_actionable_source = active_tab.read().as_ref().and_then(actionable_table_source);
     let generate_sql_busy = acp_panel_state().busy;
     let generate_sql_prompt_empty = generate_sql_prompt().trim().is_empty();
 
@@ -205,14 +208,14 @@ pub fn TabsManager(
                 }
             }
 
-            if let Some(active_tab) = active_tab {
+            if let Some(ref tab) = *active_tab.read() {
                 if show_sql_editor() {
                     div {
                         class: "editor",
                         SqlEditor {
-                            sql: active_tab.sql.clone(),
-                            active_tab: active_tab.clone(),
-                            explorer_nodes: active_explorer_nodes,
+                            sql: tab.sql.clone(),
+                            active_tab: tab.clone(),
+                            explorer_nodes: active_explorer_nodes(),
                             tabs,
                             active_tab_id,
                         }
@@ -304,7 +307,7 @@ pub fn TabsManager(
                         icon: ActionIcon::Format,
                         label: "Format SQL".to_string(),
                         onclick: {
-                            let current_tab = active_tab.clone();
+                            let current_tab = tab.clone();
                             let format_settings = APP_SQL_FORMAT_SETTINGS();
                             move |_| format_active_sql(tabs, current_tab.clone(), format_settings.clone())
                         },
@@ -337,7 +340,7 @@ pub fn TabsManager(
                         label: "Open structure".to_string(),
                         disabled: active_actionable_source.is_none(),
                         onclick: {
-                            let current_tab = active_tab.clone();
+                            let current_tab = tab.clone();
                             move |_| open_structure_for_active_preview(
                                 tabs,
                                 active_tab_id,
@@ -349,27 +352,27 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ExportCsv,
                         label: "Export CSV".to_string(),
-                        disabled: !has_tabular_result(&active_tab),
+                        disabled: !has_tabular_result(&tab),
                         onclick: {
-                            let current_tab = active_tab.clone();
+                            let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Csv)
                         },
                     }
                     IconButton {
                         icon: ActionIcon::ExportJson,
                         label: "Export JSON".to_string(),
-                        disabled: !has_tabular_result(&active_tab),
+                        disabled: !has_tabular_result(&tab),
                         onclick: {
-                            let current_tab = active_tab.clone();
+                            let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Json)
                         },
                     }
                     IconButton {
                         icon: ActionIcon::ExportXlsx,
                         label: "Export XLSX".to_string(),
-                        disabled: !has_tabular_result(&active_tab),
+                        disabled: !has_tabular_result(&tab),
                         onclick: {
-                            let current_tab = active_tab.clone();
+                            let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Xlsx)
                         },
                     }
@@ -378,7 +381,7 @@ pub fn TabsManager(
                         label: "Import CSV".to_string(),
                         disabled: active_actionable_source.is_none(),
                         onclick: {
-                            let current_tab = active_tab.clone();
+                            let current_tab = tab.clone();
                             move |_| import_csv_into_active_table(tabs, current_tab.clone())
                         },
                     }
@@ -452,7 +455,7 @@ pub fn TabsManager(
                         }
                     } else {
                         ResultTable {
-                            result: active_tab.result.clone(),
+                            result: tab.result.clone(),
                             tabs,
                             active_tab_id,
                         }
