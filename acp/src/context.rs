@@ -5,7 +5,7 @@ use std::{
 };
 
 use models::{
-    DatabaseConnection, DatabaseError, ExplorerNode, ExplorerNodeKind, QueryOutput, QueryPage,
+    DatabaseConnection, DatabaseError, ExplorerNode, ExplorerNodeKind, QueryHistoryItem, QueryOutput, QueryPage,
     TablePreviewSource,
 };
 
@@ -21,6 +21,11 @@ const MAX_OBSERVED_VALUES_PER_COLUMN: usize = 3;
 const MAX_INLINE_VALUE_LEN: usize = 48;
 const MAX_INLINE_DETAILS_LEN: usize = 240;
 const SCHEMA_CACHE_TTL: Duration = Duration::from_secs(90);
+const FULL_CONTEXT_CACHE_TTL: Duration = Duration::from_secs(90);
+const MAX_HISTORY_QUERIES: usize = 5;
+const MAX_HISTORY_QUERY_LENGTH: usize = 200;
+const CONTEXT_TOKEN_BUDGET: usize = 4000;
+const AVG_CHARS_PER_TOKEN: usize = 4;
 
 struct CachedSchemaContext {
     catalog_signature: String,
@@ -28,9 +33,197 @@ struct CachedSchemaContext {
     lines: Vec<String>,
 }
 
+struct CachedFullContext {
+    connection_label: String,
+    built_at: Instant,
+    context: String,
+}
+
 fn schema_context_cache() -> &'static Mutex<HashMap<String, CachedSchemaContext>> {
     static CACHE: OnceLock<Mutex<HashMap<String, CachedSchemaContext>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn full_context_cache() -> &'static Mutex<HashMap<String, CachedFullContext>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CachedFullContext>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Check if a query contains sensitive information that should be redacted.
+fn contains_sensitive_info(query: &str) -> bool {
+    let upper = query.to_uppercase();
+    upper.contains("PASSWORD") ||
+    upper.contains("SECRET") ||
+    upper.contains("TOKEN") ||
+    upper.contains("KEY") ||
+    upper.contains("CREDENTIAL") ||
+    upper.contains("API_KEY") ||
+    upper.contains("AUTH")
+}
+
+/// Redact sensitive information from a query.
+fn redact_sensitive_query(query: &str) -> String {
+    if contains_sensitive_info(query) {
+        "-- [REDACTED: contains sensitive information]".to_string()
+    } else {
+        query.to_string()
+    }
+}
+
+/// Estimate token count from character count.
+fn estimate_tokens(text: &str) -> usize {
+    text.chars().count() / AVG_CHARS_PER_TOKEN
+}
+
+/// Check if context exceeds token budget and log warning.
+fn check_token_budget(context: &str, source: &str) {
+    let tokens = estimate_tokens(context);
+    if tokens > CONTEXT_TOKEN_BUDGET {
+        tracing::warn!(
+            "ACP context from '{}' exceeds token budget: {} tokens (limit: {})",
+            source,
+            tokens,
+            CONTEXT_TOKEN_BUDGET
+        );
+    }
+}
+
+/// Format query history items for AI context.
+fn format_query_history_item(item: &QueryHistoryItem, index: usize) -> String {
+    let sql = redact_sensitive_query(&item.sql);
+    let sql_preview = if sql.len() > MAX_HISTORY_QUERY_LENGTH {
+        format!("{}...", &sql[..MAX_HISTORY_QUERY_LENGTH])
+    } else {
+        sql
+    };
+
+    let rows_info = item
+        .rows_returned
+        .map(|r| format!(", {} rows", r))
+        .unwrap_or_default();
+
+    format!(
+        "  {}. [{}ms{}] {}",
+        index + 1,
+        item.duration_ms,
+        rows_info,
+        sql_preview.replace('\n', " ")
+    )
+}
+
+/// Append execution history to context lines.
+async fn append_execution_history(lines: &mut Vec<String>) {
+    match storage::QueryHistoryStore::load(MAX_HISTORY_QUERIES).await {
+        Ok(history) => {
+            if history.is_empty() {
+                return;
+            }
+
+            lines.push(String::new());
+            lines.push(format!(
+                "Recent query execution history (last {} queries):",
+                history.len().min(MAX_HISTORY_QUERIES)
+            ));
+
+            for (index, item) in history.iter().take(MAX_HISTORY_QUERIES).enumerate() {
+                lines.push(format_query_history_item(item, index));
+            }
+        }
+        Err(err) => {
+            tracing::debug!("Failed to load query history for context: {}", err);
+        }
+    }
+}
+
+/// Append performance metrics placeholder.
+/// For full introspection metrics, use `build_full_ai_context` with introspection data.
+async fn append_performance_metrics(_lines: &mut Vec<String>, _connection: &DatabaseConnection) {
+    // This is a placeholder - actual introspection metrics are added via
+    // `append_introspection_metrics` when calling `build_full_ai_context`
+}
+
+/// Append performance metrics from pre-collected introspection data.
+pub fn append_introspection_metrics(lines: &mut Vec<String>, introspection: &crate::introspection::IntrospectionResult) {
+    // Add slowest queries
+    if !introspection.query_history.is_empty() {
+        lines.push(String::new());
+        lines.push("Slowest queries (from pg_stat_statements):".to_string());
+
+        for (index, entry) in introspection.query_history.iter().take(3).enumerate() {
+            let query_preview = if entry.query.len() > MAX_HISTORY_QUERY_LENGTH {
+                format!("{}...", &entry.query[..MAX_HISTORY_QUERY_LENGTH])
+            } else {
+                entry.query.clone()
+            };
+            let redacted = redact_sensitive_query(&query_preview);
+
+            lines.push(format!(
+                "  {}. [{}ms avg, {} calls, {} rows] {}",
+                index + 1,
+                entry.mean_time_ms as i64,
+                entry.calls,
+                entry.rows,
+                redacted.replace('\n', " ")
+            ));
+        }
+    }
+
+    // Add active locks
+    if !introspection.locks.is_empty() {
+        lines.push(String::new());
+        lines.push("Active locks:".to_string());
+
+        for lock in introspection.locks.iter().take(5) {
+            let relation = lock.relation.as_deref().unwrap_or("unknown");
+            let status = if lock.granted { "granted" } else { "waiting" };
+            lines.push(format!(
+                "  - {} on {} ({})",
+                lock.mode, relation, status
+            ));
+        }
+
+        if introspection.locks.len() > 5 {
+            lines.push(format!("  ... {} more locks", introspection.locks.len() - 5));
+        }
+    }
+
+    // Add index usage summary
+    if !introspection.index_stats.is_empty() {
+        lines.push(String::new());
+        lines.push("Index usage (top by scans):".to_string());
+
+        for stat in introspection.index_stats.iter().take(3) {
+            lines.push(format!(
+                "  - {}.{}: {} scans",
+                stat.schema, stat.index_name, stat.idx_scan
+            ));
+        }
+    }
+
+    // Add connection pool stats from active queries
+    if !introspection.active_queries.is_empty() {
+        lines.push(String::new());
+        lines.push(format!(
+            "Active connections: {} (non-idle)",
+            introspection.active_queries.len()
+        ));
+
+        for query in introspection.active_queries.iter().take(3) {
+            let duration = query
+                .duration_ms
+                .map(|d| format!("{}ms", d))
+                .unwrap_or_else(|| "unknown".to_string());
+            let query_preview = if query.query.len() > 60 {
+                format!("{}...", &query.query[..60])
+            } else {
+                query.query.clone()
+            };
+            lines.push(format!(
+                "  - [{}] {}: {}",
+                duration, query.state, query_preview.replace('\n', " ")
+            ));
+        }
+    }
 }
 
 pub async fn build_acp_database_context(
@@ -84,7 +277,114 @@ pub async fn build_acp_database_context(
             .await;
     }
 
-    Ok(lines.join("\n"))
+    // Add execution history
+    append_execution_history(&mut lines).await;
+
+    // Add performance metrics placeholder
+    append_performance_metrics(&mut lines, &connection).await;
+
+    let context = lines.join("\n");
+    check_token_budget(&context, "build_acp_database_context");
+
+    Ok(context)
+}
+
+/// Build full AI context combining schema, history, metrics, and introspection data.
+/// This function includes caching with 90s TTL.
+pub async fn build_full_ai_context(
+    connection: DatabaseConnection,
+    connection_label: String,
+    focus_source: Option<TablePreviewSource>,
+    introspection: Option<&crate::introspection::IntrospectionResult>,
+) -> Result<String, DatabaseError> {
+    let cache_key = format!("{}:{:?}", connection_label, focus_source);
+
+    // Check cache first
+    if let Ok(cache) = full_context_cache().lock() {
+        if let Some(cached) = cache.get(&cache_key) {
+            if cached.connection_label == connection_label
+                && cached.built_at.elapsed() <= FULL_CONTEXT_CACHE_TTL
+            {
+                tracing::debug!("Using cached full AI context for {}", connection_label);
+                return Ok(cached.context.clone());
+            }
+        }
+    }
+
+    // Build base context
+    let mut lines = vec![format!("Active database connection: {connection_label}")];
+
+    let tree = load_connection_tree(connection.clone()).await?;
+    append_catalog_summary(&mut lines, &tree);
+
+    if let Some(focus_source) = focus_source.as_ref() {
+        lines.push(format!(
+            "Active focus relation: {}",
+            focus_source.qualified_name
+        ));
+    }
+
+    // Add schema
+    let all_sources = collect_table_sources(&tree);
+    let prioritized_sources = prioritize_table_sources(all_sources, focus_source.clone());
+    let schema_lines = load_or_build_schema_context_lines(
+        connection.clone(),
+        &connection_label,
+        &tree,
+        &prioritized_sources,
+    )
+    .await?;
+    if !schema_lines.is_empty() {
+        lines.push(String::new());
+        lines.extend(schema_lines);
+    }
+
+    // Add previews
+    let preview_sources = prioritized_sources
+        .iter()
+        .take(MAX_PREVIEW_CONTEXT_TABLES)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if !preview_sources.is_empty() {
+        lines.push(String::new());
+        lines.push(format!(
+            "Focused data previews (up to {MAX_PREVIEW_CONTEXT_TABLES} relation(s):"
+        ));
+    }
+
+    for source in preview_sources {
+        let is_active_focus = focus_source
+            .as_ref()
+            .is_some_and(|focus| same_source(focus, &source));
+        append_relation_preview_profile(&mut lines, connection.clone(), source, is_active_focus)
+            .await;
+    }
+
+    // Add execution history
+    append_execution_history(&mut lines).await;
+
+    // Add introspection metrics if available
+    if let Some(introspection_data) = introspection {
+        append_introspection_metrics(&mut lines, introspection_data);
+    }
+
+    let context = lines.join("\n");
+    check_token_budget(&context, "build_full_ai_context");
+
+    // Cache the result
+    if let Ok(mut cache) = full_context_cache().lock() {
+        cache.insert(
+            cache_key,
+            CachedFullContext {
+                connection_label: connection_label.clone(),
+                built_at: Instant::now(),
+                context: context.clone(),
+            },
+        );
+    }
+
+    Ok(context)
 }
 
 pub async fn warm_acp_database_schema_context(
