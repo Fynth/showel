@@ -131,10 +131,24 @@ impl SemanticCache {
             None => return Ok(None),
         };
 
-        // Generate embedding using spawn_blocking
-        let embedding = embedding_model.embed(query.to_string()).await.map_err(|e| {
-            format!("Failed to generate embedding for lookup: {}", e)
-        })?;
+        // Generate embedding — log warning and return None on failure (no-cache mode)
+        let embedding = match embedding_model.embed(query.to_string()).await {
+            Ok(emb) => emb,
+            Err(e) => {
+                tracing::warn!("Embedding generation failed during cache lookup, skipping cache: {}", e);
+                return Ok(None);
+            }
+        };
+
+        match self.lookup_with_embedding(&embedding, threshold).await {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                tracing::warn!("Cache lookup failed, returning no match: {}", e);
+                Ok(None)
+            }
+        }
+    }
+        };
 
         self.lookup_with_embedding(&embedding, threshold).await
     }
@@ -185,12 +199,19 @@ impl SemanticCache {
             None => return Ok(()),
         };
 
-        // Generate embedding using spawn_blocking
-        let embedding = embedding_model.embed(query.clone()).await.map_err(|e| {
-            format!("Failed to generate embedding for storage: {}", e)
-        })?;
+        let embedding = match embedding_model.embed(query.clone()).await {
+            Ok(emb) => emb,
+            Err(e) => {
+                tracing::warn!("Embedding generation failed during cache store, skipping cache write: {}", e);
+                return Ok(());
+            }
+        };
 
-        self.store_with_embedding(query, embedding, response, threshold).await
+        if let Err(e) = self.store_with_embedding(query, embedding, response, threshold).await {
+            tracing::warn!("Cache store failed, continuing without cache: {}", e);
+        }
+
+        Ok(())
     }
 
     /// Calculate similarity between two embeddings
@@ -223,7 +244,13 @@ impl SemanticCache {
     /// * `Ok(count)` - Number of entries deleted
     /// * `Err(String)` - If cleanup failed
     pub async fn cleanup_expired(&self) -> Result<usize, String> {
-        self.store.cleanup_expired(self.ttl_seconds).await
+        match self.store.cleanup_expired(self.ttl_seconds).await {
+            Ok(count) => Ok(count),
+            Err(e) => {
+                tracing::warn!("Cache cleanup failed, continuing: {}", e);
+                Ok(0)
+            }
+        }
     }
 
     /// Start the background TTL cleanup task

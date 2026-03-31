@@ -596,24 +596,31 @@ impl IntrospectionPool {
         )
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to collect PostgreSQL table stats: {e}"))?;
-
-        let mut stats = Vec::new();
-        for row in rows {
-            stats.push(TableStat {
-                schema: row.try_get::<String, _>("schema").unwrap_or_default(),
-                table: row.try_get::<String, _>("table").unwrap_or_default(),
-                seq_scan: row.try_get::<i64, _>("seq_scan").unwrap_or(0),
-                seq_tup_read: row.try_get::<i64, _>("seq_tup_read").unwrap_or(0),
-                idx_scan: row.try_get::<i64, _>("idx_scan").unwrap_or(0),
-                idx_tup_fetch: row.try_get::<i64, _>("idx_tup_fetch").unwrap_or(0),
-                n_tup_ins: row.try_get::<i64, _>("n_tup_ins").unwrap_or(0),
-                n_tup_upd: row.try_get::<i64, _>("n_tup_upd").unwrap_or(0),
-                n_tup_del: row.try_get::<i64, _>("n_tup_del").unwrap_or(0),
-                n_live_tup: row.try_get::<i64, _>("n_live_tup").unwrap_or(0),
-                n_dead_tup: row.try_get::<i64, _>("n_dead_tup").unwrap_or(0),
-            });
+                .map_err(|e| format!("Failed to collect PostgreSQL table stats: {e}"))?;
+        Ok(rows) => {
+            let mut stats = Vec::new();
+            for row in rows {
+                stats.push(TableStat {
+                    schema: row.try_get::<String, _>("schema").unwrap_or_default(),
+                    table: row.try_get::<String, _>("table").unwrap_or_default(),
+                    seq_scan: row.try_get::<i64, _>("seq_scan").unwrap_or(0),
+                    seq_tup_read: row.try_get::<i64, _>("seq_tup_read").unwrap_or(0),
+                    idx_scan: row.try_get::<i64, _>("idx_scan").unwrap_or(0),
+                    idx_tup_fetch: row.try_get::<i64, _>("idx_tup_fetch").unwrap_or(0),
+                    n_tup_ins: row.try_get::<i64, _>("n_tup_ins").unwrap_or(0),
+                    n_tup_upd: row.try_get::<i64, _>("n_tup_upd").unwrap_or(0),
+                    n_tup_del: row.try_get::<i64, _>("n_tup_del").unwrap_or(0),
+                    n_live_tup: row.try_get::<i64, _>("n_live_tup").unwrap_or(0),
+                    n_dead_tup: row.try_get::<i64, _>("n_dead_tup").unwrap_or(0),
+                });
+            }
+            Ok(stats)
         }
+        Err(e) => {
+            tracing::warn!("Failed to collect PostgreSQL table stats: {}", e);
+            Ok(Vec::new())
+        }
+    }
         Ok(stats)
     }
 
@@ -1471,27 +1478,11 @@ impl IntrospectionPool {
         )
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to collect SQLite schema info: {e}"))?;
-
-        for row in rows {
-            let schema = row.try_get::<String, _>("schema").unwrap_or_default();
-            let name: String = row.try_get("name").unwrap_or_default();
-
-            // Get columns using PRAGMA table_info
-            let col_rows = sqlx::query(&format!("PRAGMA table_info({})", name))
-                .fetch_all(pool)
-                .await
-                .unwrap_or_default();
-
-            let mut columns = Vec::new();
-            for col_row in col_rows {
-                columns.push(ColumnInfo {
-                    name: col_row.try_get::<String, _>("name").unwrap_or_default(),
-                    data_type: col_row.try_get::<String, _>("type").unwrap_or_default(),
-                    nullable: col_row.try_get::<i32, _>("notnull").map(|n| n == 0).unwrap_or(true),
-                    default: col_row.try_get("dflt_value").ok(),
-                });
-            }
+                .map_err(|e| {
+                tracing::warn!("Failed to collect SQLite schema info: {}", e);
+                Ok(SchemaInfo::default())
+            })
+        }
 
             schema_info.tables.push(TableInfo {
                 schema,
@@ -1626,15 +1617,15 @@ mod tests {
         assert!(result.schema_info.indexes.is_empty());
     }
 
-    #[test]
-    fn test_rate_limiter_light() {
+    #[tokio::test]
+    async fn test_rate_limiter_light() {
         let config = IntrospectionConfig::default();
         let limiter = IntrospectionRateLimiter::new(&config);
         assert!(limiter.can_run_light());
     }
 
-    #[test]
-    fn test_rate_limiter_heavy() {
+    #[tokio::test]
+    async fn test_rate_limiter_heavy() {
         let config = IntrospectionConfig::default();
         let limiter = IntrospectionRateLimiter::new(&config);
         assert!(limiter.can_run_heavy());

@@ -64,59 +64,64 @@ pub struct AgentCoordinator {
     handoff_history: VecDeque<HandoffRecord>,
 }
 
-/// Intent classifier using keyword matching from the registry.
+/// Intent classifier using keyword matching.
+/// Vec ensures deterministic iteration; specialists ordered by ascending priority so
+/// `>=` comparison correctly resolves ties in favor of the more specific specialist.
 pub struct IntentClassifier {
-    keywords: std::collections::HashMap<AgentSpecialist, Vec<&'static str>>,
+    keywords: Vec<(AgentSpecialist, Vec<&'static str>)>,
 }
 
 impl IntentClassifier {
     /// Creates a new intent classifier with keyword mappings from the registry.
     pub fn new() -> Self {
-        let mut keywords = std::collections::HashMap::new();
-
-        keywords.insert(
-            AgentSpecialist::SqlExpert,
-            vec![
-                "SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "WHERE", "JOIN", "GROUP BY",
-                "ORDER BY", "query", "sql", "optimize", "join", "table",
-            ],
-        );
-
-        keywords.insert(
-            AgentSpecialist::DataAnalyst,
-            vec![
-                "analyze",
-                "trend",
-                "average",
-                "sum",
-                "count",
-                "group by",
-                "chart",
-                "graph",
-                "statistics",
-                "insight",
-                "pattern",
-                "anomaly",
-                "report",
-            ],
-        );
-
-        keywords.insert(
-            AgentSpecialist::SchemaArchitect,
-            vec![
-                "create table",
-                "alter table",
-                "migration",
-                "constraint",
-                "index",
-                "schema",
-                "design",
-                "normalize",
-                "foreign key",
-                "primary key",
-                "column",
-            ],
-        );
+        let keywords = vec![
+            (
+                AgentSpecialist::SqlExpert,
+                vec![
+                    "SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "WHERE", "JOIN", "GROUP BY",
+                    "ORDER BY", "query", "sql", "optimize", "join", "table",
+                ],
+            ),
+            (
+                AgentSpecialist::DataAnalyst,
+                vec![
+                    "analyze",
+                    "analysis",
+                    "trend",
+                    "trends",
+                    "average",
+                    "avg",
+                    "sum",
+                    "count",
+                    "group by",
+                    "chart",
+                    "graph",
+                    "statistics",
+                    "stats",
+                    "insight",
+                    "pattern",
+                    "anomaly",
+                    "anomalies",
+                    "report",
+                ],
+            ),
+            (
+                AgentSpecialist::SchemaArchitect,
+                vec![
+                    "create table",
+                    "alter table",
+                    "migration",
+                    "constraint",
+                    "index",
+                    "schema",
+                    "design",
+                    "normalize",
+                    "foreign key",
+                    "primary key",
+                    "column",
+                ],
+            ),
+        ];
 
         Self { keywords }
     }
@@ -133,7 +138,7 @@ impl IntentClassifier {
                 .filter(|kw| query_lower.contains(&kw.to_lowercase()))
                 .count();
 
-            if score > best_score {
+            if score >= best_score && score > 0 {
                 best_score = score;
                 best_match = Some(*specialist);
             }
@@ -363,17 +368,31 @@ impl AgentCoordinator {
     }
 
     /// Dispatches a request to a specific specialist.
+    /// Falls back to SqlExpert with a logged warning if the specialist is not found.
     pub fn dispatch(
         &self,
         specialist: AgentSpecialist,
         request: &AgentRoutingRequest,
     ) -> Result<String, String> {
-        let specialist_impl = self
-            .specialists
-            .get(&specialist)
-            .ok_or_else(|| format!("Specialist {:?} not found", specialist))?;
+        let specialist_ref = match self.specialists.get(&specialist) {
+            Some(s) => s,
+            None => {
+                tracing::warn!(
+                    "Specialist {:?} not found, falling back to SqlExpert",
+                    specialist
+                );
+                self.specialists
+                    .get(&AgentSpecialist::SqlExpert)
+                    .ok_or_else(|| {
+                        format!(
+                            "Specialist {:?} not found and no SqlExpert fallback",
+                            specialist
+                        )
+                    })?
+            }
+        };
 
-        specialist_impl.handle(request)
+        specialist_ref.handle(request)
     }
 
     /// Transfers conversation context from one specialist to another.

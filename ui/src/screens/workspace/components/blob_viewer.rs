@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use std::path::PathBuf;
 
 #[derive(Clone, PartialEq)]
 pub enum BlobViewMode {
@@ -12,6 +11,20 @@ pub enum BlobViewMode {
 pub struct BlobData {
     pub raw: Vec<u8>,
     pub mime_type: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct HexLine {
+    pub address: String,
+    pub bytes: Vec<HexByte>,
+    pub ascii: String,
+}
+
+#[derive(Clone)]
+pub struct HexByte {
+    pub hex: String,
+    pub char: char,
+    pub is_printable: bool,
 }
 
 #[component]
@@ -48,7 +61,7 @@ pub fn BlobViewer(mut blob_data: Signal<Option<BlobData>>, on_close: Callback<()
         view_mode.set(suggested_mode);
     }
 
-    let hex_dump = render_hex_dump(&blob.raw, bytes_per_line);
+    let hex_lines = render_hex_dump(&blob.raw, bytes_per_line);
     let text_content = render_text_preview(&blob.raw);
     let image_data_url = render_image_preview(&blob.raw);
 
@@ -125,42 +138,35 @@ pub fn BlobViewer(mut blob_data: Signal<Option<BlobData>>, on_close: Callback<()
                             pre {
                                 class: "blob-viewer__hex-dump",
                                 code {
-                                    for (line_offset, line) in hex_dump.iter().enumerate() {
+                                    for line in hex_lines.iter() {
                                         span {
                                             class: "blob-viewer__hex-line",
                                             span {
                                                 class: "blob-viewer__hex-address",
-                                                "{:08x}:", line_offset * bytes_per_line
+                                                "{line.address}"
                                             }
                                             span {
                                                 class: "blob-viewer__hex-bytes",
-                                                for (i, byte) in line.iter().enumerate() {
-                                                    if i > 0 {
-                                                        " "
-                                                    }
-                                                    if i == 8 {
-                                                        "  "
-                                                    }
-                                                    span {
-                                                        class: if *byte >= 0x20 && *byte < 0x7f { "blob-viewer__hex-char--printable" } else { "blob-viewer__hex-char--binary" },
-                                                        "{:02x}", byte
-                                                    }
-                                                }
-                                                for _ in line.len()..bytes_per_line {
-                                                    "   "
-                                                }
-                                                if line.len() < 8 { "  " }
-                                                " "
-                                                for byte in line.iter() {
-                                                    let ch = if *byte >= 0x20 && *byte < 0x7f {
-                                                        *byte as char
+                                                for byte in line.bytes.iter() {
+                                                    if byte.is_printable {
+                                                        span {
+                                                            class: "blob-viewer__hex-char--printable",
+                                                            "{byte.hex}"
+                                                        }
                                                     } else {
-                                                        '.'
-                                                    };
-                                                    span {
-                                                        class: if *byte >= 0x20 && *byte < 0x7f { "blob-viewer__hex-ascii" } else { "blob-viewer__hex-ascii blob-viewer__hex-ascii--binary" },
-                                                        "{ch}"
+                                                        span {
+                                                            class: "blob-viewer__hex-char--binary",
+                                                            "{byte.hex}"
+                                                        }
                                                     }
+                                                    " "
+                                                }
+                                                if line.bytes.len() < 8 {
+                                                    "  "
+                                                }
+                                                span {
+                                                    class: "blob-viewer__hex-ascii",
+                                                    "{line.ascii}"
                                                 }
                                             }
                                             "\n"
@@ -244,9 +250,30 @@ fn detect_blob_type(data: &[u8], mime_hint: Option<&str>) -> BlobViewMode {
     BlobViewMode::Hex
 }
 
-fn render_hex_dump(data: &[u8], bytes_per_line: usize) -> Vec<Vec<u8>> {
+fn render_hex_dump(data: &[u8], bytes_per_line: usize) -> Vec<HexLine> {
     data.chunks(bytes_per_line)
-        .map(|chunk| chunk.to_vec())
+        .enumerate()
+        .map(|(line_offset, chunk)| {
+            let address = format!("{:08x}:", line_offset * bytes_per_line);
+            let bytes: Vec<HexByte> = chunk
+                .iter()
+                .map(|&b| {
+                    let is_printable = b >= 0x20 && b < 0x7f;
+                    let char = if is_printable { b as char } else { '.' };
+                    HexByte {
+                        hex: format!("{:02x}", b),
+                        char,
+                        is_printable,
+                    }
+                })
+                .collect();
+            let ascii: String = bytes.iter().map(|b| b.char).collect();
+            HexLine {
+                address,
+                bytes,
+                ascii,
+            }
+        })
         .collect()
 }
 

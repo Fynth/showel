@@ -5,5 +5,7 @@ pub use query_core::{
 };
 pub use query_format::format_sql;
 pub use query_io::{
-    export_query_page_csv, export_query_page_json, export_query_page_xlsx, import_csv_into_table,
+    export_query_page_csv, export_query_page_html, export_query_page_json,
+    export_query_page_sql_dump, export_query_page_xlsx, export_query_page_xml,
+    import_csv_into_table,
 };

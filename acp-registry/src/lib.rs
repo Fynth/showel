@@ -1,4 +1,4 @@
-use models::{AcpLaunchRequest, AcpRegistryAgent, AgentCapability, AgentSpecialist};
+use models::{AcpLaunchRequest, AcpRegistryAgent, AgentSpecialist};
 use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::Deserialize;
 use std::{
@@ -18,16 +18,16 @@ const ACP_ARCHIVE_CONNECT_TIMEOUT: Duration = Duration::from_secs(6);
 const ACP_ARCHIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
 
 struct SpecialistCapability {
-    keywords: Vec<&'static str>,
+    keywords: &'static [&'static str],
     description: &'static str,
-    example_queries: Vec<&'static str>,
+    example_queries: &'static [&'static str],
 }
 
 const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
     (
         &AgentSpecialist::SqlExpert,
         SpecialistCapability {
-            keywords: vec![
+            keywords: &[
                 "SELECT",
                 "INSERT",
                 "UPDATE",
@@ -39,7 +39,7 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
                 "ORDER BY",
             ],
             description: "SQL query optimization and generation expert",
-            example_queries: vec![
+            example_queries: &[
                 "Optimize this query",
                 "How do I join these tables?",
             ],
@@ -48,7 +48,7 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
     (
         &AgentSpecialist::DataAnalyst,
         SpecialistCapability {
-            keywords: vec![
+            keywords: &[
                 "analyze",
                 "trend",
                 "average",
@@ -60,7 +60,7 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
                 "statistics",
             ],
             description: "Data analysis and visualization expert",
-            example_queries: vec![
+            example_queries: &[
                 "Show me sales trends",
                 "What's the average order value?",
             ],
@@ -69,7 +69,7 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
     (
         &AgentSpecialist::SchemaArchitect,
         SpecialistCapability {
-            keywords: vec![
+            keywords: &[
                 "create table",
                 "alter table",
                 "migration",
@@ -79,7 +79,7 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
                 "design",
             ],
             description: "Database schema design and migration expert",
-            example_queries: vec![
+            example_queries: &[
                 "Design a table for users",
                 "How do I add an index?",
             ],

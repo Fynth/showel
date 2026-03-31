@@ -1,5 +1,5 @@
 use ort::session::Session;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tokenizers::Tokenizer;
 
 /// Default model filename for the INT8 quantized all-MiniLM-L6-v2 model
@@ -51,12 +51,36 @@ impl EmbeddingModel {
         tokenizer_path: &std::path::Path,
     ) -> Result<Self, String> {
         let session = Session::builder()
-            .map_err(|e| format!("Failed to create session builder: {}", e))?
+            .map_err(|e| {
+                format!(
+                    "Failed to create ONNX Runtime session. \
+                    Ensure ONNX Runtime is properly installed: {}",
+                    e
+                )
+            })?
             .commit_from_file(model_path)
-            .map_err(|e| format!("Failed to load model from {:?}: {}", model_path, e))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to load embedding model from {:?}. \
+                    Ensure the ONNX model file exists and is valid. \
+                    Expected file: {} in the models directory. {}",
+                    model_path,
+                    MODEL_FILENAME,
+                    e
+                )
+            })?;
 
         let tokenizer = Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| format!("Failed to load tokenizer from {:?}: {}", tokenizer_path, e))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to load tokenizer from {:?}. \
+                    Ensure the tokenizer file exists alongside the ONNX model. \
+                    Expected file: {} in the models directory. {}",
+                    tokenizer_path,
+                    TOKENIZER_FILENAME,
+                    e
+                )
+            })?;
 
         Ok(Self {
             session: Arc::new(Mutex::new(session)),
@@ -187,6 +211,71 @@ pub fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
     }
 }
 
+/// Lazily-loaded embedding model that defers ONNX model loading until first use.
+///
+/// Instead of loading the model at construction time (which can take 100ms+),
+/// this wrapper stores only the model directory path and loads the actual
+/// ONNX Runtime session and tokenizer on the first `embed()` call.
+///
+/// Uses `OnceLock` for thread-safe one-time initialization.
+///
+/// # Performance
+/// - Construction: near-zero cost (stores only a path string)
+/// - First embed: includes model loading overhead (~100-200ms)
+/// - Subsequent embeds: no loading overhead, same as `EmbeddingModel`
+#[derive(Clone)]
+pub struct LazyEmbeddingModel {
+    model_dir: Arc<str>,
+    inner: Arc<OnceLock<EmbeddingModel>>,
+}
+
+impl LazyEmbeddingModel {
+    /// Create a new lazy embedding model that will load from the given directory on first use.
+    ///
+    /// # Arguments
+    /// * `model_dir` - Directory containing the ONNX model and tokenizer files
+    pub fn new(model_dir: &str) -> Self {
+        Self {
+            model_dir: model_dir.into(),
+            inner: Arc::new(OnceLock::new()),
+        }
+    }
+
+    /// Get or lazily initialize the underlying `EmbeddingModel`.
+    ///
+    /// On the first call, this loads the ONNX model from disk. Subsequent calls
+    /// return the cached model immediately.
+    fn get_or_init(&self) -> Result<&EmbeddingModel, String> {
+        self.inner.get_or_try_init(|| {
+            tracing::info!("Loading embedding model from: {}", self.model_dir);
+            let start = std::time::Instant::now();
+            let model = EmbeddingModel::load_model(&self.model_dir)?;
+            let elapsed = start.elapsed();
+            tracing::info!("Embedding model loaded in {:.0}ms", elapsed.as_secs_f64() * 1000.0);
+            Ok(model)
+        })
+    }
+
+    /// Generate an embedding, loading the model on first use.
+    ///
+    /// Uses `spawn_blocking` to avoid blocking the async runtime.
+    /// Target: <200ms (excluding first-call model loading).
+    pub async fn embed(&self, text: String) -> Result<Vec<f32>, String> {
+        // Ensure model is loaded before spawning the blocking task.
+        // OnceLock guarantees this is only done once.
+        let model = self.get_or_init()?.clone();
+
+        tokio::task::spawn_blocking(move || model.embed_sync(&text))
+            .await
+            .map_err(|e| format!("Embedding task panicked: {}", e))?
+    }
+
+    /// Returns true if the model has already been loaded.
+    pub fn is_loaded(&self) -> bool {
+        self.inner.get().is_some()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +318,20 @@ mod tests {
         assert!((vec[0] - 1.0).abs() < 0.001);
         assert!(vec[1].abs() < 0.001);
         assert!(vec[2].abs() < 0.001);
+    }
+
+    #[test]
+    fn test_lazy_model_not_loaded_at_construction() {
+        let lazy = LazyEmbeddingModel::new("/nonexistent/path");
+        assert!(!lazy.is_loaded());
+    }
+
+    #[test]
+    fn test_lazy_model_clones_share_state() {
+        let lazy = LazyEmbeddingModel::new("/nonexistent/path");
+        let clone = lazy.clone();
+        assert!(!lazy.is_loaded());
+        assert!(!clone.is_loaded());
+        assert_eq!(lazy.is_loaded(), clone.is_loaded());
     }
 }

@@ -19,6 +19,9 @@ pub enum ActionIcon {
     ExportCsv,
     ExportJson,
     ExportXlsx,
+    ExportXml,
+    ExportHtml,
+    ExportSql,
     ImportCsv,
     InsertRow,
     Apply,
@@ -203,6 +206,25 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "M14 4v3h3" }
                     path { d: "m9 12 4 5" }
                     path { d: "m13 12-4 5" }
+                },
+                ActionIcon::ExportXml => rsx! {
+                    path { d: "M7 4h7l3 3v13H7z" }
+                    path { d: "M14 4v3h3" }
+                    path { d: "M9 13l3-3 3 3" }
+                    path { d: "M12 16v3" }
+                },
+                ActionIcon::ExportHtml => rsx! {
+                    path { d: "M7 4h7l3 3v13H7z" }
+                    path { d: "M14 4v3h3" }
+                    path { d: "M9 12h6" }
+                    path { d: "M9 15h6" }
+                    path { d: "M9 18h4" }
+                },
+                ActionIcon::ExportSql => rsx! {
+                    path { d: "M7 4h7l3 3v13H7z" }
+                    path { d: "M14 4v3h3" }
+                    path { d: "M9 11l3 3-3 3" }
+                    path { d: "M15 17h4" }
                 },
                 ActionIcon::ImportCsv => rsx! {
                     path { d: "M7 20h10" }

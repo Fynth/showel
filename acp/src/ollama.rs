@@ -1,6 +1,6 @@
 use agent_client_protocol::{self as acp, Client as _, SessionUpdate};
 use futures_util::StreamExt;
-use models::{AcpLaunchRequest, AcpOllamaConfig};
+use models::{AcpLaunchRequest, AcpOllamaConfig, AgentSpecialist};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -15,6 +15,21 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt as _, TokioAsyncWriteCompatExt as _};
 
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434/api";
+
+/// System prompts for specialist agent types.
+/// Injected as the first system message when a specialist is active.
+const SQL_EXPERT_SYSTEM_PROMPT: &str = "You are a SQL expert. Optimize queries, explain execution plans, suggest indexes, and help with complex joins. Focus on performance and correctness.";
+const DATA_ANALYST_SYSTEM_PROMPT: &str = "You are a data analyst. Find trends, anomalies, and patterns in data. Generate insights, calculate statistics, and explain findings clearly.";
+const SCHEMA_ARCHITECT_SYSTEM_PROMPT: &str = "You are a schema architect. Design migrations, normalize tables, define constraints and indexes. Focus on data integrity and scalability.";
+
+/// Returns the specialist-specific system prompt.
+fn get_specialist_system_prompt(specialist: AgentSpecialist) -> &'static str {
+    match specialist {
+        AgentSpecialist::SqlExpert => SQL_EXPERT_SYSTEM_PROMPT,
+        AgentSpecialist::DataAnalyst => DATA_ANALYST_SYSTEM_PROMPT,
+        AgentSpecialist::SchemaArchitect => SCHEMA_ARCHITECT_SYSTEM_PROMPT,
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct EmbeddedOllamaAgentConfig {
@@ -65,6 +80,8 @@ struct OllamaSession {
 type SessionUpdates = mpsc::UnboundedSender<(acp::SessionNotification, oneshot::Sender<()>)>;
 type Sessions = Arc<Mutex<HashMap<String, OllamaSession>>>;
 type CancelFlags = Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>;
+type SpecialistUsage = Arc<Mutex<HashMap<String, u64>>>;
+type HandoffContext = Arc<Mutex<Vec<OllamaChatMessage>>>;
 
 struct OllamaAgent {
     client: reqwest::Client,
@@ -73,6 +90,9 @@ struct OllamaAgent {
     next_session_id: Cell<u64>,
     sessions: Sessions,
     cancel_flags: CancelFlags,
+    active_specialist: Cell<Option<AgentSpecialist>>,
+    specialist_usage: SpecialistUsage,
+    handoff_context: HandoffContext,
 }
 
 impl OllamaAgent {
@@ -89,6 +109,9 @@ impl OllamaAgent {
             next_session_id: Cell::new(1),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             cancel_flags: Arc::new(Mutex::new(HashMap::new())),
+            active_specialist: Cell::new(None),
+            specialist_usage: Arc::new(Mutex::new(HashMap::new())),
+            handoff_context: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -111,6 +134,37 @@ impl OllamaAgent {
         rx.await
             .map_err(|_| acp::Error::internal_error().data("ACP session update ack dropped"))?;
         Ok(())
+    }
+
+    fn set_specialist(&self, specialist: AgentSpecialist) {
+        let prev = self.active_specialist.get();
+        if prev.is_some() && prev != Some(specialist) {
+            if let Ok(sessions) = self.sessions.lock() {
+                let mut all_history = Vec::new();
+                for session in sessions.values() {
+                    all_history.extend(session.history.iter().cloned());
+                }
+                if let Ok(mut handoff) = self.handoff_context.lock() {
+                    *handoff = all_history;
+                }
+            }
+        }
+        self.active_specialist.set(Some(specialist));
+    }
+
+    fn active_specialist(&self) -> Option<AgentSpecialist> {
+        self.active_specialist.get()
+    }
+
+    fn specialist_usage(&self) -> HashMap<String, u64> {
+        self.specialist_usage
+            .lock()
+            .map(|usage| usage.clone())
+            .unwrap_or_default()
+    }
+
+    fn handoff_to(&self, specialist: AgentSpecialist) {
+        self.set_specialist(specialist);
     }
 }
 
@@ -189,7 +243,40 @@ impl acp::Agent for OllamaAgent {
             role: "user".to_string(),
             content: prompt.clone(),
         };
-        let mut request_messages = prior_history.clone();
+        let mut request_messages = Vec::new();
+
+        if let Some(specialist) = self.active_specialist.get() {
+            request_messages.push(OllamaChatMessage {
+                role: "system".to_string(),
+                content: get_specialist_system_prompt(specialist).to_string(),
+            });
+
+            if let Ok(handoff) = self.handoff_context.lock() {
+                if !handoff.is_empty() {
+                    let context_summary: String = handoff
+                        .iter()
+                        .filter(|msg| msg.role != "system")
+                        .map(|msg| format!("{}: {}", msg.role, msg.content))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !context_summary.is_empty() {
+                        request_messages.push(OllamaChatMessage {
+                            role: "system".to_string(),
+                            content: format!(
+                                "[Handoff context from previous specialist]\n{context_summary}"
+                            ),
+                        });
+                    }
+                }
+            }
+
+            if let Ok(mut usage) = self.specialist_usage.lock() {
+                let key = specialist.variant_name().to_string();
+                *usage.entry(key).or_insert(0) += 1;
+            }
+        }
+
+        request_messages.extend(prior_history.clone());
         request_messages.push(user_message.clone());
 
         let request = OllamaChatRequest {
@@ -303,6 +390,13 @@ impl acp::Agent for OllamaAgent {
                 }
             });
 
+        if let Some(specialist) = self.active_specialist.get() {
+            eprintln!(
+                "[ollama::specialist] Response from: {}",
+                specialist.variant_name()
+            );
+        }
+
         Ok(acp::PromptResponse::new(acp::StopReason::EndTurn))
     }
 
@@ -319,6 +413,75 @@ impl acp::Agent for OllamaAgent {
         }
 
         Ok(())
+    }
+}
+
+/// Adapter that wraps [`OllamaAgent`] with specialist-specific behavior.
+///
+/// Injects specialist system prompts based on [`AgentSpecialist`] type,
+/// tracks usage for telemetry, and manages handoff context between
+/// specialist transitions by preserving conversation history.
+pub struct OllamaSpecialistAdapter {
+    agent: OllamaAgent,
+}
+
+impl OllamaSpecialistAdapter {
+    pub fn with_specialist(
+        config: EmbeddedOllamaAgentConfig,
+        session_updates: SessionUpdates,
+        specialist: AgentSpecialist,
+    ) -> Result<Self, String> {
+        let agent = OllamaAgent::new(config, session_updates)?;
+        agent.set_specialist(specialist);
+        Ok(Self { agent })
+    }
+
+    pub fn set_specialist(&self, specialist: AgentSpecialist) {
+        self.agent.set_specialist(specialist);
+    }
+
+    pub fn active_specialist(&self) -> Option<AgentSpecialist> {
+        self.agent.active_specialist()
+    }
+
+    pub fn specialist_usage(&self) -> HashMap<String, u64> {
+        self.agent.specialist_usage()
+    }
+
+    pub fn handoff_to(&self, specialist: AgentSpecialist) {
+        self.agent.handoff_to(specialist);
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl acp::Agent for OllamaSpecialistAdapter {
+    async fn initialize(
+        &self,
+        args: acp::InitializeRequest,
+    ) -> Result<acp::InitializeResponse, acp::Error> {
+        self.agent.initialize(args).await
+    }
+
+    async fn authenticate(
+        &self,
+        args: acp::AuthenticateRequest,
+    ) -> Result<acp::AuthenticateResponse, acp::Error> {
+        self.agent.authenticate(args).await
+    }
+
+    async fn new_session(
+        &self,
+        args: acp::NewSessionRequest,
+    ) -> Result<acp::NewSessionResponse, acp::Error> {
+        self.agent.new_session(args).await
+    }
+
+    async fn prompt(&self, args: acp::PromptRequest) -> Result<acp::PromptResponse, acp::Error> {
+        self.agent.prompt(args).await
+    }
+
+    async fn cancel(&self, args: acp::CancelNotification) -> Result<(), acp::Error> {
+        self.agent.cancel(args).await
     }
 }
 

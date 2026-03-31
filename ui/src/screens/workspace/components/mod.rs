@@ -1,4 +1,7 @@
 mod agent_panel;
+mod blob_viewer;
+mod data_diff;
+mod er_diagram;
 mod explorer;
 mod history;
 mod icon_button;
@@ -7,6 +10,7 @@ mod saved_queries;
 mod session_rail;
 mod sql_editor;
 mod sql_format_settings;
+mod table_editor;
 mod tabs;
 
 pub(crate) use agent_panel::{
@@ -14,6 +18,9 @@ pub(crate) use agent_panel::{
     ensure_opencode_connected, execute_agent_sql_request, extract_sql_candidate,
     preferred_sql_target_tab_id, replace_messages, send_sql_generation_request,
 };
+pub use blob_viewer::{BlobData, BlobViewer};
+pub use data_diff::{DataDiffViewer, DiffColumn, DiffResult, DiffRow, DiffSide, DiffStatus, DiffSummary};
+pub use er_diagram::{ErColumn, ErDiagramState, ErDiagramViewer, ErForeignKey, ErRelationship, ErTable};
 pub use explorer::{ExplorerConnectionSection, SidebarConnectionTree};
 pub use history::QueryHistoryPanel;
 pub use icon_button::{ActionIcon, IconButton};
@@ -22,4 +29,5 @@ pub use saved_queries::SavedQueriesPanel;
 pub use session_rail::SessionRail;
 pub use sql_editor::SqlEditor;
 pub use sql_format_settings::SqlFormatSettingsFields;
+pub use table_editor::{TableColumnDefinition, TableEditor, TableEditorMode, TableEditorState};
 pub use tabs::TabsManager;

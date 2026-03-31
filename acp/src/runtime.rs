@@ -615,7 +615,6 @@ pub fn send_acp_prompt_with_routing(
         Err(err) => {
             eprintln!("[acp::routing] Routing failed: {}. Using default.", err);
             handle.active_specialist = Some(AgentSpecialist::SqlExpert);
-
             drop(slot);
             send_command(AcpCommand::Prompt(prompt))
         }
