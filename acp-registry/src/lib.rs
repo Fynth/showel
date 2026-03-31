@@ -1,4 +1,4 @@
-use models::{AcpLaunchRequest, AcpRegistryAgent};
+use models::{AcpLaunchRequest, AcpRegistryAgent, AgentCapability, AgentSpecialist};
 use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::Deserialize;
 use std::{
@@ -16,6 +16,143 @@ const ACP_REGISTRY_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 const ACP_REGISTRY_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const ACP_ARCHIVE_CONNECT_TIMEOUT: Duration = Duration::from_secs(6);
 const ACP_ARCHIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
+
+struct SpecialistCapability {
+    keywords: Vec<&'static str>,
+    description: &'static str,
+    example_queries: Vec<&'static str>,
+}
+
+const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
+    (
+        &AgentSpecialist::SqlExpert,
+        SpecialistCapability {
+            keywords: vec![
+                "SELECT",
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+                "FROM",
+                "WHERE",
+                "JOIN",
+                "GROUP BY",
+                "ORDER BY",
+            ],
+            description: "SQL query optimization and generation expert",
+            example_queries: vec![
+                "Optimize this query",
+                "How do I join these tables?",
+            ],
+        },
+    ),
+    (
+        &AgentSpecialist::DataAnalyst,
+        SpecialistCapability {
+            keywords: vec![
+                "analyze",
+                "trend",
+                "average",
+                "sum",
+                "count",
+                "group by",
+                "chart",
+                "graph",
+                "statistics",
+            ],
+            description: "Data analysis and visualization expert",
+            example_queries: vec![
+                "Show me sales trends",
+                "What's the average order value?",
+            ],
+        },
+    ),
+    (
+        &AgentSpecialist::SchemaArchitect,
+        SpecialistCapability {
+            keywords: vec![
+                "create table",
+                "alter table",
+                "migration",
+                "constraint",
+                "index",
+                "schema",
+                "design",
+            ],
+            description: "Database schema design and migration expert",
+            example_queries: vec![
+                "Design a table for users",
+                "How do I add an index?",
+            ],
+        },
+    ),
+];
+
+/// Match an intent string against specialist keywords and return the best match.
+pub fn get_specialist_for_intent(intent: &str) -> Option<AgentSpecialist> {
+    let intent_lower = intent.to_lowercase();
+    let mut best_match: Option<AgentSpecialist> = None;
+    let mut best_score: usize = 0;
+
+    for (specialist, capability) in SPECIALIST_REGISTRY {
+        let score = capability
+            .keywords
+            .iter()
+            .filter(|kw| intent_lower.contains(&kw.to_lowercase()))
+            .count();
+        if score > best_score {
+            best_score = score;
+            best_match = Some((*specialist).clone());
+        }
+    }
+
+    best_match
+}
+
+#[cfg(test)]
+mod specialist_tests {
+    use super::*;
+
+    #[test]
+    fn test_sql_expert_intent() {
+        assert_eq!(
+            get_specialist_for_intent("How do I join these tables?"),
+            Some(AgentSpecialist::SqlExpert)
+        );
+        assert_eq!(
+            get_specialist_for_intent("SELECT * FROM users WHERE id = 1"),
+            Some(AgentSpecialist::SqlExpert)
+        );
+    }
+
+    #[test]
+    fn test_data_analyst_intent() {
+        assert_eq!(
+            get_specialist_for_intent("Show me sales trends"),
+            Some(AgentSpecialist::DataAnalyst)
+        );
+        assert_eq!(
+            get_specialist_for_intent("What's the average order value?"),
+            Some(AgentSpecialist::DataAnalyst)
+        );
+    }
+
+    #[test]
+    fn test_schema_architect_intent() {
+        assert_eq!(
+            get_specialist_for_intent("Design a table for users"),
+            Some(AgentSpecialist::SchemaArchitect)
+        );
+        assert_eq!(
+            get_specialist_for_intent("How do I add an index?"),
+            Some(AgentSpecialist::SchemaArchitect)
+        );
+    }
+
+    #[test]
+    fn test_no_match() {
+        assert_eq!(get_specialist_for_intent("Hello world"), None);
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct RegistryDocument {
