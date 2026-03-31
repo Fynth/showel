@@ -1,11 +1,22 @@
 use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 
 /// Specialist agents available for agent routing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AgentSpecialist {
     SqlExpert,
     DataAnalyst,
     SchemaArchitect,
+}
+
+impl AgentSpecialist {
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            AgentSpecialist::SqlExpert => "SqlExpert",
+            AgentSpecialist::DataAnalyst => "DataAnalyst",
+            AgentSpecialist::SchemaArchitect => "SchemaArchitect",
+        }
+    }
 }
 
 /// Request for routing a query to the appropriate specialist agent.
