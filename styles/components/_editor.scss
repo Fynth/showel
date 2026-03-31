@@ -462,3 +462,10 @@
 .sql-editor__token--punctuation {
   color: var(--editor-token-punctuation);
 }
+
+.inline-completion {
+  opacity: 0.5;
+  font-style: italic;
+  color: #888;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+}
