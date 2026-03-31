@@ -11,12 +11,10 @@ use std::{
 };
 
 use crate::fs_store::{
-    query_history_path, read_json_file, read_text_file, saved_connections_path, session_state_path,
-    write_json_file,
+    read_text_file, saved_connections_path, session_state_path, write_json_file,
 };
 
 const MAX_SAVED_CONNECTIONS: usize = 10;
-const MAX_HISTORY_ITEMS: usize = 20;
 const KEYRING_SERVICE: &str = "showel.connections";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,17 +124,13 @@ pub async fn replace_connection_request(
 }
 
 pub async fn load_query_history() -> Result<Vec<QueryHistoryItem>, String> {
-    read_json_file(query_history_path()).await
+    crate::query_history::QueryHistoryStore::init().await?;
+    crate::query_history::QueryHistoryStore::load(20).await
 }
 
 pub async fn append_query_history(item: QueryHistoryItem) -> Result<(), String> {
-    let mut history = load_query_history().await.unwrap_or_default();
-    history.insert(0, item);
-    if history.len() > MAX_HISTORY_ITEMS {
-        history.truncate(MAX_HISTORY_ITEMS);
-    }
-
-    write_json_file(query_history_path(), &history).await
+    crate::query_history::QueryHistoryStore::init().await?;
+    crate::query_history::QueryHistoryStore::save(&item).await
 }
 
 pub async fn save_session_state(

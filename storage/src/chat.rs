@@ -10,6 +10,19 @@ use tokio::{fs, sync::OnceCell};
 use crate::fs_store::chat_db_path;
 
 static CHAT_POOL: OnceCell<SqlitePool> = OnceCell::const_new();
+static VEC_EXTENSION_INITIALIZED: std::sync::Once = std::sync::Once::new();
+
+/// Ensure sqlite-vec extension is registered as an auto-extension.
+/// This must be called before creating any SQLite connections that need vec0 support.
+pub fn ensure_vec_extension_initialized() {
+    VEC_EXTENSION_INITIALIZED.call_once(|| {
+        unsafe {
+            libsqlite3_sys::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+    });
+}
 
 pub async fn load_chat_threads() -> Result<Vec<ChatThreadSummary>, String> {
     let pool = chat_pool().await?;
@@ -200,9 +213,11 @@ pub async fn save_chat_thread_snapshot(
     })
 }
 
-async fn chat_pool() -> Result<&'static SqlitePool, String> {
+pub(crate) async fn chat_pool() -> Result<&'static SqlitePool, String> {
     CHAT_POOL
         .get_or_try_init(|| async {
+            ensure_vec_extension_initialized();
+
             let path = chat_db_path();
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)
