@@ -4,6 +4,65 @@ use models::{
     DatabaseConnection, PendingTableChanges, QueryFilter, QueryFilterMode, QueryHistoryItem,
     QueryOutput, QuerySort, QueryTabState, TablePreviewSource, WorkspaceTabKind,
 };
+use std::time::Instant;
+
+fn redact_sql(sql: &str) -> String {
+    let lower = sql.to_lowercase();
+    if lower.contains("password") || lower.contains("secret") || lower.contains("token") {
+        let mut result = sql.to_string();
+        for sensitive in ["password", "secret", "token"] {
+            if lower.contains(sensitive) {
+                result = result
+                    .lines()
+                    .map(|line| {
+                        let line_lower = line.to_lowercase();
+                        if line_lower.contains(sensitive) {
+                            if let Some(eq_pos) = line.find('=') {
+                                let (before, after) = line.split_at(eq_pos + 1);
+                                let after_trimmed = after.trim_start();
+                                if after_trimmed.starts_with('\'') || after_trimmed.starts_with('"') {
+                                    let quote_char = after_trimmed.chars().next().unwrap();
+                                    if after_trimmed[1..].find(quote_char).is_some() {
+                                        format!("{} [REDACTED]", before.trim_end())
+                                    } else {
+                                        format!("{} [REDACTED]", before.trim_end())
+                                    }
+                                } else {
+                                    let value_end = after_trimmed.find(|c: char| !c.is_alphanumeric() && c != '_').unwrap_or(after_trimmed.len());
+                                    format!("{}{} [REDACTED]", before.trim_end(), &after_trimmed[..value_end])
+                                }
+                            } else {
+                                line.to_string()
+                            }
+                        } else {
+                            line.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+            }
+        }
+        result
+    } else {
+        sql.to_string()
+    }
+}
+
+fn get_connection_type(connection: &DatabaseConnection) -> String {
+    match connection {
+        DatabaseConnection::Sqlite(_) => "sqlite".to_string(),
+        DatabaseConnection::Postgres(_) => "postgres".to_string(),
+        DatabaseConnection::MySql(_) => "mysql".to_string(),
+        DatabaseConnection::ClickHouse(_) => "clickhouse".to_string(),
+    }
+}
+
+fn unix_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
 
 type QueryHistorySignals = (Signal<Vec<QueryHistoryItem>>, Signal<u64>, String, String);
 
@@ -245,7 +304,10 @@ pub fn run_query_for_tab(
         }
     });
 
+    let connection_type = get_connection_type(&connection);
+
     spawn(async move {
+        let start_time = Instant::now();
         match query::execute_query_page(connection, sql.clone(), page_size, offset, filter, sort)
             .await
         {
@@ -274,14 +336,24 @@ pub fn run_query_for_tab(
                 if let Some((mut history, mut next_history_id, tab_title, connection_name)) =
                     history
                 {
+                    let duration_ms = start_time.elapsed().as_millis() as u64;
+                    let rows_returned = match &output {
+                        QueryOutput::Table(page) => Some(page.rows.len()),
+                        QueryOutput::AffectedRows(count) => Some(*count as usize),
+                    };
                     let history_id = next_history_id();
                     next_history_id += 1;
                     let history_item = QueryHistoryItem {
                         id: history_id,
                         tab_title,
                         connection_name,
-                        sql: sql.clone(),
+                        sql: redact_sql(&sql),
+                        duration_ms,
+                        rows_returned,
+                        executed_at: unix_timestamp(),
+                        connection_type: connection_type.clone(),
                         outcome: "Success".to_string(),
+                        error_message: None,
                     };
                     history.with_mut(|items| {
                         items.insert(0, history_item.clone());
@@ -306,14 +378,20 @@ pub fn run_query_for_tab(
                 if let Some((mut history, mut next_history_id, tab_title, connection_name)) =
                     history
                 {
+                    let duration_ms = start_time.elapsed().as_millis() as u64;
                     let history_id = next_history_id();
                     next_history_id += 1;
                     let history_item = QueryHistoryItem {
                         id: history_id,
                         tab_title,
                         connection_name,
-                        sql,
+                        sql: redact_sql(&sql),
+                        duration_ms,
+                        rows_returned: None,
+                        executed_at: unix_timestamp(),
+                        connection_type: connection_type.clone(),
                         outcome: format!("Error: {err}"),
+                        error_message: Some(err.to_string()),
                     };
                     history.with_mut(|items| {
                         items.insert(0, history_item.clone());
