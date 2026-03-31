@@ -1,4 +1,5 @@
 mod acp;
+mod agent;
 mod app;
 mod chat;
 mod connection;
@@ -9,6 +10,7 @@ mod semantic_cache;
 mod settings;
 
 pub use acp::*;
+pub use agent::*;
 pub use app::*;
 pub use chat::*;
 pub use connection::*;
