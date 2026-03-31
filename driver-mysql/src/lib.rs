@@ -23,10 +23,11 @@ impl database::DatabaseDriver for MySqlDriver {
             return Self::Pool::connect_with(options).await;
         }
 
-        let host = normalized_host(&info.host);
+        let (host, embedded_port) = split_host_and_port(&info.host);
+        let host = normalized_host(&host);
         let username = normalized_username(&info.username);
         let database = normalized_database(&info.database);
-        let port = if info.port == 0 { 3306 } else { info.port };
+        let port = embedded_port.unwrap_or(if info.port == 0 { 3306 } else { info.port });
 
         let mut attempts = vec![host.clone()];
         if host == "localhost" {
@@ -35,13 +36,15 @@ impl database::DatabaseDriver for MySqlDriver {
 
         let mut last_error = None;
         for attempt_host in attempts {
-            let options = MySqlConnectOptions::new()
+            let mut options = MySqlConnectOptions::new()
                 .host(&attempt_host)
                 .port(port)
                 .username(&username)
                 .password(&info.password)
-                .database(&database)
                 .ssl_mode(MySqlSslMode::Preferred);
+            if !database.is_empty() {
+                options = options.database(&database);
+            }
 
             match Self::Pool::connect_with(options).await {
                 Ok(pool) => return Ok(pool),
@@ -79,10 +82,60 @@ fn normalized_username(username: &str) -> String {
 }
 
 fn normalized_database(database: &str) -> String {
-    let database = database.trim();
-    if database.is_empty() {
-        "mysql".to_string()
-    } else {
-        database.to_string()
+    database.trim().to_string()
+}
+
+fn split_host_and_port(value: &str) -> (String, Option<u16>) {
+    let value = value.trim();
+    if value.is_empty() {
+        return (String::new(), None);
+    }
+
+    if value.starts_with('[')
+        && let Some(end_bracket) = value.find(']')
+    {
+        let host = value[1..end_bracket].to_string();
+        let remainder = value[end_bracket + 1..].trim();
+        if remainder.is_empty() {
+            return (host, None);
+        }
+        if let Some(port) = remainder
+            .strip_prefix(':')
+            .and_then(|port| port.parse::<u16>().ok())
+        {
+            return (host, Some(port));
+        }
+        return (value.to_string(), None);
+    }
+
+    if value.matches(':').count() == 1
+        && let Some((host, port)) = value.rsplit_once(':')
+        && !host.trim().is_empty()
+        && let Ok(port) = port.trim().parse::<u16>()
+    {
+        return (host.trim().to_string(), Some(port));
+    }
+
+    (value.to_string(), None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_host_and_port;
+
+    #[test]
+    fn splits_mysql_host_with_embedded_port() {
+        assert_eq!(
+            split_host_and_port("db.example.com:3307"),
+            ("db.example.com".to_string(), Some(3307))
+        );
+        assert_eq!(
+            split_host_and_port("[::1]:4406"),
+            ("::1".to_string(), Some(4406))
+        );
+        assert_eq!(
+            split_host_and_port("db.example.com"),
+            ("db.example.com".to_string(), None)
+        );
     }
 }

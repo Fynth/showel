@@ -1107,13 +1107,17 @@ async fn mysql_effective_schema_name(
         return Ok(schema.to_string());
     }
 
-    let current_database = sqlx::query_scalar::<_, Option<String>>("select database()")
+    sqlx::query_scalar::<_, Option<String>>("select database()")
         .fetch_one(pool)
         .await
         .map_err(DatabaseError::MySql)?
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "mysql".to_string());
-    Ok(current_database)
+        .ok_or_else(|| {
+            DatabaseError::UnsupportedDriver(
+                "No MySQL database selected. Set a default database or use a qualified table name."
+                    .to_string(),
+            )
+        })
 }
 
 fn qualified_mysql_table_name(schema_name: &str, table_name: &str) -> String {

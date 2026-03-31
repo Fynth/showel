@@ -58,7 +58,7 @@ impl RemoteConnectionDraft {
             port: "3306".to_string(),
             username: "root".to_string(),
             password: String::new(),
-            database: "mysql".to_string(),
+            database: String::new(),
             ssh_enabled: false,
             ssh_host: String::new(),
             ssh_port: "22".to_string(),
@@ -457,7 +457,7 @@ fn RemoteEditorFields(
                 "Host",
                 "localhost or mysql://user:pass@host:3306/db",
                 "root",
-                "mysql",
+                "Optional default database",
                 "3306",
             ),
             DatabaseKind::ClickHouse => (

@@ -89,8 +89,10 @@ pub async fn connect_to_db(
                     ));
                 }
 
-                let remote_host = normalize_mysql_host(&data.host);
-                let remote_port = if data.port == 0 { 3306 } else { data.port };
+                let (remote_host, embedded_port) = split_mysql_host_and_port(&data.host);
+                let remote_host = normalize_mysql_host(&remote_host);
+                let remote_port =
+                    embedded_port.unwrap_or(if data.port == 0 { 3306 } else { data.port });
                 let tunnel = open_ssh_tunnel(config, &remote_host, remote_port)
                     .await
                     .map_err(DatabaseError::Tunnel)?;
@@ -196,6 +198,40 @@ fn normalize_mysql_host(host: &str) -> String {
     } else {
         host.to_string()
     }
+}
+
+fn split_mysql_host_and_port(value: &str) -> (String, Option<u16>) {
+    let value = value.trim();
+    if value.is_empty() {
+        return (String::new(), None);
+    }
+
+    if value.starts_with('[')
+        && let Some(end_bracket) = value.find(']')
+    {
+        let host = value[1..end_bracket].to_string();
+        let remainder = value[end_bracket + 1..].trim();
+        if remainder.is_empty() {
+            return (host, None);
+        }
+        if let Some(port) = remainder
+            .strip_prefix(':')
+            .and_then(|port| port.parse::<u16>().ok())
+        {
+            return (host, Some(port));
+        }
+        return (value.to_string(), None);
+    }
+
+    if value.matches(':').count() == 1
+        && let Some((host, port)) = value.rsplit_once(':')
+        && !host.trim().is_empty()
+        && let Ok(port) = port.trim().parse::<u16>()
+    {
+        return (host.trim().to_string(), Some(port));
+    }
+
+    (value.to_string(), None)
 }
 
 struct ClickHouseTarget {

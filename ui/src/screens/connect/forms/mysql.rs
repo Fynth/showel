@@ -10,7 +10,7 @@ pub fn MySqlForm() -> Element {
     let mut port = use_signal(|| "3306".to_string());
     let mut username = use_signal(|| "root".to_string());
     let mut password = use_signal(|| "".to_string());
-    let mut database = use_signal(|| "mysql".to_string());
+    let mut database = use_signal(String::new);
     let ssh_enabled = use_signal(|| false);
     let ssh_host = use_signal(String::new);
     let ssh_port = use_signal(|| "22".to_string());
@@ -121,7 +121,7 @@ pub fn MySqlForm() -> Element {
                     class: "input",
                     id: "mysql-database",
                     value: "{database}",
-                    placeholder: "app",
+                    placeholder: "Optional default database",
                     oninput: move |event| database.set(event.value()),
                 }
             }
