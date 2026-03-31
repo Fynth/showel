@@ -69,6 +69,8 @@ pub fn TabsManager(
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
     let mut show_generate_sql_window = use_signal(|| false);
     let mut generate_sql_prompt = use_signal(String::new);
+    let mut renaming_tab_id = use_signal(|| None::<u64>);
+    let mut rename_value = use_signal(String::new);
     let active_tab = use_memo(move || {
         tabs.read()
             .iter()
@@ -156,7 +158,52 @@ pub fn TabsManager(
                         },
                         div {
                             class: "tabbar__copy",
-                            span { class: "tabbar__label", "{tab.title}" }
+                            if renaming_tab_id() == Some(tab.id) {
+                                input {
+                                    class: "tabbar__rename-input",
+                                    value: "{rename_value}",
+                                    oninput: move |event| rename_value.set(event.value()),
+                                    onkeydown: move |event| {
+                                        if event.key() == "Enter" {
+                                            let new_title = rename_value().trim().to_string();
+                                            if !new_title.is_empty() {
+                                                tabs.with_mut(|all_tabs| {
+                                                    if let Some(tab) = all_tabs.iter_mut().find(|t| t.id == renaming_tab_id().unwrap()) {
+                                                        tab.title = new_title;
+                                                    }
+                                                });
+                                            }
+                                            renaming_tab_id.set(None);
+                                        } else if event.key() == "Escape" {
+                                            renaming_tab_id.set(None);
+                                        }
+                                    },
+                                    onblur: move |_| {
+                                        let new_title = rename_value().trim().to_string();
+                                        if !new_title.is_empty() {
+                                            tabs.with_mut(|all_tabs| {
+                                                if let Some(tab) = all_tabs.iter_mut().find(|t| t.id == renaming_tab_id().unwrap()) {
+                                                    tab.title = new_title;
+                                                }
+                                            });
+                                        }
+                                        renaming_tab_id.set(None);
+                                    },
+                                }
+                            } else {
+                                span {
+                                    class: "tabbar__label",
+                                    ondblclick: {
+                                        let tab_id = tab.id;
+                                        move |_| {
+                                            rename_value.set(tab.title.clone());
+                                            renaming_tab_id.set(Some(tab_id));
+                                        }
+                                    },
+                                    prevent: "dblclick",
+                                    "{tab.title}"
+                                }
+                            }
                             if let Some(session_name) = session_labels.get(&tab.session_id) {
                                 span { class: "tabbar__context", "{session_name}" }
                             }
