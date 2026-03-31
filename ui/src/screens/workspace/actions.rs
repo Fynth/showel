@@ -319,6 +319,10 @@ pub fn run_query_for_tab(
                     ),
                     QueryOutput::AffectedRows(rows) => (format!("Rows affected: {rows}"), 0),
                 };
+                let rows_returned = match &output {
+                    QueryOutput::Table(page) => Some(page.rows.len()),
+                    QueryOutput::AffectedRows(count) => Some(*count as usize),
+                };
 
                 tabs.with_mut(|all_tabs| {
                     if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
@@ -337,10 +341,6 @@ pub fn run_query_for_tab(
                     history
                 {
                     let duration_ms = start_time.elapsed().as_millis() as u64;
-                    let rows_returned = match &output {
-                        QueryOutput::Table(page) => Some(page.rows.len()),
-                        QueryOutput::AffectedRows(count) => Some(*count as usize),
-                    };
                     let history_id = next_history_id();
                     next_history_id += 1;
                     let history_item = QueryHistoryItem {

@@ -11,17 +11,6 @@
 use dioxus::prelude::*;
 use tokio::task::AbortHandle;
 
-/// Props for the InlineCompletion component.
-#[derive(Clone, PartialEq)]
-pub struct InlineCompletionProps {
-    /// The current suggestion text to display as ghost text.
-    pub suggestion: Option<String>,
-    /// Callback invoked when the user accepts the completion (Tab/ArrowRight).
-    pub on_accept: Callback<()>,
-    /// Callback invoked when the user dismisses the completion (Escape).
-    pub on_dismiss: Callback<()>,
-}
-
 /// State for managing inline completion lifecycle.
 ///
 /// This struct tracks:

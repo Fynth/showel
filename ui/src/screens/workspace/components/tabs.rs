@@ -31,6 +31,9 @@ enum ExportFormat {
     Csv,
     Json,
     Xlsx,
+    Xml,
+    Html,
+    SqlDump,
 }
 
 impl ExportFormat {
@@ -39,6 +42,9 @@ impl ExportFormat {
             Self::Csv => "csv",
             Self::Json => "json",
             Self::Xlsx => "xlsx",
+            Self::Xml => "xml",
+            Self::Html => "html",
+            Self::SqlDump => "sql",
         }
     }
 
@@ -47,6 +53,9 @@ impl ExportFormat {
             Self::Csv => "CSV",
             Self::Json => "JSON",
             Self::Xlsx => "XLSX",
+            Self::Xml => "XML",
+            Self::Html => "HTML",
+            Self::SqlDump => "SQL Dump",
         }
     }
 }
@@ -164,7 +173,7 @@ pub fn TabsManager(
                                     value: "{rename_value}",
                                     oninput: move |event| rename_value.set(event.value()),
                                     onkeydown: move |event| {
-                                        if event.key() == "Enter" {
+                                        if event.key() == Key::Enter {
                                             let new_title = rename_value().trim().to_string();
                                             if !new_title.is_empty() {
                                                 tabs.with_mut(|all_tabs| {
@@ -174,7 +183,7 @@ pub fn TabsManager(
                                                 });
                                             }
                                             renaming_tab_id.set(None);
-                                        } else if event.key() == "Escape" {
+                                        } else if event.key() == Key::Escape {
                                             renaming_tab_id.set(None);
                                         }
                                     },
@@ -193,14 +202,13 @@ pub fn TabsManager(
                             } else {
                                 span {
                                     class: "tabbar__label",
-                                    ondblclick: {
+                                    ondoubleclick: {
                                         let tab_id = tab.id;
                                         move |_| {
                                             rename_value.set(tab.title.clone());
                                             renaming_tab_id.set(Some(tab_id));
                                         }
                                     },
-                                    prevent: "dblclick",
                                     "{tab.title}"
                                 }
                             }
@@ -265,6 +273,8 @@ pub fn TabsManager(
                             explorer_nodes: active_explorer_nodes(),
                             tabs,
                             active_tab_id,
+                            acp_panel_state,
+                            ai_features_enabled,
                         }
                     }
                     div {
@@ -424,6 +434,33 @@ pub fn TabsManager(
                         },
                     }
                     IconButton {
+                        icon: ActionIcon::ExportXml,
+                        label: "Export XML".to_string(),
+                        disabled: !has_tabular_result(&tab),
+                        onclick: {
+                            let current_tab = tab.clone();
+                            move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Xml)
+                        },
+                    }
+                    IconButton {
+                        icon: ActionIcon::ExportHtml,
+                        label: "Export HTML".to_string(),
+                        disabled: !has_tabular_result(&tab),
+                        onclick: {
+                            let current_tab = tab.clone();
+                            move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Html)
+                        },
+                    }
+                    IconButton {
+                        icon: ActionIcon::ExportSql,
+                        label: "SQL Dump".to_string(),
+                        disabled: !has_tabular_result(&tab),
+                        onclick: {
+                            let current_tab = tab.clone();
+                            move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::SqlDump)
+                        },
+                    }
+                    IconButton {
                         icon: ActionIcon::ImportCsv,
                         label: "Import CSV".to_string(),
                         disabled: active_actionable_source.is_none(),
@@ -565,6 +602,16 @@ fn export_active_page(
             ExportFormat::Csv => query::export_query_page_csv(page, path.clone()).await,
             ExportFormat::Json => query::export_query_page_json(page, path.clone()).await,
             ExportFormat::Xlsx => query::export_query_page_xlsx(page, path.clone()).await,
+            ExportFormat::Xml => query::export_query_page_xml(page, path.clone()).await,
+            ExportFormat::Html => query::export_query_page_html(page, path.clone()).await,
+            ExportFormat::SqlDump => {
+                let table_name = current_tab
+                    .preview_source
+                    .as_ref()
+                    .map(|s| s.table_name.clone())
+                    .unwrap_or_else(|| "exported_table".to_string());
+                query::export_query_page_sql_dump(page, path.clone(), table_name).await
+            }
         };
 
         match export_result {

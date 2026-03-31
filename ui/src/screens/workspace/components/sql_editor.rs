@@ -1,3 +1,5 @@
+#[path = "sql_editor/acp_inline_completion.rs"]
+mod acp_inline_completion;
 #[path = "sql_editor/autocomplete.rs"]
 mod autocomplete;
 #[path = "sql_editor/highlight.rs"]
@@ -7,11 +9,15 @@ mod selection;
 
 use crate::{app_state::session_connection, screens::workspace::actions::replace_active_tab_sql};
 use dioxus::prelude::*;
-use models::{ExplorerNode, QueryTabState};
+use models::{AcpPanelState, ExplorerNode, QueryTabState};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use self::{
+    acp_inline_completion::{
+        AcpInlineCompletionState, build_inline_completion_prompt,
+        build_schema_hint, extract_editor_context,
+    },
     autocomplete::{
         build_inline_completion, build_suggestions, completion_context, extract_relation_bindings,
         flatten_catalog, relations_to_prefetch, resolved_replacement, should_open_autocomplete,
@@ -23,6 +29,8 @@ use self::{
 };
 
 const SQL_EDITOR_TEXTAREA_ID: &str = "workspace-sql-editor";
+const ACP_DEBOUNCE_MS: u64 = 125;
+const ACP_CONTEXT_WINDOW: usize = 500;
 
 #[component]
 pub fn SqlEditor(
@@ -31,6 +39,8 @@ pub fn SqlEditor(
     explorer_nodes: Vec<ExplorerNode>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
+    acp_panel_state: Signal<AcpPanelState>,
+    ai_features_enabled: Signal<bool>,
 ) -> Element {
     let active_tab_id_value = active_tab.id;
     let synced_tab_sql = active_tab.sql.clone();
@@ -45,6 +55,8 @@ pub fn SqlEditor(
     let mut pending_cursor_position = use_signal(|| None::<usize>);
     let mut sync_revision = use_signal(|| 0_u64);
     let column_cache = use_signal(HashMap::<String, Vec<String>>::new);
+    let mut acp_inline_completion = use_signal(AcpInlineCompletionState::new);
+    let mut acp_request_revision = use_signal(|| 0_u64);
     let current_sql = draft_sql();
 
     let editor_offset = format!(
@@ -212,6 +224,75 @@ pub fn SqlEditor(
         }
     });
 
+    // ACP inline completion effect - debounced trigger
+    use_effect(move || {
+        let _ = draft_sql();
+        let _ = editor_selection();
+        let revision = sync_revision();
+        
+        // Check if ACP is connected and AI features are enabled
+        let acp_connected = acp_panel_state().connected;
+        let ai_enabled = ai_features_enabled();
+        if !acp_connected || !ai_enabled {
+            return;
+        }
+        
+        // Cancel any pending ACP request
+        acp_inline_completion.with_mut(|state| {
+            state.cancel_pending();
+            state.clear_suggestion();
+        });
+        
+        // Increment revision to track this request
+        acp_request_revision += 1;
+        let current_revision = acp_request_revision();
+        
+        // Get context for ACP prompt
+        let cursor_pos = selection.start;
+        let sql_text = draft_sql();
+        let (text_before, text_after, cursor_offset) = extract_editor_context(
+            &sql_text,
+            cursor_pos,
+            ACP_CONTEXT_WINDOW,
+        );
+        
+        // Build schema hint from catalog
+        let schema_hint = if autocomplete_active {
+            Some(build_schema_hint(&catalog.schemas, &catalog.relations, 10))
+        } else {
+            None
+        };
+        
+        // Spawn debounced ACP request
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(ACP_DEBOUNCE_MS)).await;
+            
+            // Check if revision is still current (not stale)
+            if acp_request_revision() != current_revision {
+                return;
+            }
+            
+            // Build prompt
+            let prompt = build_inline_completion_prompt(
+                &text_before,
+                &text_after,
+                cursor_offset,
+                schema_hint.as_deref(),
+            );
+            
+            // Send ACP prompt
+            if let Err(_err) = acp::send_acp_prompt(prompt) {
+                return;
+            }
+            
+            // Mark as loading
+            acp_inline_completion.with_mut(|state| {
+                state.is_loading = true;
+                state.is_discarded = false;
+            });
+        });
+    });
+
     rsx! {
         div {
             class: "sql-editor",
@@ -239,6 +320,11 @@ pub fn SqlEditor(
                     force_autocomplete.set(false);
                     autocomplete_open.set(true);
                     selected_suggestion.set(0);
+                    // Cancel pending ACP request and clear completion on new keystroke
+                    acp_inline_completion.with_mut(|state| {
+                        state.cancel_pending();
+                        state.clear_suggestion();
+                    });
                     draft_sql.set(event.value());
                     sync_revision += 1;
                 },
@@ -257,6 +343,41 @@ pub fn SqlEditor(
                             selected_suggestion.set(0);
                             sync_editor_selection(editor_selection, SQL_EDITOR_TEXTAREA_ID);
                             return;
+                        }
+
+                        // Handle ACP inline completion
+                        let acp_has_completion = acp_inline_completion.with(|state| state.has_completion());
+                        if acp_has_completion {
+                            match event.key() {
+                                Key::Tab | Key::ArrowRight => {
+                                    event.prevent_default();
+                                    if let Some((suggestion, cursor_pos)) = acp_inline_completion.with_mut(|state| state.accept_completion()) {
+                                        let insert_position = selection.start;
+                                        let next_sql = format!(
+                                            "{}{}{}",
+                                            &current_sql[..insert_position],
+                                            suggestion,
+                                            &current_sql[insert_position..]
+                                        );
+                                        pending_cursor_position.set(Some(cursor_pos));
+                                        draft_sql.set(next_sql.clone());
+                                        sync_revision += 1;
+                                        replace_active_tab_sql(
+                                            tabs,
+                                            active_tab_id(),
+                                            next_sql,
+                                            "ACP inline completion accepted".to_string(),
+                                        );
+                                    }
+                                    return;
+                                }
+                                Key::Escape => {
+                                    event.prevent_default();
+                                    acp_inline_completion.with_mut(|state| state.dismiss_completion());
+                                    return;
+                                }
+                                _ => {}
+                            }
                         }
 
                         if !popup_visible {

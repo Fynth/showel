@@ -11,7 +11,7 @@ pub use chat::{
     save_chat_thread_snapshot, search_chat_messages, search_chat_sql_artifacts,
 };
 pub use history::{
-    load_saved_connections, load_session_state,
+    append_query_history, load_query_history, load_saved_connections, load_session_state,
     load_session_state_sync, replace_connection_request, save_connection_request,
     save_session_state, save_session_state_sync,
 };
