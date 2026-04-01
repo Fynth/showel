@@ -1,11 +1,114 @@
 use ammonia::clean as sanitize_html;
+use dioxus::prelude::*;
 use pulldown_cmark::{Event, Options, Parser, html};
 
 use models::{AcpMessageKind, AcpPanelState, AcpUiMessage, ChatArtifact};
 
 use super::prompt::extract_sql_candidate;
 
+thread_local! {
+    // Keep clipboard ownership alive for Linux/X11/Wayland instead of dropping it right after copy.
+    static PERSISTENT_CLIPBOARD: std::cell::RefCell<Option<arboard::Clipboard>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 pub(super) const AGENT_MESSAGE_BATCH: usize = 32;
+
+pub(super) fn copy_text_to_clipboard(
+    mut panel_state: Signal<AcpPanelState>,
+    text: String,
+    label: &str,
+) {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        panel_state.with_mut(|state| {
+            state.status = format!("Nothing to copy as {label}.");
+        });
+        return;
+    }
+
+    let result = write_text_to_clipboard(&text);
+
+    match result {
+        Ok(()) => {
+            panel_state.with_mut(|state| {
+                state.status = format!("Copied {label} to clipboard.");
+            });
+        }
+        Err(native_err) => {
+            let Some(script) = clipboard_copy_script(&text) else {
+                panel_state.with_mut(|state| {
+                    state.status = format!("Clipboard error: {native_err}");
+                });
+                return;
+            };
+
+            let label = label.to_string();
+            spawn(async move {
+                let result = document::eval(&script).join::<bool>().await;
+                panel_state.with_mut(|state| {
+                    state.status = match result {
+                        Ok(true) => format!("Copied {label} to clipboard."),
+                        Ok(false) => format!("Clipboard error: {native_err}"),
+                        Err(err) => {
+                            format!("Clipboard error: {native_err}; fallback failed: {err:?}")
+                        }
+                    };
+                });
+            });
+        }
+    }
+}
+
+fn write_text_to_clipboard(text: &str) -> Result<(), String> {
+    PERSISTENT_CLIPBOARD.with(|clipboard| {
+        let mut clipboard = clipboard.borrow_mut();
+        if clipboard.is_none() {
+            *clipboard = Some(arboard::Clipboard::new().map_err(|err| err.to_string())?);
+        }
+
+        let clipboard = clipboard
+            .as_mut()
+            .ok_or_else(|| "Clipboard is unavailable.".to_string())?;
+
+        clipboard
+            .set_text(text.to_string())
+            .map_err(|err| err.to_string())
+    })
+}
+
+fn clipboard_copy_script(text: &str) -> Option<String> {
+    let value = serde_json::to_string(text).ok()?;
+    Some(format!(
+        r#"
+        (() => {{
+            const value = {value};
+            const copyWithExecCommand = () => {{
+                const textarea = document.createElement("textarea");
+                textarea.value = value;
+                textarea.setAttribute("readonly", "");
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                textarea.style.pointerEvents = "none";
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                const copied = document.execCommand("copy");
+                textarea.remove();
+                return copied;
+            }};
+
+            if (navigator.clipboard && window.isSecureContext) {{
+                return navigator.clipboard.writeText(value)
+                    .then(() => true)
+                    .catch(() => copyWithExecCommand());
+            }}
+
+            return copyWithExecCommand();
+        }})()
+        "#
+    ))
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum MessageChunk {
@@ -219,9 +322,7 @@ mod tests {
         artifact_title, build_thread_meta, compact_connection_label, compact_header_title,
         is_visible_message, render_message_markdown_html, should_render_message_text,
     };
-    use models::{
-        AcpMessageKind, AcpOllamaConfig, AcpPanelState, AcpUiMessage, ChatArtifact,
-    };
+    use models::{AcpMessageKind, AcpOllamaConfig, AcpPanelState, AcpUiMessage, ChatArtifact};
 
     #[test]
     fn hides_internal_system_messages_without_artifacts() {

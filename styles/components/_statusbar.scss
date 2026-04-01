@@ -3,7 +3,7 @@
 .statusbar {
   display: flex;
   align-items: center;
-  gap: $spacing-md;
+  gap: $spacing-sm;
   padding: 0 $spacing-sm;
   border-top: 1px solid var(--color-border);
   background:
@@ -24,7 +24,7 @@
 .statusbar__item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   white-space: nowrap;
 }

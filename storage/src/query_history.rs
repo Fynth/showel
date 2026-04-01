@@ -1,15 +1,8 @@
-use std::time::Duration;
-
 use models::QueryHistoryItem;
-use sqlx::{
-    SqlitePool,
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
-};
-use tokio::{fs, sync::OnceCell};
+use sqlx::SqlitePool;
 
-use crate::fs_store::{chat_db_path, query_history_path};
+use crate::fs_store::query_history_path;
 
-static QUERY_HISTORY_POOL: OnceCell<SqlitePool> = OnceCell::const_new();
 const MAX_HISTORY_ITEMS: usize = 20;
 
 /// SQLite-backed storage for query history with FTS5 search support.
@@ -18,7 +11,7 @@ pub struct QueryHistoryStore;
 impl QueryHistoryStore {
     /// Initialize the store, creating tables and migrating from JSON if needed.
     pub async fn init() -> Result<(), String> {
-        let pool = query_history_pool().await?;
+        let pool = crate::chat::chat_pool().await?;
         initialize_schema(pool).await?;
         migrate_from_json(pool).await?;
         Ok(())
@@ -26,7 +19,7 @@ impl QueryHistoryStore {
 
     /// Save a query history item.
     pub async fn save(item: &QueryHistoryItem) -> Result<(), String> {
-        let pool = query_history_pool().await?;
+        let pool = crate::chat::chat_pool().await?;
 
         sqlx::query(
             r#"
@@ -70,7 +63,7 @@ impl QueryHistoryStore {
 
     /// Load query history with optional limit.
     pub async fn load(limit: usize) -> Result<Vec<QueryHistoryItem>, String> {
-        let pool = query_history_pool().await?;
+        let pool = crate::chat::chat_pool().await?;
 
         let rows = sqlx::query(
             r#"
@@ -92,7 +85,7 @@ impl QueryHistoryStore {
 
     /// Search query history using FTS5.
     pub async fn search(query: &str) -> Result<Vec<QueryHistoryItem>, String> {
-        let pool = query_history_pool().await?;
+        let pool = crate::chat::chat_pool().await?;
 
         // Use FTS5 to find matching rows
         let rows = sqlx::query(
@@ -117,7 +110,7 @@ impl QueryHistoryStore {
 
     /// Get the total count of history items.
     pub async fn count() -> Result<i64, String> {
-        let pool = query_history_pool().await?;
+        let pool = crate::chat::chat_pool().await?;
 
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM query_history")
             .fetch_one(pool)
@@ -126,33 +119,6 @@ impl QueryHistoryStore {
 
         Ok(count)
     }
-}
-
-async fn query_history_pool() -> Result<&'static SqlitePool, String> {
-    QUERY_HISTORY_POOL
-        .get_or_try_init(|| async {
-            let path = chat_db_path();
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)
-                    .await
-                    .map_err(|err| format!("failed to create storage dir: {err}"))?;
-            }
-
-            let options = SqliteConnectOptions::new()
-                .filename(&path)
-                .create_if_missing(true)
-                .foreign_keys(true)
-                .busy_timeout(Duration::from_secs(5))
-                .journal_mode(SqliteJournalMode::Wal)
-                .synchronous(SqliteSynchronous::Normal);
-
-            let pool = SqlitePool::connect_with(options)
-                .await
-                .map_err(|err| format!("failed to open database {}: {err}", path.display()))?;
-
-            Ok(pool)
-        })
-        .await
 }
 
 async fn initialize_schema(pool: &SqlitePool) -> Result<(), String> {
@@ -216,7 +182,7 @@ async fn migrate_from_json(pool: &SqlitePool) -> Result<(), String> {
     }
 
     // Read JSON file
-    let content = match fs::read_to_string(&json_path).await {
+    let content = match tokio::fs::read_to_string(&json_path).await {
         Ok(content) => content,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(err) => return Err(format!("failed to read query history JSON: {err}")),
@@ -283,7 +249,7 @@ async fn migrate_from_json(pool: &SqlitePool) -> Result<(), String> {
 
     // Rename JSON file to .backup
     let backup_path = json_path.with_extension("json.backup");
-    if let Err(err) = fs::rename(&json_path, &backup_path).await {
+    if let Err(err) = tokio::fs::rename(&json_path, &backup_path).await {
         eprintln!("Warning: Failed to rename query_history.json to backup: {err}");
     } else {
         println!(

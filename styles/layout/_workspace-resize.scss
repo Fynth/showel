@@ -2,8 +2,8 @@
 
 .workspace__resize-handle {
   position: relative;
-  width: 10px;
-  min-width: 10px;
+  width: 6px;
+  min-width: 6px;
   border-radius: 999px;
   cursor: col-resize;
   background: transparent;
@@ -13,10 +13,10 @@
 .workspace__resize-handle::after {
   content: "";
   position: absolute;
-  top: 14px;
-  bottom: 14px;
+  top: 8px;
+  bottom: 8px;
   left: 50%;
-  width: 5px;
+  width: 3px;
   transform: translateX(-50%);
   border-radius: 999px;
   background:

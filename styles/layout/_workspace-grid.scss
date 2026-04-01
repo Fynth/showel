@@ -5,11 +5,11 @@
   min-height: 0;
   display: grid;
   grid-template-columns:
-    minmax(220px, var(--workspace-sidebar-width, clamp(240px, 21vw, 320px)))
-    10px
+    minmax(180px, var(--workspace-sidebar-width, clamp(200px, 19vw, 260px)))
+    6px
     minmax(0, 1fr);
-  gap: 6px;
-  padding: 6px;
+  gap: 4px;
+  padding: 4px;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 24%),
     radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 6%, transparent), transparent 22%),
@@ -47,10 +47,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding: 4px;
+  padding: 3px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .workspace__title {
@@ -103,8 +103,8 @@
 .workspace__content--with-inspector {
   grid-template-columns:
     minmax(0, 1fr)
-    10px
-    minmax(0, var(--workspace-inspector-width, clamp(340px, 26vw, 460px)));
+    6px
+    minmax(0, var(--workspace-inspector-width, clamp(280px, 24vw, 400px)));
 }
 
 .workspace__canvas {
@@ -121,8 +121,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 4px;
+  gap: 2px;
+  padding: 3px;
   border-left: 1px solid var(--color-border);
   background:
     linear-gradient(
@@ -137,8 +137,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 5px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(
     in srgb,
@@ -162,8 +162,8 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 0 4px 4px;
+  gap: 2px;
+  padding: 0 3px 3px;
   border-top: 1px solid var(--color-border);
   background:
     linear-gradient(
@@ -189,36 +189,36 @@
 
 .workspace__sidebar .input,
 .workspace__inspector .input {
-  min-height: 36px;
-  padding: 0 10px;
+  min-height: 30px;
+  padding: 0 8px;
   font-size: $font-size-sm;
 }
 
 .workspace__sidebar .button.button--small,
 .workspace__inspector .button.button--small {
-  height: 24px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 6px;
   font-size: $font-size-xs;
 }
 
 .workspace__sidebar .button.button--small.button--icon,
 .workspace__inspector .button.button--small.button--icon {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
 }
 
 .workspace__empty {
   display: grid;
   place-items: center;
-  min-height: 140px;
+  min-height: 100px;
 }
 
 @media (max-width: 980px) {
   .workspace {
     grid-template-columns:
-      minmax(220px, var(--workspace-sidebar-width, 280px))
-      10px
+      minmax(180px, var(--workspace-sidebar-width, clamp(200px, 19vw, 260px)))
+      6px
       minmax(0, 1fr);
   }
 
@@ -260,16 +260,16 @@
 
 @media (max-height: 860px) {
   .workspace {
-    gap: 6px;
-    padding: 6px;
+    gap: 4px;
+    padding: 4px;
   }
 
   .workspace__header {
-    padding-top: 6px;
-    padding-bottom: 6px;
+    padding-top: 4px;
+    padding-bottom: 4px;
   }
 
   .workspace__sidebar-body {
-    gap: 4px;
+    gap: 3px;
   }
 }
