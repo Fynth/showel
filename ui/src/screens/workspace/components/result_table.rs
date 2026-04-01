@@ -89,7 +89,8 @@ pub fn ResultTable(
             filter_panel_open.set(has_active_filter);
         }
 
-        if filter_panel_should_auto_open(has_active_filter, &filter_draft()) && !filter_panel_open() {
+        if filter_panel_should_auto_open(has_active_filter, &filter_draft()) && !filter_panel_open()
+        {
             filter_panel_open.set(true);
         }
     });

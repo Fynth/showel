@@ -137,7 +137,10 @@ impl AgentSetupMode {
     }
 }
 
-pub(super) fn setup_mode_button_class(mode: AgentSetupMode, active_mode: AgentSetupMode) -> &'static str {
+pub(super) fn setup_mode_button_class(
+    mode: AgentSetupMode,
+    active_mode: AgentSetupMode,
+) -> &'static str {
     if mode == active_mode {
         "button button--ghost button--active agent-panel__mode-button"
     } else {

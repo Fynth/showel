@@ -563,10 +563,7 @@ mod tests {
 
     #[test]
     fn escape_xml_replaces_all_special_chars() {
-        assert_eq!(
-            escape_xml("&<>\"'"),
-            "&amp;&lt;&gt;&quot;&apos;"
-        );
+        assert_eq!(escape_xml("&<>\"'"), "&amp;&lt;&gt;&quot;&apos;");
     }
 
     #[test]
@@ -589,10 +586,7 @@ mod tests {
 
     #[test]
     fn escape_html_replaces_amp_lt_gt_quote() {
-        assert_eq!(
-            escape_html("&<>\""),
-            "&amp;&lt;&gt;&quot;"
-        );
+        assert_eq!(escape_html("&<>\""), "&amp;&lt;&gt;&quot;");
     }
 
     #[test]
@@ -738,13 +732,7 @@ mod tests {
         let headers = vec!["id".to_string(), "name".to_string()];
         let rows = vec![vec!["1".to_string(), "Alice".to_string()]];
 
-        let sql = build_insert_sql(
-            &source,
-            &headers,
-            &rows,
-            quote_sql_identifier,
-            sql_literal,
-        );
+        let sql = build_insert_sql(&source, &headers, &rows, quote_sql_identifier, sql_literal);
 
         assert!(sql.starts_with("insert into public.users"));
         assert!(sql.contains("\"id\", \"name\""));
@@ -759,18 +747,9 @@ mod tests {
             qualified_name: "users".to_string(),
         };
         let headers = vec!["id".to_string()];
-        let rows = vec![
-            vec!["1".to_string()],
-            vec!["2".to_string()],
-        ];
+        let rows = vec![vec!["1".to_string()], vec!["2".to_string()]];
 
-        let sql = build_insert_sql(
-            &source,
-            &headers,
-            &rows,
-            quote_sql_identifier,
-            sql_literal,
-        );
+        let sql = build_insert_sql(&source, &headers, &rows, quote_sql_identifier, sql_literal);
 
         assert!(sql.contains("('1')"));
         assert!(sql.contains("('2')"));

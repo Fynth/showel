@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::app_state::{
-    open_connection_screen, toast_error, APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS,
+    APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen, toast_error,
 };
 use dioxus::{html::input_data::MouseButton, prelude::*};
 use models::{
@@ -28,11 +28,11 @@ use self::{
         replace_messages,
     },
     helpers::{
-        apply_tool_panel_drop, derive_chat_thread_title, launch_uses_opencode,
-        load_explorer_section, reset_panel_for_thread, tool_panel_class,
+        DockDropTarget, INSPECTOR_MAX_WIDTH, INSPECTOR_MIN_WIDTH, SIDEBAR_MAX_WIDTH,
+        SIDEBAR_MIN_WIDTH, WORKSPACE_ROOT_ID, apply_tool_panel_drop, derive_chat_thread_title,
+        launch_uses_opencode, load_explorer_section, reset_panel_for_thread, tool_panel_class,
         unloaded_explorer_section, upsert_chat_thread_summary, visible_tool_panels,
-        workspace_resize_script, DockDropTarget, INSPECTOR_MAX_WIDTH, INSPECTOR_MIN_WIDTH,
-        SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, WORKSPACE_ROOT_ID,
+        workspace_resize_script,
     },
 };
 

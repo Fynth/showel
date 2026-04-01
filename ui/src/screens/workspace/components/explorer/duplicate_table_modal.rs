@@ -1,5 +1,5 @@
-use crate::app_state::session_connection;
 use super::{quote_sql_identifier, quoted_table_name_preview};
+use crate::app_state::session_connection;
 use dioxus::prelude::*;
 use models::{DatabaseKind, TablePreviewSource};
 
