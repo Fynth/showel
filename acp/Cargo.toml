@@ -3,6 +3,10 @@ name = "acp"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+embedding = ["ort", "ndarray", "tokenizers"]
+
 [dependencies]
 agent-client-protocol = "0.10.3"
 acp-registry.workspace = true
@@ -13,7 +17,7 @@ driver-clickhouse.workspace = true
 explorer.workspace = true
 futures-util = "0.3.31"
 models.workspace = true
-ndarray = "0.16"
+ndarray = { version = "0.16", optional = true }
 query.workspace = true
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1.0.219", features = ["derive"] }
@@ -23,6 +27,6 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "sql
 storage.workspace = true
 tokio = { version = "1.44.1", features = ["fs", "io-std", "process", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["compat"] }
-tokenizers = "0.21"
-ort = { version = "2.0.0-rc.9", features = ["half", "ndarray"] }
+tokenizers = { version = "0.21", optional = true }
+ort = { version = "2.0.0-rc.9", features = ["half", "ndarray"], optional = true }
 tracing = "0.1"
