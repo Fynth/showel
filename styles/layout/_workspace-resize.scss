@@ -1,0 +1,47 @@
+@use "../base/tokens" as *;
+
+.workspace__resize-handle {
+  position: relative;
+  width: 10px;
+  min-width: 10px;
+  border-radius: 999px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.workspace__resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 50%;
+  width: 5px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-border-strong) 92%, transparent),
+      color-mix(in srgb, var(--color-border) 68%, transparent)
+    );
+}
+
+.workspace__resize-handle:hover,
+.workspace__resize-handle--active {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.workspace__resize-handle:hover::after,
+.workspace__resize-handle--active::after {
+  background: color-mix(in srgb, var(--color-primary) 44%, white 8%);
+}
+
+.workspace__resize-handle--inspector {
+  grid-column: 2;
+}
+
+.workspace--resizing {
+  user-select: none;
+  cursor: col-resize;
+}

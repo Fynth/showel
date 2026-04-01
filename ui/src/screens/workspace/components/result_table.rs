@@ -49,6 +49,7 @@ pub fn ResultTable(
         rules: Vec::new(),
     });
     let mut filter_sync_key = use_signal(String::new);
+    let mut filter_panel_open = use_signal(|| false);
     let mut selected_row_index = use_signal(|| None::<usize>);
     let mut selected_row_sync_key = use_signal(String::new);
     let mut show_row_details = use_signal(|| true);
@@ -63,6 +64,7 @@ pub fn ResultTable(
         .find(|tab| tab.id == active_tab_id())
         .cloned();
     let active_filter = active_tab.as_ref().and_then(|tab| tab.filter.clone());
+    let has_active_filter = active_filter.is_some();
     let active_sort = active_tab.as_ref().and_then(|tab| tab.sort.clone());
     let active_error = active_tab
         .as_ref()
@@ -84,6 +86,11 @@ pub fn ResultTable(
         if filter_sync_key() != next_filter_sync_key {
             filter_sync_key.set(next_filter_sync_key.clone());
             filter_draft.set(next_filter_draft.clone());
+            filter_panel_open.set(has_active_filter);
+        }
+
+        if filter_panel_should_auto_open(has_active_filter, &filter_draft()) && !filter_panel_open() {
+            filter_panel_open.set(true);
         }
     });
 
@@ -164,12 +171,21 @@ pub fn ResultTable(
                                                 } else if has_pending_changes {
                                                     "{pending_changes_summary(&pending_changes)}"
                                                 } else {
-                                                    "Select a row to inspect full values and JSON."
+                                                    "Select a row for details."
                                                 }
                                             }
                                         }
                                         div {
                                         class: "results__toolbar-actions",
+                                        if filter_enabled {
+                                            IconButton {
+                                                icon: ActionIcon::Filter,
+                                                label: "Filters".to_string(),
+                                                active: filter_panel_open(),
+                                                small: true,
+                                                onclick: move |_| filter_panel_open.toggle(),
+                                            }
+                                        }
                                         IconButton {
                                             icon: ActionIcon::Previous,
                                             label: "Previous page".to_string(),
@@ -255,7 +271,7 @@ pub fn ResultTable(
                                     }
                                     }
 
-                                    if filter_enabled {
+                                    if filter_enabled && filter_panel_open() {
                                         div {
                                             class: "results__filters",
                                             div {
@@ -294,9 +310,10 @@ pub fn ResultTable(
                                                         move |_| {
                                                             filter_draft.set(blank_filter(&columns));
                                                             clear_active_tab_filter(tabs, active_tab_id());
+                                                            filter_panel_open.set(false);
                                                         }
                                                     },
-                                                    disabled: active_filter.is_none() && !has_meaningful_rules(&filter_draft()),
+                                                    disabled: !has_active_filter && !has_meaningful_rules(&filter_draft()),
                                                 }
                                             }
 
@@ -683,8 +700,12 @@ fn result_error_message(status: &str) -> Option<String> {
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use super::result_error_message;
+    use super::{
+        filter_panel_should_auto_open, filter_panel_should_collapse_after_clear,
+        result_error_message,
+    };
     use crate::screens::workspace::actions::rows_toolbar_summary;
+    use models::{QueryFilter, QueryFilterMode, QueryFilterOperator, QueryFilterRule};
 
     #[test]
     fn extracts_query_error_from_status() {
@@ -702,6 +723,64 @@ mod tests {
     #[test]
     fn summarizes_empty_page_without_invalid_range() {
         assert_eq!(rows_toolbar_summary(0, 0, 100), "0 rows · page size 100");
+    }
+
+    #[test]
+    fn keeps_filters_collapsed_without_active_filter_or_meaningful_draft() {
+        let filter = QueryFilter {
+            mode: QueryFilterMode::And,
+            rules: vec![QueryFilterRule {
+                column_name: "name".to_string(),
+                operator: QueryFilterOperator::Contains,
+                value: String::new(),
+            }],
+        };
+
+        assert!(!filter_panel_should_auto_open(false, &filter));
+        assert!(filter_panel_should_collapse_after_clear(false, &filter));
+    }
+
+    #[test]
+    fn opens_filters_for_active_filter_or_meaningful_draft() {
+        let meaningful_filter = QueryFilter {
+            mode: QueryFilterMode::And,
+            rules: vec![QueryFilterRule {
+                column_name: "name".to_string(),
+                operator: QueryFilterOperator::Contains,
+                value: "Ada".to_string(),
+            }],
+        };
+
+        assert!(filter_panel_should_auto_open(true, &meaningful_filter));
+        assert!(filter_panel_should_auto_open(false, &meaningful_filter));
+    }
+
+    #[test]
+    fn compact_layout_supports_25_rows_at_default_window() {
+        // Budget calculation for default 920px window height
+        const WINDOW_HEIGHT: i32 = 920;
+        const APP_TOOLBAR: i32 = 44;
+        const STATUSBAR: i32 = 26;
+        const WORKSPACE_PADDING: i32 = 12;
+        const WORKSPACE_HEADER: i32 = 32;
+        const TABBAR: i32 = 34;
+        const RESULTS_TOOLBAR: i32 = 30;
+        const ROW_HEIGHT_PX: i32 = 22;
+
+        let chrome_height = APP_TOOLBAR
+            + STATUSBAR
+            + WORKSPACE_PADDING
+            + WORKSPACE_HEADER
+            + TABBAR
+            + RESULTS_TOOLBAR;
+        let available_height = WINDOW_HEIGHT - chrome_height;
+        let visible_rows = available_height / ROW_HEIGHT_PX;
+
+        // At compact layout, we should see at least 25 rows
+        assert!(
+            visible_rows >= 25,
+            "Expected >= 25 visible rows (got {visible_rows}) with {available_height}px available"
+        );
     }
 }
 
@@ -988,6 +1067,18 @@ fn has_meaningful_rules(filter: &QueryFilter) -> bool {
         !rule.column_name.trim().is_empty()
             && (!rule.value.trim().is_empty() || rule.operator.is_nullary())
     })
+}
+
+fn filter_panel_should_auto_open(active_filter_present: bool, filter_draft: &QueryFilter) -> bool {
+    active_filter_present || has_meaningful_rules(filter_draft)
+}
+
+#[cfg(test)]
+fn filter_panel_should_collapse_after_clear(
+    active_filter_present: bool,
+    filter_draft: &QueryFilter,
+) -> bool {
+    !active_filter_present && !has_meaningful_rules(filter_draft)
 }
 
 fn update_filter_mode(mut filter_draft: Signal<QueryFilter>, value: String) {

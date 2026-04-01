@@ -138,10 +138,45 @@ impl Default for AppUiSettings {
             show_connections: false,
             show_explorer: true,
             show_history: false,
-            show_sql_editor: true,
+            show_sql_editor: false,
             show_agent_panel: false,
             default_page_size: 100,
             tool_panel_layout: WorkspaceToolLayout::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppUiSettings;
+
+    #[test]
+    fn fresh_default_keeps_sql_editor_collapsed() {
+        let defaults = AppUiSettings::default();
+        assert!(!defaults.show_sql_editor);
+    }
+
+    #[test]
+    fn persisted_show_sql_editor_true_is_preserved() {
+        let settings: AppUiSettings = serde_json::from_str(
+            r#"{
+                "theme":"Dark",
+                "ai_features_enabled":true,
+                "restore_session_on_launch":true,
+                "show_connections":false,
+                "show_explorer":true,
+                "show_history":false,
+                "show_sql_editor":true,
+                "show_agent_panel":false,
+                "default_page_size":100,
+                "tool_panel_layout":{
+                    "sidebar":["Connections","Explorer","SavedQueries","History"],
+                    "inspector":["Agent"]
+                }
+            }"#,
+        )
+        .expect("settings fixture should deserialize");
+
+        assert!(settings.show_sql_editor);
     }
 }

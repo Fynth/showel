@@ -121,7 +121,98 @@ fn split_host_and_port(value: &str) -> (String, Option<u16>) {
 
 #[cfg(test)]
 mod tests {
-    use super::split_host_and_port;
+    use super::*;
+
+    // ── looks_like_dsn ───────────────────────────────────────────────
+
+    #[test]
+    fn dsn_detects_mysql_scheme() {
+        assert!(looks_like_dsn("mysql://user@host/db"));
+        assert!(looks_like_dsn("MYSQL://user@host/db"));
+    }
+
+    #[test]
+    fn dsn_detects_mariadb_scheme() {
+        assert!(looks_like_dsn("mariadb://user@host/db"));
+        assert!(looks_like_dsn("MariaDB://user@host/db"));
+    }
+
+    #[test]
+    fn dsn_rejects_non_dsn() {
+        assert!(!looks_like_dsn("localhost"));
+        assert!(!looks_like_dsn("http://example.com"));
+        assert!(!looks_like_dsn(""));
+        assert!(!looks_like_dsn("postgres://host/db"));
+    }
+
+    #[test]
+    fn dsn_ignores_leading_whitespace() {
+        assert!(looks_like_dsn("  mysql://host/db"));
+    }
+
+    #[test]
+    fn dsn_is_case_insensitive() {
+        assert!(looks_like_dsn("MySQL://host/db"));
+        assert!(looks_like_dsn("MARIADB://host/db"));
+    }
+
+    // ── normalized_host ──────────────────────────────────────────────
+
+    #[test]
+    fn normalized_host_defaults_to_localhost() {
+        assert_eq!(normalized_host(""), "localhost");
+        assert_eq!(normalized_host("   "), "localhost");
+    }
+
+    #[test]
+    fn normalized_host_trims_input() {
+        assert_eq!(normalized_host("  db.example.com  "), "db.example.com");
+    }
+
+    #[test]
+    fn normalized_host_preserves_non_empty_value() {
+        assert_eq!(normalized_host("192.168.1.1"), "192.168.1.1");
+        assert_eq!(normalized_host("db.example.com"), "db.example.com");
+    }
+
+    // ── normalized_username ──────────────────────────────────────────
+
+    #[test]
+    fn normalized_username_defaults_to_root() {
+        assert_eq!(normalized_username(""), "root");
+        assert_eq!(normalized_username("   "), "root");
+    }
+
+    #[test]
+    fn normalized_username_trims_input() {
+        assert_eq!(normalized_username("  admin  "), "admin");
+    }
+
+    #[test]
+    fn normalized_username_preserves_non_empty_value() {
+        assert_eq!(normalized_username("myuser"), "myuser");
+    }
+
+    // ── normalized_database ──────────────────────────────────────────
+
+    #[test]
+    fn normalized_database_trims_input() {
+        assert_eq!(normalized_database("  mydb  "), "mydb");
+    }
+
+    #[test]
+    fn normalized_database_preserves_empty_as_empty() {
+        // Unlike Postgres, MySQL normalized_database returns "" for empty input
+        assert_eq!(normalized_database(""), "");
+        assert_eq!(normalized_database("   "), "");
+    }
+
+    #[test]
+    fn normalized_database_preserves_value() {
+        assert_eq!(normalized_database("production"), "production");
+    }
+
+    // ── split_host_and_port ──────────────────────────────────────────
 
     #[test]
     fn splits_mysql_host_with_embedded_port() {
@@ -136,6 +227,33 @@ mod tests {
         assert_eq!(
             split_host_and_port("db.example.com"),
             ("db.example.com".to_string(), None)
+        );
+    }
+
+    #[test]
+    fn splits_mysql_host_ipv6_without_port() {
+        assert_eq!(split_host_and_port("[::1]"), ("::1".to_string(), None));
+    }
+
+    #[test]
+    fn splits_mysql_host_empty_input() {
+        assert_eq!(split_host_and_port(""), (String::new(), None));
+        assert_eq!(split_host_and_port("  "), (String::new(), None));
+    }
+
+    #[test]
+    fn splits_mysql_host_multiple_colons_no_brackets() {
+        // IPv6 literal without brackets has multiple colons, treated as opaque
+        let (host, port) = split_host_and_port("::1");
+        assert_eq!(host, "::1");
+        assert_eq!(port, None);
+    }
+
+    #[test]
+    fn splits_mysql_host_invalid_port() {
+        assert_eq!(
+            split_host_and_port("host:notaport"),
+            ("host:notaport".to_string(), None)
         );
     }
 }

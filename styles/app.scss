@@ -5,7 +5,9 @@
 @use "themes/theme-dark";
 @use "themes/theme-light";
 @use "layout/app-layout";
-@use "layout/workspace";
+@use "layout/workspace-grid";
+@use "layout/workspace-panels";
+@use "layout/workspace-resize";
 @use "components/toolbar";
 @use "components/statusbar";
 @use "components/buttons";
@@ -14,7 +16,10 @@
 @use "components/table-modal";
 @use "components/connect-screen";
 @use "components/tabbar";
-@use "components/tree";
+@use "components/tree-nav";
+@use "components/session-list";
+@use "components/history-list";
+@use "components/saved-queries";
 @use "components/editor";
 @use "components/agent-panel";
 @use "components/result-grid";

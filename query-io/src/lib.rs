@@ -489,3 +489,311 @@ fn ensure_parent_dir_sync(path: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use models::{QueryPage, TablePreviewSource};
+
+    // ── query_page_to_json ────────────────────────────────────────────
+
+    fn sample_page(columns: Vec<&str>, rows: Vec<Vec<&str>>) -> QueryPage {
+        QueryPage {
+            columns: columns.into_iter().map(String::from).collect(),
+            rows: rows
+                .into_iter()
+                .map(|r| r.into_iter().map(String::from).collect())
+                .collect(),
+            editable: None,
+            offset: 0,
+            page_size: 100,
+            has_previous: false,
+            has_next: false,
+        }
+    }
+
+    #[test]
+    fn query_page_to_json_empty_rows() {
+        let page = sample_page(vec!["id", "name"], vec![]);
+        let json = query_page_to_json(page);
+        assert_eq!(json, serde_json::Value::Array(vec![]));
+    }
+
+    #[test]
+    fn query_page_to_json_single_row() {
+        let page = sample_page(vec!["id", "name"], vec![vec!["1", "Alice"]]);
+        let json = query_page_to_json(page);
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["id"], "1");
+        assert_eq!(arr[0]["name"], "Alice");
+    }
+
+    #[test]
+    fn query_page_to_json_multiple_rows() {
+        let page = sample_page(
+            vec!["id", "name"],
+            vec![vec!["1", "Alice"], vec!["2", "Bob"]],
+        );
+        let json = query_page_to_json(page);
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["name"], "Alice");
+        assert_eq!(arr[1]["name"], "Bob");
+    }
+
+    #[test]
+    fn query_page_to_json_missing_column_gets_default() {
+        let page = QueryPage {
+            columns: vec!["id".to_string(), "name".to_string()],
+            rows: vec![vec!["1".to_string()]], // only one cell, missing "name"
+            editable: None,
+            offset: 0,
+            page_size: 100,
+            has_previous: false,
+            has_next: false,
+        };
+        let json = query_page_to_json(page);
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr[0]["id"], "1");
+        assert_eq!(arr[0]["name"], ""); // default for missing
+    }
+
+    // ── escape_xml ────────────────────────────────────────────────────
+
+    #[test]
+    fn escape_xml_replaces_all_special_chars() {
+        assert_eq!(
+            escape_xml("&<>\"'"),
+            "&amp;&lt;&gt;&quot;&apos;"
+        );
+    }
+
+    #[test]
+    fn escape_xml_no_special_chars() {
+        assert_eq!(escape_xml("hello world"), "hello world");
+    }
+
+    #[test]
+    fn escape_xml_empty_string() {
+        assert_eq!(escape_xml(""), "");
+    }
+
+    #[test]
+    fn escape_xml_ampersand_first() {
+        // & must be replaced first to avoid double-escaping
+        assert_eq!(escape_xml("a&b<c"), "a&amp;b&lt;c");
+    }
+
+    // ── escape_html ───────────────────────────────────────────────────
+
+    #[test]
+    fn escape_html_replaces_amp_lt_gt_quote() {
+        assert_eq!(
+            escape_html("&<>\""),
+            "&amp;&lt;&gt;&quot;"
+        );
+    }
+
+    #[test]
+    fn escape_html_no_special_chars() {
+        assert_eq!(escape_html("hello world"), "hello world");
+    }
+
+    #[test]
+    fn escape_html_empty_string() {
+        assert_eq!(escape_html(""), "");
+    }
+
+    // ── validate_headers ──────────────────────────────────────────────
+
+    #[test]
+    fn validate_headers_ok() {
+        let headers = vec!["id".to_string(), "name".to_string()];
+        assert!(validate_headers(&headers).is_ok());
+    }
+
+    #[test]
+    fn validate_headers_empty_list_is_error() {
+        let result = validate_headers(&[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("header row"));
+    }
+
+    #[test]
+    fn validate_headers_empty_column_name_is_error() {
+        let result = validate_headers(&["id".to_string(), "".to_string()]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty column name"));
+    }
+
+    #[test]
+    fn validate_headers_duplicate_is_error() {
+        let result = validate_headers(&["id".to_string(), "id".to_string()]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("duplicate"));
+    }
+
+    #[test]
+    fn validate_headers_duplicate_case_insensitive() {
+        let result = validate_headers(&["Name".to_string(), "name".to_string()]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("duplicate"));
+    }
+
+    // ── normalize_header ──────────────────────────────────────────────
+
+    #[test]
+    fn normalize_header_trims_whitespace() {
+        assert_eq!(normalize_header(0, "  id  ").unwrap(), "id");
+    }
+
+    #[test]
+    fn normalize_header_strips_bom_on_first_column() {
+        // BOM is U+FEFF
+        let header = "\u{feff}id";
+        assert_eq!(normalize_header(0, header).unwrap(), "id");
+    }
+
+    #[test]
+    fn normalize_header_does_not_strip_bom_on_non_first() {
+        let header = "\u{feff}id";
+        assert_eq!(normalize_header(1, header).unwrap(), "\u{feff}id");
+    }
+
+    #[test]
+    fn normalize_header_empty_is_error() {
+        assert!(normalize_header(0, "").is_err());
+        assert!(normalize_header(0, "   ").is_err());
+    }
+
+    // ── quote_sql_identifier ──────────────────────────────────────────
+
+    #[test]
+    fn quote_sql_identifier_simple() {
+        assert_eq!(quote_sql_identifier("users"), "\"users\"");
+    }
+
+    #[test]
+    fn quote_sql_identifier_escapes_internal_quotes() {
+        assert_eq!(quote_sql_identifier("my\"table"), "\"my\"\"table\"");
+    }
+
+    // ── quote_clickhouse_identifier ───────────────────────────────────
+
+    #[test]
+    fn quote_clickhouse_identifier_simple() {
+        assert_eq!(quote_clickhouse_identifier("users"), "`users`");
+    }
+
+    #[test]
+    fn quote_clickhouse_identifier_escapes_backticks() {
+        assert_eq!(quote_clickhouse_identifier("my`table"), "`my``table`");
+    }
+
+    // ── sql_literal ───────────────────────────────────────────────────
+
+    #[test]
+    fn sql_literal_string_value() {
+        assert_eq!(sql_literal("hello"), "'hello'");
+    }
+
+    #[test]
+    fn sql_literal_escapes_single_quotes() {
+        assert_eq!(sql_literal("it's"), "'it''s'");
+    }
+
+    #[test]
+    fn sql_literal_null_keyword() {
+        assert_eq!(sql_literal("null"), "NULL");
+        assert_eq!(sql_literal("NULL"), "NULL");
+        assert_eq!(sql_literal("Null"), "NULL");
+    }
+
+    #[test]
+    fn sql_literal_backslash_n_null() {
+        assert_eq!(sql_literal("\\N"), "NULL");
+    }
+
+    #[test]
+    fn sql_literal_trims_before_null_check() {
+        assert_eq!(sql_literal("  null  "), "NULL");
+    }
+
+    #[test]
+    fn sql_literal_non_null_with_whitespace() {
+        // "  hello  " is trimmed for null check but value is NOT trimmed for output
+        assert_eq!(sql_literal("  hello  "), "'  hello  '");
+    }
+
+    // ── build_insert_sql ──────────────────────────────────────────────
+
+    #[test]
+    fn build_insert_sql_single_row() {
+        let source = TablePreviewSource {
+            schema: None,
+            table_name: "users".to_string(),
+            qualified_name: "public.users".to_string(),
+        };
+        let headers = vec!["id".to_string(), "name".to_string()];
+        let rows = vec![vec!["1".to_string(), "Alice".to_string()]];
+
+        let sql = build_insert_sql(
+            &source,
+            &headers,
+            &rows,
+            quote_sql_identifier,
+            sql_literal,
+        );
+
+        assert!(sql.starts_with("insert into public.users"));
+        assert!(sql.contains("\"id\", \"name\""));
+        assert!(sql.contains("('1', 'Alice')"));
+    }
+
+    #[test]
+    fn build_insert_sql_multiple_rows() {
+        let source = TablePreviewSource {
+            schema: None,
+            table_name: "users".to_string(),
+            qualified_name: "users".to_string(),
+        };
+        let headers = vec!["id".to_string()];
+        let rows = vec![
+            vec!["1".to_string()],
+            vec!["2".to_string()],
+        ];
+
+        let sql = build_insert_sql(
+            &source,
+            &headers,
+            &rows,
+            quote_sql_identifier,
+            sql_literal,
+        );
+
+        assert!(sql.contains("('1')"));
+        assert!(sql.contains("('2')"));
+    }
+
+    #[test]
+    fn build_insert_sql_with_clickhouse_quoting() {
+        let source = TablePreviewSource {
+            schema: None,
+            table_name: "events".to_string(),
+            qualified_name: "events".to_string(),
+        };
+        let headers = vec!["id".to_string()];
+        let rows = vec![vec!["42".to_string()]];
+
+        let sql = build_insert_sql(
+            &source,
+            &headers,
+            &rows,
+            quote_clickhouse_identifier,
+            sql_literal,
+        );
+
+        assert!(sql.contains("`id`"));
+    }
+}

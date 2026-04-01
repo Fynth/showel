@@ -31,6 +31,7 @@ pub enum ActionIcon {
     Duplicate,
     Details,
     AddRule,
+    Filter,
     FilterApply,
     FilterClear,
     Previous,
@@ -276,6 +277,11 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "M10 18h4" }
                     path { d: "M18 15v6" }
                     path { d: "M15 18h6" }
+                },
+                ActionIcon::Filter => rsx! {
+                    path { d: "M4 6h16" }
+                    path { d: "M7 6l5 6v5l-2 1v-6z" }
+                    path { d: "M12 12l5-6" }
                 },
                 ActionIcon::FilterApply => rsx! {
                     path { d: "M4 6h16" }

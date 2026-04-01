@@ -85,3 +85,102 @@ fn normalized_database(database: &str, username: &str) -> String {
         database.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── looks_like_dsn ───────────────────────────────────────────────
+
+    #[test]
+    fn dsn_detects_postgres_scheme() {
+        assert!(looks_like_dsn("postgres://user@host/db"));
+        assert!(looks_like_dsn("POSTGRES://user@host/db"));
+    }
+
+    #[test]
+    fn dsn_detects_postgresql_scheme() {
+        assert!(looks_like_dsn("postgresql://user@host/db"));
+        assert!(looks_like_dsn("PostgreSQL://user@host/db"));
+    }
+
+    #[test]
+    fn dsn_rejects_non_dsn() {
+        assert!(!looks_like_dsn("localhost"));
+        assert!(!looks_like_dsn("http://example.com"));
+        assert!(!looks_like_dsn(""));
+        assert!(!looks_like_dsn("mysql://host/db"));
+    }
+
+    #[test]
+    fn dsn_ignores_leading_whitespace() {
+        assert!(looks_like_dsn("  postgres://host/db"));
+    }
+
+    #[test]
+    fn dsn_is_case_insensitive() {
+        assert!(looks_like_dsn("Postgres://host/db"));
+        assert!(looks_like_dsn("POSTGRESQL://host/db"));
+    }
+
+    // ── normalized_host ──────────────────────────────────────────────
+
+    #[test]
+    fn normalized_host_defaults_to_localhost() {
+        assert_eq!(normalized_host(""), "localhost");
+        assert_eq!(normalized_host("   "), "localhost");
+    }
+
+    #[test]
+    fn normalized_host_trims_input() {
+        assert_eq!(normalized_host("  db.example.com  "), "db.example.com");
+    }
+
+    #[test]
+    fn normalized_host_preserves_non_empty_value() {
+        assert_eq!(normalized_host("192.168.1.1"), "192.168.1.1");
+        assert_eq!(normalized_host("db.example.com"), "db.example.com");
+    }
+
+    // ── normalized_username ──────────────────────────────────────────
+
+    #[test]
+    fn normalized_username_defaults_to_postgres() {
+        assert_eq!(normalized_username(""), "postgres");
+        assert_eq!(normalized_username("   "), "postgres");
+    }
+
+    #[test]
+    fn normalized_username_trims_input() {
+        assert_eq!(normalized_username("  admin  "), "admin");
+    }
+
+    #[test]
+    fn normalized_username_preserves_non_empty_value() {
+        assert_eq!(normalized_username("myuser"), "myuser");
+    }
+
+    // ── normalized_database ──────────────────────────────────────────
+
+    #[test]
+    fn normalized_database_falls_back_to_username() {
+        assert_eq!(normalized_database("", "admin"), "admin");
+        assert_eq!(normalized_database("   ", "admin"), "admin");
+    }
+
+    #[test]
+    fn normalized_database_uses_database_when_provided() {
+        assert_eq!(normalized_database("mydb", "admin"), "mydb");
+    }
+
+    #[test]
+    fn normalized_database_trims_input() {
+        assert_eq!(normalized_database("  mydb  ", "admin"), "mydb");
+    }
+
+    #[test]
+    fn normalized_database_prefers_database_over_username() {
+        // When database is non-empty after trimming, it should be used
+        assert_eq!(normalized_database("production", "admin"), "production");
+    }
+}

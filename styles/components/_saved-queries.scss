@@ -1,0 +1,114 @@
+@use "../base/tokens" as *;
+
+.saved-queries {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.saved-queries__header {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.saved-queries__body {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
+}
+
+.saved-queries__form {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.saved-queries__folder-count,
+.saved-queries__kind {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-panel-2);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.saved-queries__form .input {
+  min-height: 36px;
+}
+
+.saved-queries__form-actions,
+.saved-queries__body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.saved-queries__item {
+  padding: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.saved-queries__item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-xs;
+}
+
+.saved-queries__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.saved-queries__connection {
+  color: var(--color-text-muted);
+  font-size: $font-size-xs;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-queries__sql {
+  margin: 0;
+  padding: $spacing-xs;
+  border-radius: $radius-sm;
+  background: var(--editor-bg);
+  overflow: hidden;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 72px;
+  font-size: $font-size-xs;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.saved-queries__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}

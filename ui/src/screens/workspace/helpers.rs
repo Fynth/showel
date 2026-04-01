@@ -1,0 +1,459 @@
+use dioxus::prelude::*;
+use models::{
+    AcpPanelState, AcpUiMessage, ChatThreadSummary, WorkspaceToolDock, WorkspaceToolLayout,
+    WorkspaceToolPanel,
+};
+use std::path::Path;
+
+use super::components::{ExplorerConnectionSection, replace_messages};
+use crate::app_state::APP_UI_SETTINGS;
+
+pub const SIDEBAR_MIN_WIDTH: f64 = 240.0;
+pub const SIDEBAR_MAX_WIDTH: f64 = 560.0;
+pub const INSPECTOR_MIN_WIDTH: f64 = 260.0;
+pub const INSPECTOR_MAX_WIDTH: f64 = 640.0;
+pub const WORKSPACE_ROOT_ID: &str = "workspace-root";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct DockDropTarget {
+    pub dock: WorkspaceToolDock,
+    pub index: usize,
+}
+
+pub fn workspace_resize_script(
+    width_var: &str,
+    start_x: f64,
+    start_width: f64,
+    min_width: f64,
+    max_width: f64,
+    invert_delta: bool,
+) -> String {
+    let delta_factor = if invert_delta { -1.0 } else { 1.0 };
+    format!(
+        r#"
+        (() => {{
+            const workspace = document.getElementById({WORKSPACE_ROOT_ID:?});
+            if (!workspace) {{
+                return {start_width};
+            }}
+
+            const startX = {start_x};
+            const startWidth = {start_width};
+            const minWidth = {min_width};
+            const maxWidth = {max_width};
+            const deltaFactor = {delta_factor};
+            let finished = false;
+            let lastWidth = startWidth;
+
+            const clampWidth = (clientX) => {{
+                const delta = (clientX - startX) * deltaFactor;
+                return Math.min(maxWidth, Math.max(minWidth, startWidth + delta));
+            }};
+
+            return new Promise((resolve) => {{
+                const finish = (clientX) => {{
+                    if (finished) {{
+                        return;
+                    }}
+                    finished = true;
+                    const width = clientX == null ? lastWidth : clampWidth(clientX);
+                    workspace.style.setProperty({width_var:?}, `${{Math.round(width)}}px`);
+                    workspace.classList.remove("workspace--resizing");
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                    window.removeEventListener("blur", onBlur);
+                    resolve(width);
+                }};
+
+                const onMove = (event) => {{
+                    const width = clampWidth(event.clientX);
+                    lastWidth = width;
+                    workspace.style.setProperty({width_var:?}, `${{Math.round(width)}}px`);
+                }};
+
+                const onUp = (event) => finish(event.clientX);
+                const onBlur = () => finish(startX);
+
+                workspace.classList.add("workspace--resizing");
+                window.addEventListener("mousemove", onMove, {{ passive: true }});
+                window.addEventListener("mouseup", onUp);
+                window.addEventListener("blur", onBlur);
+                onMove({{ clientX: startX }});
+            }});
+        }})()
+        "#
+    )
+}
+
+pub async fn load_explorer_section(
+    session: models::ConnectionSession,
+    active_session_id: Option<u64>,
+) -> ExplorerConnectionSection {
+    let kind_label = match session.kind {
+        models::DatabaseKind::Sqlite => "SQLite".to_string(),
+        models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+        models::DatabaseKind::MySql => "MySQL".to_string(),
+        models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
+    };
+
+    match explorer::load_connection_tree(session.connection.clone()).await {
+        Ok(nodes) => ExplorerConnectionSection {
+            session_id: session.id,
+            name: connection_target_label(&session.request),
+            kind_label,
+            status: "Ready".to_string(),
+            is_active: Some(session.id) == active_session_id,
+            nodes,
+        },
+        Err(err) => ExplorerConnectionSection {
+            session_id: session.id,
+            name: connection_target_label(&session.request),
+            kind_label,
+            status: format!("Error: {err:?}"),
+            is_active: Some(session.id) == active_session_id,
+            nodes: Vec::new(),
+        },
+    }
+}
+
+fn connection_target_label(request: &models::ConnectionRequest) -> String {
+    request.short_name()
+}
+
+pub fn unloaded_explorer_section(
+    session: &models::ConnectionSession,
+    active_session_id: Option<u64>,
+    status: &str,
+) -> ExplorerConnectionSection {
+    let kind_label = match session.kind {
+        models::DatabaseKind::Sqlite => "SQLite".to_string(),
+        models::DatabaseKind::Postgres => "PostgreSQL".to_string(),
+        models::DatabaseKind::MySql => "MySQL".to_string(),
+        models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
+    };
+
+    ExplorerConnectionSection {
+        session_id: session.id,
+        name: connection_target_label(&session.request),
+        kind_label,
+        status: status.to_string(),
+        is_active: Some(session.id) == active_session_id,
+        nodes: Vec::new(),
+    }
+}
+
+fn is_tool_panel_visible(
+    panel: WorkspaceToolPanel,
+    show_connections: bool,
+    show_explorer: bool,
+    show_history: bool,
+    show_agent_panel: bool,
+    ai_features_enabled: bool,
+) -> bool {
+    match panel {
+        WorkspaceToolPanel::Connections => show_connections,
+        WorkspaceToolPanel::Explorer => show_explorer,
+        WorkspaceToolPanel::SavedQueries => true,
+        WorkspaceToolPanel::History => show_history,
+        WorkspaceToolPanel::Agent => ai_features_enabled && show_agent_panel,
+    }
+}
+
+pub fn visible_tool_panels(
+    panels: &[WorkspaceToolPanel],
+    show_connections: bool,
+    show_explorer: bool,
+    show_history: bool,
+    show_agent_panel: bool,
+    ai_features_enabled: bool,
+) -> Vec<WorkspaceToolPanel> {
+    panels
+        .iter()
+        .copied()
+        .filter(|panel| {
+            is_tool_panel_visible(
+                *panel,
+                show_connections,
+                show_explorer,
+                show_history,
+                show_agent_panel,
+                ai_features_enabled,
+            )
+        })
+        .collect()
+}
+
+fn visible_insert_index(
+    panels: &[WorkspaceToolPanel],
+    target_visible_index: usize,
+    show_connections: bool,
+    show_explorer: bool,
+    show_history: bool,
+    show_agent_panel: bool,
+    ai_features_enabled: bool,
+) -> usize {
+    if !panels.iter().any(|panel| {
+        is_tool_panel_visible(
+            *panel,
+            show_connections,
+            show_explorer,
+            show_history,
+            show_agent_panel,
+            ai_features_enabled,
+        )
+    }) {
+        return 0;
+    }
+
+    let mut visible_index = 0;
+    for (index, panel) in panels.iter().enumerate() {
+        if !is_tool_panel_visible(
+            *panel,
+            show_connections,
+            show_explorer,
+            show_history,
+            show_agent_panel,
+            ai_features_enabled,
+        ) {
+            continue;
+        }
+
+        if visible_index == target_visible_index {
+            return index;
+        }
+
+        visible_index += 1;
+    }
+
+    panels.len()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn move_tool_panel_layout(
+    layout: &mut WorkspaceToolLayout,
+    panel: WorkspaceToolPanel,
+    target: DockDropTarget,
+    show_connections: bool,
+    show_explorer: bool,
+    show_history: bool,
+    show_agent_panel: bool,
+    ai_features_enabled: bool,
+) {
+    let mut normalized = layout.normalized();
+    normalized.sidebar.retain(|existing| *existing != panel);
+    normalized.inspector.retain(|existing| *existing != panel);
+
+    let target_panels = match target.dock {
+        WorkspaceToolDock::Sidebar => &mut normalized.sidebar,
+        WorkspaceToolDock::Inspector => &mut normalized.inspector,
+    };
+    let insert_at = visible_insert_index(
+        target_panels,
+        target.index,
+        show_connections,
+        show_explorer,
+        show_history,
+        show_agent_panel,
+        ai_features_enabled,
+    )
+    .min(target_panels.len());
+    target_panels.insert(insert_at, panel);
+
+    *layout = normalized;
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn apply_tool_panel_drop(
+    mut dragging_panel: Signal<Option<WorkspaceToolPanel>>,
+    mut drop_target: Signal<Option<DockDropTarget>>,
+    target: DockDropTarget,
+    show_connections: bool,
+    show_explorer: bool,
+    show_history: bool,
+    show_agent_panel: bool,
+    ai_features_enabled: bool,
+) {
+    if let Some(panel) = dragging_panel() {
+        APP_UI_SETTINGS.with_mut(|settings| {
+            move_tool_panel_layout(
+                &mut settings.tool_panel_layout,
+                panel,
+                target,
+                show_connections,
+                show_explorer,
+                show_history,
+                show_agent_panel,
+                ai_features_enabled,
+            );
+        });
+    }
+
+    dragging_panel.set(None);
+    drop_target.set(None);
+}
+
+fn compact_chat_title(text: &str, max_chars: usize) -> String {
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.is_empty() {
+        return "New chat".to_string();
+    }
+
+    let count = compact.chars().count();
+    if count <= max_chars {
+        compact
+    } else {
+        format!("{}...", compact.chars().take(max_chars).collect::<String>())
+    }
+}
+
+pub fn launch_uses_opencode(state: &AcpPanelState) -> bool {
+    let command = state.launch.command.trim();
+    if command.is_empty() {
+        return true;
+    }
+
+    Path::new(command)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| {
+            value.eq_ignore_ascii_case("opencode") || value.eq_ignore_ascii_case("opencode.exe")
+        })
+        .unwrap_or(false)
+}
+
+pub fn derive_chat_thread_title(
+    current_title: Option<&str>,
+    messages: &[AcpUiMessage],
+    connection_label: &str,
+) -> String {
+    let _ = connection_label;
+    if let Some(current_title) = current_title
+        .map(str::trim)
+        .filter(|title| !title.is_empty() && *title != "New chat")
+    {
+        return current_title.to_string();
+    }
+
+    if let Some(first_user_message) = messages
+        .iter()
+        .find(|message| matches!(message.kind, models::AcpMessageKind::User))
+        .map(|message| {
+            message
+                .text
+                .strip_prefix("Generate SQL:")
+                .unwrap_or(&message.text)
+                .trim()
+        })
+        .filter(|text| !text.is_empty())
+    {
+        return compact_chat_title(first_user_message, 56);
+    }
+
+    "New chat".to_string()
+}
+
+pub fn upsert_chat_thread_summary(
+    threads: &mut Vec<ChatThreadSummary>,
+    summary: ChatThreadSummary,
+) {
+    if let Some(existing) = threads.iter_mut().find(|thread| thread.id == summary.id) {
+        *existing = summary;
+    } else {
+        threads.push(summary);
+    }
+
+    threads.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.id.cmp(&left.id))
+    });
+}
+
+pub fn reset_panel_for_thread(state: &mut AcpPanelState, title: &str, messages: Vec<AcpUiMessage>) {
+    let _ = title;
+    let launch = state.launch.clone();
+    let ollama = state.ollama.clone();
+    *state = AcpPanelState::new(launch, ollama);
+    replace_messages(state, messages);
+    state.status = "Connect an agent to continue.".to_string();
+}
+
+pub fn tool_panel_class(panel: WorkspaceToolPanel) -> &'static str {
+    match panel {
+        WorkspaceToolPanel::Connections => " workspace__tool-panel--connections",
+        WorkspaceToolPanel::Explorer => " workspace__tool-panel--explorer",
+        WorkspaceToolPanel::SavedQueries => " workspace__tool-panel--saved",
+        WorkspaceToolPanel::History => " workspace__tool-panel--history",
+        WorkspaceToolPanel::Agent => " workspace__tool-panel--agent",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{derive_chat_thread_title, launch_uses_opencode, reset_panel_for_thread};
+    use models::{AcpLaunchRequest, AcpOllamaConfig, AcpPanelState, AcpUiMessage};
+
+    #[test]
+    fn default_chat_title_stays_compact() {
+        assert_eq!(
+            derive_chat_thread_title(None, &[], "SQLite · /home/rasul/Documents/data.sqlite"),
+            "New chat"
+        );
+    }
+
+    #[test]
+    fn reset_panel_uses_compact_disconnected_status() {
+        let mut state = AcpPanelState::new(
+            AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+
+        reset_panel_for_thread(&mut state, "New chat · SQLite", Vec::<AcpUiMessage>::new());
+        assert_eq!(state.status, "Connect an agent to continue.");
+    }
+
+    #[test]
+    fn empty_launch_defaults_to_opencode_autostart() {
+        let state = AcpPanelState::new(
+            AcpLaunchRequest {
+                command: String::new(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+
+        assert!(launch_uses_opencode(&state));
+    }
+
+    #[test]
+    fn custom_launch_does_not_autostart_opencode() {
+        let state = AcpPanelState::new(
+            AcpLaunchRequest {
+                command: "/usr/bin/custom-acp".to_string(),
+                args: String::new(),
+                cwd: ".".to_string(),
+            },
+            AcpOllamaConfig {
+                base_url: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+            },
+        );
+
+        assert!(!launch_uses_opencode(&state));
+    }
+}

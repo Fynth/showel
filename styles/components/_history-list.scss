@@ -1,0 +1,133 @@
+@use "../base/tokens" as *;
+@use "../base/states" as *;
+
+.history {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  margin-top: 0;
+}
+
+.history__header {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.history__list {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
+}
+
+.history__item {
+  margin-bottom: $spacing-xs;
+  padding: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-md;
+  background: var(--color-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history__meta {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history__connection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.history__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-xs;
+}
+
+.history__title {
+  min-width: 0;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history__outcome {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel-2);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.history__outcome--success {
+  color: var(--color-success);
+}
+
+.history__outcome--error {
+  color: var(--color-danger);
+}
+
+.history__connection-kind {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-panel-2);
+  color: var(--color-primary);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.history__connection-target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.history__sql {
+  margin: 0;
+  padding: $spacing-xs;
+  border-radius: $radius-sm;
+  background: var(--editor-bg);
+  overflow: hidden;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 72px;
+  font-size: 10px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.history__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}

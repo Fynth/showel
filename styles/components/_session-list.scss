@@ -1,0 +1,134 @@
+@use "../base/tokens" as *;
+@use "../base/states" as *;
+
+.session-list {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.session-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.session-list__body {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
+}
+
+.session-list__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  min-width: 0;
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
+  border-radius: $radius-md;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-panel) 96%, white 1%),
+      color-mix(in srgb, var(--color-panel-2) 90%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    0 8px 16px rgba(8, 10, 14, 0.08);
+}
+
+.session-list__item--active {
+  border-color: var(--color-primary);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 12%, transparent),
+    0 10px 18px rgba(8, 10, 14, 0.1);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-primary) 7%, var(--color-panel-2)),
+      color-mix(in srgb, var(--color-primary) 3%, var(--color-panel))
+    );
+}
+
+.session-list__main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: 4px 2px;
+  border-radius: $radius-sm;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  @include interactive;
+}
+
+.session-list__kind {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.session-list__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: $font-size-sm;
+  font-weight: 700;
+}
+
+.session-list__context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+}
+
+.session-list__context-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: $spacing-sm;
+  z-index: 41;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-panel) 94%, black 6%);
+  box-shadow: $shadow-md;
+}
+
+.session-list__context-action {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  @include interactive;
+}
+
+.session-list__context-action:hover {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}

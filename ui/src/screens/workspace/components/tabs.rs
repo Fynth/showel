@@ -19,6 +19,7 @@ use super::{
 
 const EDITOR_MIN_HEIGHT: f64 = 160.0;
 const EDITOR_MAX_HEIGHT: f64 = 720.0;
+const EDITOR_DEFAULT_HEIGHT: f64 = 180.0;
 
 #[derive(Clone, Copy, PartialEq)]
 struct EditorResizeState {
@@ -74,7 +75,7 @@ pub fn TabsManager(
     allow_agent_db_read: Signal<bool>,
     ai_features_enabled: Signal<bool>,
 ) -> Element {
-    let mut editor_height = use_signal(|| 260.0);
+    let mut editor_height = use_signal(|| EDITOR_DEFAULT_HEIGHT);
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
     let mut show_generate_sql_window = use_signal(|| false);
     let mut generate_sql_prompt = use_signal(String::new);

@@ -5,11 +5,11 @@
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  min-height: 40px;
+  min-height: 34px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px 0;
+  gap: 4px;
+  padding: 4px 8px 0;
   margin-bottom: -1px;
   background:
     linear-gradient(
@@ -23,8 +23,8 @@
 
 .tabbar__tab,
 .tabbar__add {
-  height: 32px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;

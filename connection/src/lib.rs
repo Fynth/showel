@@ -234,6 +234,7 @@ fn split_mysql_host_and_port(value: &str) -> (String, Option<u16>) {
     (value.to_string(), None)
 }
 
+#[derive(Debug)]
 struct ClickHouseTarget {
     remote_host: String,
     remote_port: u16,
@@ -284,4 +285,253 @@ fn parse_clickhouse_target(data: &ClickHouseFormData) -> Result<ClickHouseTarget
         remote_port: if data.port == 0 { 8123 } else { data.port },
         scheme: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── looks_like_postgres_dsn ──────────────────────────────────────
+
+    #[test]
+    fn postgres_dsn_detects_postgres_scheme() {
+        assert!(looks_like_postgres_dsn("postgres://user@host/db"));
+        assert!(looks_like_postgres_dsn("POSTGRES://user@host/db"));
+    }
+
+    #[test]
+    fn postgres_dsn_detects_postgresql_scheme() {
+        assert!(looks_like_postgres_dsn("postgresql://user@host/db"));
+        assert!(looks_like_postgres_dsn("PostgreSQL://user@host/db"));
+    }
+
+    #[test]
+    fn postgres_dsn_rejects_non_dsn() {
+        assert!(!looks_like_postgres_dsn("localhost"));
+        assert!(!looks_like_postgres_dsn("http://example.com"));
+        assert!(!looks_like_postgres_dsn(""));
+    }
+
+    #[test]
+    fn postgres_dsn_ignores_leading_whitespace() {
+        assert!(looks_like_postgres_dsn("  postgres://host/db"));
+    }
+
+    // ── normalize_postgres_host ──────────────────────────────────────
+
+    #[test]
+    fn normalize_postgres_host_defaults_to_localhost() {
+        assert_eq!(normalize_postgres_host(""), "localhost");
+        assert_eq!(normalize_postgres_host("   "), "localhost");
+    }
+
+    #[test]
+    fn normalize_postgres_host_trims_input() {
+        assert_eq!(
+            normalize_postgres_host("  db.example.com  "),
+            "db.example.com"
+        );
+    }
+
+    #[test]
+    fn normalize_postgres_host_preserves_value() {
+        assert_eq!(normalize_postgres_host("192.168.1.1"), "192.168.1.1");
+    }
+
+    // ── looks_like_mysql_dsn ─────────────────────────────────────────
+
+    #[test]
+    fn mysql_dsn_detects_mysql_scheme() {
+        assert!(looks_like_mysql_dsn("mysql://user@host/db"));
+        assert!(looks_like_mysql_dsn("MYSQL://user@host/db"));
+    }
+
+    #[test]
+    fn mysql_dsn_detects_mariadb_scheme() {
+        assert!(looks_like_mysql_dsn("mariadb://user@host/db"));
+        assert!(looks_like_mysql_dsn("MariaDB://user@host/db"));
+    }
+
+    #[test]
+    fn mysql_dsn_rejects_non_dsn() {
+        assert!(!looks_like_mysql_dsn("localhost"));
+        assert!(!looks_like_mysql_dsn("postgres://host"));
+        assert!(!looks_like_mysql_dsn(""));
+    }
+
+    // ── normalize_mysql_host ─────────────────────────────────────────
+
+    #[test]
+    fn normalize_mysql_host_defaults_to_localhost() {
+        assert_eq!(normalize_mysql_host(""), "localhost");
+        assert_eq!(normalize_mysql_host("   "), "localhost");
+    }
+
+    #[test]
+    fn normalize_mysql_host_trims_input() {
+        assert_eq!(normalize_mysql_host("  db.example.com  "), "db.example.com");
+    }
+
+    // ── split_mysql_host_and_port ────────────────────────────────────
+
+    #[test]
+    fn split_mysql_host_and_port_standard() {
+        assert_eq!(
+            split_mysql_host_and_port("db.example.com:3307"),
+            ("db.example.com".to_string(), Some(3307))
+        );
+    }
+
+    #[test]
+    fn split_mysql_host_and_port_no_port() {
+        assert_eq!(
+            split_mysql_host_and_port("db.example.com"),
+            ("db.example.com".to_string(), None)
+        );
+    }
+
+    #[test]
+    fn split_mysql_host_and_port_ipv6_with_port() {
+        assert_eq!(
+            split_mysql_host_and_port("[::1]:4406"),
+            ("::1".to_string(), Some(4406))
+        );
+    }
+
+    #[test]
+    fn split_mysql_host_and_port_ipv6_without_port() {
+        assert_eq!(
+            split_mysql_host_and_port("[::1]"),
+            ("::1".to_string(), None)
+        );
+    }
+
+    #[test]
+    fn split_mysql_host_and_port_empty() {
+        assert_eq!(split_mysql_host_and_port(""), (String::new(), None));
+        assert_eq!(split_mysql_host_and_port("  "), (String::new(), None));
+    }
+
+    #[test]
+    fn split_mysql_host_and_port_multiple_colons() {
+        // IPv6 without brackets – too many colons, treated as opaque
+        let (host, port) = split_mysql_host_and_port("::1");
+        assert_eq!(host, "::1");
+        assert_eq!(port, None);
+    }
+
+    #[test]
+    fn split_mysql_host_and_port_invalid_port() {
+        assert_eq!(
+            split_mysql_host_and_port("host:notaport"),
+            ("host:notaport".to_string(), None)
+        );
+    }
+
+    // ── ClickHouseTarget::connect_host ───────────────────────────────
+
+    #[test]
+    fn clickhouse_connect_host_with_scheme() {
+        let target = ClickHouseTarget {
+            remote_host: "ch.example.com".to_string(),
+            remote_port: 8123,
+            scheme: Some("http".to_string()),
+        };
+        assert_eq!(target.connect_host(9999), "http://127.0.0.1:9999");
+    }
+
+    #[test]
+    fn clickhouse_connect_host_without_scheme() {
+        let target = ClickHouseTarget {
+            remote_host: "ch.example.com".to_string(),
+            remote_port: 8123,
+            scheme: None,
+        };
+        assert_eq!(target.connect_host(9999), "127.0.0.1");
+    }
+
+    // ── parse_clickhouse_target ──────────────────────────────────────
+
+    fn ch_form(host: &str, port: u16) -> ClickHouseFormData {
+        ClickHouseFormData {
+            host: host.to_string(),
+            port,
+            username: "default".to_string(),
+            password: String::new(),
+            database: "default".to_string(),
+            ssh_tunnel: None,
+        }
+    }
+
+    #[test]
+    fn parse_clickhouse_target_empty_host_is_error() {
+        let result = parse_clickhouse_target(&ch_form("", 8123));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            DatabaseError::Tunnel(msg) => assert!(msg.contains("empty")),
+            other => panic!("expected Tunnel error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_clickhouse_target_plain_host() {
+        let result = parse_clickhouse_target(&ch_form("ch.example.com", 8123));
+        let target = result.unwrap();
+        assert_eq!(target.remote_host, "ch.example.com");
+        assert_eq!(target.remote_port, 8123);
+        assert!(target.scheme.is_none());
+    }
+
+    #[test]
+    fn parse_clickhouse_target_plain_host_default_port() {
+        let result = parse_clickhouse_target(&ch_form("ch.example.com", 0));
+        let target = result.unwrap();
+        assert_eq!(target.remote_port, 8123);
+    }
+
+    #[test]
+    fn parse_clickhouse_target_http_url() {
+        let result = parse_clickhouse_target(&ch_form("http://ch.example.com:9000", 0));
+        let target = result.unwrap();
+        assert_eq!(target.remote_host, "ch.example.com");
+        assert_eq!(target.remote_port, 9000);
+        assert_eq!(target.scheme.as_deref(), Some("http"));
+    }
+
+    #[test]
+    fn parse_clickhouse_target_http_url_default_port() {
+        let result = parse_clickhouse_target(&ch_form("http://ch.example.com", 0));
+        let target = result.unwrap();
+        assert_eq!(target.remote_port, 8123);
+    }
+
+    #[test]
+    fn parse_clickhouse_target_https_url_is_error() {
+        let result = parse_clickhouse_target(&ch_form("https://ch.example.com", 0));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            DatabaseError::Tunnel(msg) => assert!(msg.contains("HTTPS")),
+            other => panic!("expected Tunnel error about HTTPS, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_clickhouse_target_invalid_url_is_error() {
+        let result = parse_clickhouse_target(&ch_form("http://[invalid", 0));
+        assert!(result.is_err());
+    }
+
+    // ── connect_to_db (integration note) ────────────────────────────
+
+    #[test]
+    fn connect_to_db_requires_live_databases() {
+        // `connect_to_db` dispatches to driver-specific connect calls that
+        // require live database servers. It should be tested via integration
+        // tests with actual database instances or Docker containers.
+        //
+        // The pure helper functions tested above cover all the routing and
+        // validation logic that runs before any network call.
+    }
 }

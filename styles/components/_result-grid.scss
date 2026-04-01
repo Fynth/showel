@@ -52,8 +52,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: 6px;
+  padding: 5px 8px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(
     in srgb,
@@ -74,7 +74,7 @@
 .results__toolbar-chip {
   flex-shrink: 0;
   max-width: min(240px, 30vw);
-  padding: 3px 8px;
+  padding: 2px 6px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: 999px;
   color: var(--color-text-muted);
@@ -104,7 +104,7 @@
 .results__toolbar-actions {
   display: flex;
   align-items: center;
-  gap: $spacing-xs;
+  gap: 4px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -112,8 +112,8 @@
 .results__filters {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(
     in srgb,
@@ -125,20 +125,20 @@
 .results__filters-topbar {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
 .results__filters-body {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 4px;
 }
 
 .results__filter-row {
   display: grid;
   grid-template-columns: minmax(160px, 1.1fr) minmax(160px, 1fr) minmax(220px, 1.4fr) auto;
-  gap: $spacing-xs;
+  gap: 4px;
   align-items: center;
 }
 
@@ -154,7 +154,7 @@
 }
 
 .results__filter-null {
-  min-height: 28px;
+  min-height: 24px;
   display: flex;
   align-items: center;
   padding: 0 6px;
@@ -208,7 +208,7 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 0 6px 6px;
+  padding: 0 4px 4px;
   scrollbar-gutter: stable both-edges;
   overscroll-behavior: contain;
   background:
@@ -227,7 +227,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
+  min-height: 26px;
   padding: 0 10px 10px;
   color: var(--color-text-muted);
   font-size: $font-size-sm;
@@ -292,7 +292,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border: 0;
   background: transparent;
   color: var(--color-text);
@@ -349,7 +349,7 @@
 }
 
 .results__cell {
-  padding: 7px 8px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--color-border);
   border-right: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   white-space: nowrap;
@@ -383,7 +383,7 @@
 .results__cell-input {
   width: 100%;
   min-width: 120px;
-  padding: 3px 6px;
+  padding: 2px 4px;
   border: 1px solid var(--color-primary);
   border-radius: $radius-sm;
   background: var(--editor-bg);
@@ -422,7 +422,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -447,7 +447,7 @@
   display: flex;
   align-items: center;
   gap: $spacing-xs;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--color-border);
 }
 

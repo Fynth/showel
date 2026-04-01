@@ -176,3 +176,40 @@ impl Drop for SshTunnelHandle {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // This crate deals exclusively with SSH tunnel lifecycle management:
+    // opening tunnels via the `ssh` process, allocating local TCP ports,
+    // registering/releasing tunnels in a global map, and cleaning up child
+    // processes on drop.
+    //
+    // All public functions (`open_ssh_tunnel`, `register_ssh_tunnel`,
+    // `release_ssh_tunnel`) and the private helpers (`allocate_local_port`,
+    // `shutdown_tunnel`, etc.) require either:
+    //   - spawning an actual `ssh` subprocess
+    //   - binding a TCP listener on 127.0.0.1
+    //   - mutating the global `SSH_TUNNELS` static
+    //
+    // These should be covered by integration tests that can control the
+    // environment (e.g. a running SSH server or mock).
+
+    #[test]
+    fn open_ssh_tunnel_requires_ssh_process() {
+        // `open_ssh_tunnel` spawns `ssh -N -L …` which requires a real SSH
+        // server to connect to. Test with an integration harness or Docker.
+    }
+
+    #[test]
+    fn allocate_local_port_requires_tcp_binding() {
+        // `allocate_local_port` binds `TcpListener::bind("127.0.0.1:0")`
+        // which needs network stack access. Test in an integration suite.
+    }
+
+    #[test]
+    fn register_and_release_tunnels_modify_global_state() {
+        // `register_ssh_tunnel` / `release_ssh_tunnel` mutate the process-global
+        // `SSH_TUNNELS` map and may kill child processes. These should be tested
+        // with integration tests that can safely manage that state.
+    }
+}
