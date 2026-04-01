@@ -5,8 +5,8 @@ use std::{
 };
 
 use models::{
-    DatabaseConnection, DatabaseError, ExplorerNode, ExplorerNodeKind, QueryHistoryItem, QueryOutput, QueryPage,
-    TablePreviewSource,
+    DatabaseConnection, DatabaseError, ExplorerNode, ExplorerNodeKind, QueryHistoryItem,
+    QueryOutput, QueryPage, TablePreviewSource,
 };
 
 use explorer::{describe_table, load_connection_tree};
@@ -52,13 +52,13 @@ fn full_context_cache() -> &'static Mutex<HashMap<String, CachedFullContext>> {
 /// Check if a query contains sensitive information that should be redacted.
 fn contains_sensitive_info(query: &str) -> bool {
     let upper = query.to_uppercase();
-    upper.contains("PASSWORD") ||
-    upper.contains("SECRET") ||
-    upper.contains("TOKEN") ||
-    upper.contains("KEY") ||
-    upper.contains("CREDENTIAL") ||
-    upper.contains("API_KEY") ||
-    upper.contains("AUTH")
+    upper.contains("PASSWORD")
+        || upper.contains("SECRET")
+        || upper.contains("TOKEN")
+        || upper.contains("KEY")
+        || upper.contains("CREDENTIAL")
+        || upper.contains("API_KEY")
+        || upper.contains("AUTH")
 }
 
 /// Redact sensitive information from a query.
@@ -143,7 +143,10 @@ async fn append_performance_metrics(_lines: &mut Vec<String>, _connection: &Data
 }
 
 /// Append performance metrics from pre-collected introspection data.
-pub fn append_introspection_metrics(lines: &mut Vec<String>, introspection: &crate::introspection::IntrospectionResult) {
+pub fn append_introspection_metrics(
+    lines: &mut Vec<String>,
+    introspection: &crate::introspection::IntrospectionResult,
+) {
     // Add slowest queries
     if !introspection.query_history.is_empty() {
         lines.push(String::new());
@@ -176,14 +179,14 @@ pub fn append_introspection_metrics(lines: &mut Vec<String>, introspection: &cra
         for lock in introspection.locks.iter().take(5) {
             let relation = lock.relation.as_deref().unwrap_or("unknown");
             let status = if lock.granted { "granted" } else { "waiting" };
-            lines.push(format!(
-                "  - {} on {} ({})",
-                lock.mode, relation, status
-            ));
+            lines.push(format!("  - {} on {} ({})", lock.mode, relation, status));
         }
 
         if introspection.locks.len() > 5 {
-            lines.push(format!("  ... {} more locks", introspection.locks.len() - 5));
+            lines.push(format!(
+                "  ... {} more locks",
+                introspection.locks.len() - 5
+            ));
         }
     }
 
@@ -220,7 +223,9 @@ pub fn append_introspection_metrics(lines: &mut Vec<String>, introspection: &cra
             };
             lines.push(format!(
                 "  - [{}] {}: {}",
-                duration, query.state, query_preview.replace('\n', " ")
+                duration,
+                query.state,
+                query_preview.replace('\n', " ")
             ));
         }
     }

@@ -21,6 +21,7 @@ pub struct TableEditorState {
 }
 
 #[derive(Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum TableEditorMode {
     Create,
     Alter(String),
@@ -299,6 +300,7 @@ pub fn TableEditor(
     }
 }
 
+#[allow(dead_code)]
 fn generate_table_sql(state: &TableEditorState) -> String {
     let mut sql = String::new();
 

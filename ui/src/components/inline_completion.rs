@@ -18,6 +18,7 @@ use tokio::task::AbortHandle;
 /// - Current prediction text
 /// - Whether the completion has been discarded
 #[derive(Clone, Default)]
+#[allow(dead_code)]
 pub struct InlineCompletionState {
     /// Handle to abort any pending prediction request.
     pub pending_request: Option<AbortHandle>,
@@ -27,6 +28,7 @@ pub struct InlineCompletionState {
     pub is_discarded: bool,
 }
 
+#[allow(dead_code)]
 impl InlineCompletionState {
     /// Creates a new empty state.
     pub fn new() -> Self {
@@ -92,6 +94,7 @@ impl InlineCompletionState {
 }
 
 /// Debounce configuration for inline completion requests.
+#[allow(dead_code)]
 pub struct DebounceConfig {
     /// Minimum delay between keystrokes before triggering a request.
     pub delay_ms: u64,
@@ -107,6 +110,7 @@ impl Default for DebounceConfig {
 ///
 /// Returns a signal containing the InlineCompletionState and a debounced
 /// function to trigger completion requests.
+#[allow(dead_code)]
 pub fn use_inline_completion() -> (Signal<InlineCompletionState>, DebounceConfig) {
     let state = use_signal(InlineCompletionState::new);
     let config = DebounceConfig::default();
@@ -160,14 +164,14 @@ pub fn InlineCompletionHandler(
     on_dismiss: Callback<()>,
     children: Element,
 ) -> Element {
-    let handle_accept = move || {
+    let _handle_accept = move || {
         let mut state = state.write();
         if let Some(accepted) = state.accept_completion() {
             on_accept.call(accepted);
         }
     };
 
-    let handle_dismiss = move || {
+    let _handle_dismiss = move || {
         state.write().dismiss_completion();
         on_dismiss.call(());
     };

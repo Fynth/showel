@@ -191,14 +191,14 @@ async fn initialize_schema(pool: &SqlitePool) -> Result<(), String> {
 
     // Indexes for performance
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_query_history_executed_at ON query_history(executed_at)"
+        "CREATE INDEX IF NOT EXISTS idx_query_history_executed_at ON query_history(executed_at)",
     )
     .execute(pool)
     .await
     .map_err(|err| format!("failed to create executed_at index: {err}"))?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_query_history_connection ON query_history(connection_name)"
+        "CREATE INDEX IF NOT EXISTS idx_query_history_connection ON query_history(connection_name)",
     )
     .execute(pool)
     .await
@@ -328,7 +328,11 @@ async fn trim_to_max(pool: &SqlitePool, max: usize) -> Result<(), String> {
     }
 
     // Delete from main table
-    let placeholders = ids_to_delete.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders = ids_to_delete
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let query = format!("DELETE FROM query_history WHERE id IN ({})", placeholders);
 
     let mut query_builder = sqlx::query(&query);
@@ -367,4 +371,3 @@ fn row_to_item(row: sqlx::sqlite::SqliteRow) -> Result<QueryHistoryItem, String>
         tab_title: String::new(), // Not stored in DB
     })
 }
-

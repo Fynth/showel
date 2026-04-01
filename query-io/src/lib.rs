@@ -230,7 +230,11 @@ fn export_query_page_xml_sync(page: QueryPage, path: PathBuf) -> Result<usize, S
     for row in &page.rows {
         output.push_str("  <row>\n");
         for (i, cell) in row.iter().enumerate() {
-            let col_name = page.columns.get(i).cloned().unwrap_or_else(|| "column".to_string());
+            let col_name = page
+                .columns
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| "column".to_string());
             let escaped = escape_xml(cell);
             output.push_str(&format!("    <{}>{}</{}>\n", col_name, escaped, col_name));
         }
@@ -251,7 +255,8 @@ fn export_query_page_html_sync(page: QueryPage, path: PathBuf) -> Result<usize, 
     output.push_str("<!DOCTYPE html>\n");
     output.push_str("<html lang=\"en\">\n<head>\n");
     output.push_str("  <meta charset=\"UTF-8\">\n");
-    output.push_str("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
+    output
+        .push_str("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
     output.push_str("  <title>Query Results</title>\n");
     output.push_str("  <style>\n");
     output.push_str("    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; ");
@@ -260,7 +265,8 @@ fn export_query_page_html_sync(page: QueryPage, path: PathBuf) -> Result<usize, 
     output.push_str("box-shadow: 0 1px 3px rgba(0,0,0,0.1); }\n");
     output.push_str("    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; ");
     output.push_str("font-size: 14px; }\n");
-    output.push_str("    th { background: #f8f9fa; font-weight: 600; position: sticky; top: 0; }\n");
+    output
+        .push_str("    th { background: #f8f9fa; font-weight: 600; position: sticky; top: 0; }\n");
     output.push_str("    tr:hover { background: #f8f9fa; }\n");
     output.push_str("    tr:nth-child(even) { background: #fafafa; }\n");
     output.push_str("  </style>\n");

@@ -2,7 +2,9 @@ mod actions;
 mod components;
 mod context;
 
-use crate::app_state::{toast_error, APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen};
+use crate::app_state::{
+    APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen, toast_error,
+};
 use dioxus::{html::input_data::MouseButton, prelude::*};
 use models::{
     AcpPanelState, AcpUiMessage, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery,
@@ -1251,7 +1253,12 @@ pub fn Workspace() -> Element {
     let chat_persist_connection_label = connection_label.clone();
 
     context::provide_workspace_tab_context(tabs, active_tab_id, next_tab_id);
-    context::provide_workspace_query_context(history, next_history_id, saved_queries, next_saved_query_id);
+    context::provide_workspace_query_context(
+        history,
+        next_history_id,
+        saved_queries,
+        next_saved_query_id,
+    );
     context::provide_workspace_acp_context(context::WorkspaceAcpContext {
         acp_panel_state,
         chat_revision,

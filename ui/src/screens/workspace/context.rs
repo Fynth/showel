@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use models::{AcpPanelState, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery};
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub struct WorkspaceTabContext {
     pub tabs: Signal<Vec<QueryTabState>>,
     pub active_tab_id: Signal<u64>,
@@ -9,6 +10,7 @@ pub struct WorkspaceTabContext {
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub struct WorkspaceQueryContext {
     pub history: Signal<Vec<QueryHistoryItem>>,
     pub next_history_id: Signal<u64>,
@@ -17,6 +19,7 @@ pub struct WorkspaceQueryContext {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct WorkspaceAcpContext {
     pub acp_panel_state: Signal<AcpPanelState>,
     pub chat_revision: Signal<u64>,
@@ -29,6 +32,7 @@ pub struct WorkspaceAcpContext {
     pub connection_label: String,
 }
 
+#[allow(dead_code)]
 impl WorkspaceAcpContext {
     pub fn connection_label_clone(&self) -> String {
         self.connection_label.clone()
@@ -65,14 +69,17 @@ pub fn provide_workspace_acp_context(context: WorkspaceAcpContext) {
     provide_context(context);
 }
 
+#[allow(dead_code)]
 pub fn use_workspace_tab_context() -> WorkspaceTabContext {
     use_context::<WorkspaceTabContext>()
 }
 
+#[allow(dead_code)]
 pub fn use_workspace_query_context() -> WorkspaceQueryContext {
     use_context::<WorkspaceQueryContext>()
 }
 
+#[allow(dead_code)]
 pub fn use_workspace_acp_context() -> WorkspaceAcpContext {
     use_context::<WorkspaceAcpContext>()
 }

@@ -15,12 +15,10 @@ static VEC_EXTENSION_INITIALIZED: std::sync::Once = std::sync::Once::new();
 /// Ensure sqlite-vec extension is registered as an auto-extension.
 /// This must be called before creating any SQLite connections that need vec0 support.
 pub fn ensure_vec_extension_initialized() {
-    VEC_EXTENSION_INITIALIZED.call_once(|| {
-        unsafe {
-            libsqlite3_sys::sqlite3_auto_extension(Some(std::mem::transmute(
-                sqlite_vec::sqlite3_vec_init as *const (),
-            )));
-        }
+    VEC_EXTENSION_INITIALIZED.call_once(|| unsafe {
+        libsqlite3_sys::sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
     });
 }
 
@@ -213,7 +211,10 @@ pub async fn save_chat_thread_snapshot(
     })
 }
 
-pub async fn search_chat_messages(query: &str, limit: usize) -> Result<Vec<ChatThreadSummary>, String> {
+pub async fn search_chat_messages(
+    query: &str,
+    limit: usize,
+) -> Result<Vec<ChatThreadSummary>, String> {
     let pool = chat_pool().await?;
 
     let rows = sqlx::query(
@@ -377,10 +378,23 @@ async fn initialize_schema(pool: &SqlitePool) -> Result<(), String> {
     .await
     .map_err(|err| format!("failed to create chat_messages_fts table: {err}"))?;
 
-    // Trigger to insert into FTS index when a chat message is inserted
+    recreate_chat_fts_triggers(pool).await?;
+    rebuild_chat_fts_index(pool).await?;
+
+    Ok(())
+}
+
+async fn recreate_chat_fts_triggers(pool: &SqlitePool) -> Result<(), String> {
+    for trigger_name in ["chat_messages_ai", "chat_messages_au", "chat_messages_ad"] {
+        sqlx::query(&format!("drop trigger if exists {trigger_name}"))
+            .execute(pool)
+            .await
+            .map_err(|err| format!("failed to drop chat_messages trigger {trigger_name}: {err}"))?;
+    }
+
     sqlx::query(
         r#"
-        CREATE TRIGGER IF NOT EXISTS chat_messages_ai AFTER INSERT ON chat_messages BEGIN
+        CREATE TRIGGER chat_messages_ai AFTER INSERT ON chat_messages BEGIN
             INSERT INTO chat_messages_fts (thread_id, position, content)
             VALUES (new.thread_id, new.position, new.text);
         END
@@ -390,12 +404,11 @@ async fn initialize_schema(pool: &SqlitePool) -> Result<(), String> {
     .await
     .map_err(|err| format!("failed to create chat_messages insert trigger: {err}"))?;
 
-    // Trigger to update FTS index when a chat message is updated
     sqlx::query(
         r#"
-        CREATE TRIGGER IF NOT EXISTS chat_messages_au AFTER UPDATE ON chat_messages BEGIN
-            INSERT INTO chat_messages_fts (chat_messages_fts, thread_id, position, content)
-            VALUES ('delete', old.thread_id, old.position, old.text);
+        CREATE TRIGGER chat_messages_au AFTER UPDATE ON chat_messages BEGIN
+            DELETE FROM chat_messages_fts
+            WHERE thread_id = old.thread_id AND position = old.position;
             INSERT INTO chat_messages_fts (thread_id, position, content)
             VALUES (new.thread_id, new.position, new.text);
         END
@@ -405,18 +418,38 @@ async fn initialize_schema(pool: &SqlitePool) -> Result<(), String> {
     .await
     .map_err(|err| format!("failed to create chat_messages update trigger: {err}"))?;
 
-    // Trigger to delete from FTS index when a chat message is deleted
     sqlx::query(
         r#"
-        CREATE TRIGGER IF NOT EXISTS chat_messages_ad AFTER DELETE ON chat_messages BEGIN
-            INSERT INTO chat_messages_fts (chat_messages_fts, thread_id, position, content)
-            VALUES ('delete', old.thread_id, old.position, old.text);
+        CREATE TRIGGER chat_messages_ad AFTER DELETE ON chat_messages BEGIN
+            DELETE FROM chat_messages_fts
+            WHERE thread_id = old.thread_id AND position = old.position;
         END
         "#,
     )
     .execute(pool)
     .await
     .map_err(|err| format!("failed to create chat_messages delete trigger: {err}"))?;
+
+    Ok(())
+}
+
+async fn rebuild_chat_fts_index(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("delete from chat_messages_fts")
+        .execute(pool)
+        .await
+        .map_err(|err| format!("failed to clear chat_messages_fts index: {err}"))?;
+
+    sqlx::query(
+        r#"
+        insert into chat_messages_fts (thread_id, position, content)
+        select thread_id, position, text
+        from chat_messages
+        order by thread_id asc, position asc, id asc
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|err| format!("failed to rebuild chat_messages_fts index: {err}"))?;
 
     Ok(())
 }
@@ -520,4 +553,236 @@ fn unix_timestamp() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn create_test_pool() -> SqlitePool {
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("failed to create test pool")
+    }
+
+    #[tokio::test]
+    async fn initialize_schema_migrates_legacy_fts_delete_triggers() {
+        let pool = create_test_pool().await;
+
+        sqlx::query(
+            r#"
+            create table chat_threads (
+              id integer primary key autoincrement,
+              title text not null,
+              connection_name text not null,
+              created_at integer not null,
+              updated_at integer not null
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create chat_threads");
+
+        sqlx::query(
+            r#"
+            create table chat_messages (
+              id integer primary key autoincrement,
+              thread_id integer not null,
+              position integer not null,
+              kind text not null,
+              text text not null,
+              created_at integer not null,
+              artifact_json text,
+              foreign key(thread_id) references chat_threads(id) on delete cascade
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create chat_messages");
+
+        sqlx::query(
+            r#"
+            CREATE VIRTUAL TABLE chat_messages_fts USING fts5(
+                thread_id UNINDEXED,
+                position UNINDEXED,
+                content
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create legacy chat_messages_fts");
+
+        sqlx::query(
+            r#"
+            CREATE TRIGGER chat_messages_ai AFTER INSERT ON chat_messages BEGIN
+                INSERT INTO chat_messages_fts (thread_id, position, content)
+                VALUES (new.thread_id, new.position, new.text);
+            END
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create legacy insert trigger");
+
+        sqlx::query(
+            r#"
+            CREATE TRIGGER chat_messages_au AFTER UPDATE ON chat_messages BEGIN
+                INSERT INTO chat_messages_fts (chat_messages_fts, thread_id, position, content)
+                VALUES ('delete', old.thread_id, old.position, old.text);
+                INSERT INTO chat_messages_fts (thread_id, position, content)
+                VALUES (new.thread_id, new.position, new.text);
+            END
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create legacy update trigger");
+
+        sqlx::query(
+            r#"
+            CREATE TRIGGER chat_messages_ad AFTER DELETE ON chat_messages BEGIN
+                INSERT INTO chat_messages_fts (chat_messages_fts, thread_id, position, content)
+                VALUES ('delete', old.thread_id, old.position, old.text);
+            END
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create legacy delete trigger");
+
+        sqlx::query(
+            r#"
+            insert into chat_threads (id, title, connection_name, created_at, updated_at)
+            values (1, 'Thread', 'No connection', 1, 1)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to insert thread");
+
+        sqlx::query(
+            r#"
+            insert into chat_messages (thread_id, position, kind, text, created_at)
+            values (1, 0, 'user', '', 1)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to insert message");
+
+        let legacy_delete = sqlx::query("delete from chat_messages where thread_id = 1")
+            .execute(&pool)
+            .await;
+        assert!(legacy_delete.is_err(), "legacy delete trigger should fail");
+
+        initialize_schema(&pool)
+            .await
+            .expect("failed to migrate legacy chat schema");
+
+        sqlx::query("delete from chat_messages where thread_id = 1")
+            .execute(&pool)
+            .await
+            .expect("migrated delete trigger should succeed");
+
+        let fts_count: i64 = sqlx::query_scalar("select count(*) from chat_messages_fts")
+            .fetch_one(&pool)
+            .await
+            .expect("failed to count chat_messages_fts rows");
+        assert_eq!(fts_count, 0);
+    }
+
+    #[tokio::test]
+    async fn initialize_schema_backfills_fts_index_from_existing_messages() {
+        let pool = create_test_pool().await;
+
+        sqlx::query(
+            r#"
+            create table chat_threads (
+              id integer primary key autoincrement,
+              title text not null,
+              connection_name text not null,
+              created_at integer not null,
+              updated_at integer not null
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create chat_threads");
+
+        sqlx::query(
+            r#"
+            create table chat_messages (
+              id integer primary key autoincrement,
+              thread_id integer not null,
+              position integer not null,
+              kind text not null,
+              text text not null,
+              created_at integer not null,
+              artifact_json text,
+              foreign key(thread_id) references chat_threads(id) on delete cascade
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create chat_messages");
+
+        sqlx::query(
+            r#"
+            CREATE VIRTUAL TABLE chat_messages_fts USING fts5(
+                thread_id UNINDEXED,
+                position UNINDEXED,
+                content
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to create chat_messages_fts");
+
+        sqlx::query(
+            r#"
+            insert into chat_threads (id, title, connection_name, created_at, updated_at)
+            values (1, 'Thread', 'No connection', 1, 1)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to insert thread");
+
+        sqlx::query(
+            r#"
+            insert into chat_messages (thread_id, position, kind, text, created_at)
+            values (1, 0, 'user', 'hello schema migration', 1)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("failed to insert message");
+
+        initialize_schema(&pool)
+            .await
+            .expect("failed to initialize schema");
+
+        let fts_count: i64 = sqlx::query_scalar("select count(*) from chat_messages_fts")
+            .fetch_one(&pool)
+            .await
+            .expect("failed to count chat_messages_fts rows");
+        assert_eq!(fts_count, 1);
+
+        let search_hits: i64 = sqlx::query_scalar(
+            "select count(*) from chat_messages_fts where chat_messages_fts match 'hello'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("failed to search chat_messages_fts");
+        assert_eq!(search_hits, 1);
+    }
 }

@@ -23,10 +23,10 @@ pub struct EmbeddingModel {
 
 impl EmbeddingModel {
     /// Load the embedding model from the given directory path
-    /// 
+    ///
     /// # Arguments
     /// * `model_dir` - Directory containing the ONNX model and tokenizer files
-    /// 
+    ///
     /// # Returns
     /// * `Ok(EmbeddingModel)` - If model and tokenizer loaded successfully
     /// * `Err(String)` - If loading failed
@@ -38,11 +38,11 @@ impl EmbeddingModel {
     }
 
     /// Load the embedding model from specific file paths
-    /// 
+    ///
     /// # Arguments
     /// * `model_path` - Path to the ONNX model file
     /// * `tokenizer_path` - Path to the tokenizer.json file
-    /// 
+    ///
     /// # Returns
     /// * `Ok(EmbeddingModel)` - If model and tokenizer loaded successfully
     /// * `Err(String)` - If loading failed
@@ -64,23 +64,18 @@ impl EmbeddingModel {
                     "Failed to load embedding model from {:?}. \
                     Ensure the ONNX model file exists and is valid. \
                     Expected file: {} in the models directory. {}",
-                    model_path,
-                    MODEL_FILENAME,
-                    e
+                    model_path, MODEL_FILENAME, e
                 )
             })?;
 
-        let tokenizer = Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| {
-                format!(
-                    "Failed to load tokenizer from {:?}. \
+        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(|e| {
+            format!(
+                "Failed to load tokenizer from {:?}. \
                     Ensure the tokenizer file exists alongside the ONNX model. \
                     Expected file: {} in the models directory. {}",
-                    tokenizer_path,
-                    TOKENIZER_FILENAME,
-                    e
-                )
-            })?;
+                tokenizer_path, TOKENIZER_FILENAME, e
+            )
+        })?;
 
         Ok(Self {
             session: Arc::new(Mutex::new(session)),
@@ -89,13 +84,13 @@ impl EmbeddingModel {
     }
 
     /// Generate an embedding for the given text synchronously
-    /// 
+    ///
     /// This method performs CPU-intensive ONNX inference and should be called
     /// within spawn_blocking to avoid blocking the async runtime.
-    /// 
+    ///
     /// # Arguments
     /// * `text` - The text to embed
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Vec<f32>)` - 384-dimensional normalized embedding vector
     /// * `Err(String)` - If embedding generation failed
@@ -124,19 +119,26 @@ impl EmbeddingModel {
         let token_type_ids = vec![0i64; seq_len];
 
         // Create ORT tensors using (shape, data) tuples
-        let input_ids_tensor = ort::value::Tensor::from_array((vec![1i64, seq_len as i64], input_ids_i64))
-            .map_err(|e| format!("Failed to create input_ids tensor: {}", e))?;
-        let attention_mask_tensor = ort::value::Tensor::from_array((vec![1i64, seq_len as i64], attention_mask_i64))
-            .map_err(|e| format!("Failed to create attention_mask tensor: {}", e))?;
-        let token_type_ids_tensor = ort::value::Tensor::from_array((vec![1i64, seq_len as i64], token_type_ids))
-            .map_err(|e| format!("Failed to create token_type_ids tensor: {}", e))?;
+        let input_ids_tensor =
+            ort::value::Tensor::from_array((vec![1i64, seq_len as i64], input_ids_i64))
+                .map_err(|e| format!("Failed to create input_ids tensor: {}", e))?;
+        let attention_mask_tensor =
+            ort::value::Tensor::from_array((vec![1i64, seq_len as i64], attention_mask_i64))
+                .map_err(|e| format!("Failed to create attention_mask tensor: {}", e))?;
+        let token_type_ids_tensor =
+            ort::value::Tensor::from_array((vec![1i64, seq_len as i64], token_type_ids))
+                .map_err(|e| format!("Failed to create token_type_ids tensor: {}", e))?;
 
         let mut session_guard = self
             .session
             .lock()
             .map_err(|e| format!("Failed to lock session: {}", e))?;
         let outputs = session_guard
-            .run(ort::inputs![input_ids_tensor, attention_mask_tensor, token_type_ids_tensor])
+            .run(ort::inputs![
+                input_ids_tensor,
+                attention_mask_tensor,
+                token_type_ids_tensor
+            ])
             .map_err(|e| format!("ONNX inference failed: {}", e))?;
 
         let (shape, embeddings_data) = outputs[0]
@@ -164,14 +166,14 @@ impl EmbeddingModel {
     }
 
     /// Generate an embedding for the given text asynchronously
-    /// 
+    ///
     /// This method uses spawn_blocking to run the CPU-intensive ONNX inference
     /// on a separate thread pool, preventing blocking of the async runtime.
     /// Target: <200ms for embed() call
-    /// 
+    ///
     /// # Arguments
     /// * `text` - The text to embed
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Vec<f32>)` - 384-dimensional normalized embedding vector
     /// * `Err(String)` - If embedding generation failed
@@ -226,7 +228,7 @@ pub fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
 #[derive(Clone)]
 pub struct LazyEmbeddingModel {
     model_dir: Arc<str>,
-    inner: Arc<OnceLock<EmbeddingModel>>,
+    inner: Arc<OnceLock<Result<EmbeddingModel, String>>>,
 }
 
 impl LazyEmbeddingModel {
@@ -245,15 +247,25 @@ impl LazyEmbeddingModel {
     ///
     /// On the first call, this loads the ONNX model from disk. Subsequent calls
     /// return the cached model immediately.
-    fn get_or_init(&self) -> Result<&EmbeddingModel, String> {
-        self.inner.get_or_try_init(|| {
+    fn get_or_init(&self) -> Result<EmbeddingModel, String> {
+        let result = self.inner.get_or_init(|| {
             tracing::info!("Loading embedding model from: {}", self.model_dir);
             let start = std::time::Instant::now();
-            let model = EmbeddingModel::load_model(&self.model_dir)?;
+            let model_result = EmbeddingModel::load_model(&self.model_dir);
             let elapsed = start.elapsed();
-            tracing::info!("Embedding model loaded in {:.0}ms", elapsed.as_secs_f64() * 1000.0);
-            Ok(model)
-        })
+            if model_result.is_ok() {
+                tracing::info!(
+                    "Embedding model loaded in {:.0}ms",
+                    elapsed.as_secs_f64() * 1000.0
+                );
+            }
+            model_result
+        });
+
+        match result {
+            Ok(model) => Ok(model.clone()),
+            Err(e) => Err(e.clone()),
+        }
     }
 
     /// Generate an embedding, loading the model on first use.
@@ -263,7 +275,7 @@ impl LazyEmbeddingModel {
     pub async fn embed(&self, text: String) -> Result<Vec<f32>, String> {
         // Ensure model is loaded before spawning the blocking task.
         // OnceLock guarantees this is only done once.
-        let model = self.get_or_init()?.clone();
+        let model = self.get_or_init()?;
 
         tokio::task::spawn_blocking(move || model.embed_sync(&text))
             .await

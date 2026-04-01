@@ -5,12 +5,15 @@
 use dioxus::prelude::*;
 
 /// Default similarity threshold for cache lookups
+#[allow(dead_code)]
 pub const DEFAULT_SIMILARITY_THRESHOLD: f32 = 0.85;
 
 /// Minimum similarity threshold
+#[allow(dead_code)]
 pub const MIN_SIMILARITY_THRESHOLD: f32 = 0.80;
 
 /// Maximum similarity threshold
+#[allow(dead_code)]
 pub const MAX_SIMILARITY_THRESHOLD: f32 = 0.95;
 
 /// Cache hit result information

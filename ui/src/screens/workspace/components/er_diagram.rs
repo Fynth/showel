@@ -42,6 +42,7 @@ pub struct ErRelationship {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct ErLine {
     pub x1: String,
     pub y1: String,
@@ -270,6 +271,7 @@ fn ErTableCard(
     }
 }
 
+#[allow(dead_code)]
 fn calculate_table_positions(
     tables: &[ErTable],
     relationships: &[ErRelationship],

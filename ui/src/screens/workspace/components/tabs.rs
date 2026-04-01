@@ -86,18 +86,6 @@ pub fn TabsManager(
             .find(|tab| tab.id == active_tab_id())
             .cloned()
     });
-    let active_explorer_nodes = use_memo(move || {
-        active_tab()
-            .as_ref()
-            .and_then(|tab| {
-                explorer_sections
-                    .read()
-                    .iter()
-                    .find(|section| section.session_id == tab.session_id)
-                    .map(|section| section.nodes.clone())
-            })
-            .unwrap_or_default()
-    });
 
     let session_labels = {
         let app_state = APP_STATE.read();
@@ -270,11 +258,8 @@ pub fn TabsManager(
                         SqlEditor {
                             sql: tab.sql.clone(),
                             active_tab: tab.clone(),
-                            explorer_nodes: active_explorer_nodes(),
                             tabs,
                             active_tab_id,
-                            acp_panel_state,
-                            ai_features_enabled,
                         }
                     }
                     div {

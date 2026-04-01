@@ -1,4 +1,4 @@
-use crate::app_state::{dismiss_toast, AppToast, ToastKind, APP_TOAST};
+use crate::app_state::{APP_TOAST, AppToast, ToastKind, dismiss_toast};
 use dioxus::prelude::*;
 
 #[component]

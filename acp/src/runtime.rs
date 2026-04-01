@@ -3,8 +3,8 @@ use agent_client_protocol::{
     RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
 };
 use models::{
-    AgentRoutingRequest, AgentRoutingResponse, AgentSpecialist, AcpConnectionInfo, AcpEvent,
-    AcpLaunchRequest, AcpMessageKind, AcpPermissionOption, AcpPermissionRequest,
+    AcpConnectionInfo, AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpPermissionOption,
+    AcpPermissionRequest, AgentRoutingRequest, AgentRoutingResponse, AgentSpecialist,
 };
 
 use crate::agents::AgentCoordinator;
@@ -527,9 +527,7 @@ pub fn send_acp_prompt(prompt: String) -> Result<(), String> {
 
 /// Routes an ACP request through the agent coordinator to determine the appropriate specialist.
 /// Returns routing decision with confidence score and reasoning.
-pub fn route_acp_request(
-    request: AgentRoutingRequest,
-) -> Result<AgentRoutingResponse, String> {
+pub fn route_acp_request(request: AgentRoutingRequest) -> Result<AgentRoutingResponse, String> {
     let mut slot = runtime_slot()
         .lock()
         .map_err(|_| "ACP runtime lock poisoned".to_string())?;
@@ -543,7 +541,11 @@ pub fn route_acp_request(
     match &routing_result {
         Ok(response) => {
             handle.active_specialist = Some(response.specialist);
-            log_routing_decision(&response.specialist, response.confidence, &response.reasoning);
+            log_routing_decision(
+                &response.specialist,
+                response.confidence,
+                &response.reasoning,
+            );
 
             if response.confidence < 0.7 {
                 eprintln!(
@@ -553,7 +555,10 @@ pub fn route_acp_request(
             }
         }
         Err(err) => {
-            eprintln!("[acp::routing] Routing failed: {}. Falling back to default.", err);
+            eprintln!(
+                "[acp::routing] Routing failed: {}. Falling back to default.",
+                err
+            );
             handle.active_specialist = Some(AgentSpecialist::SqlExpert);
 
             return Ok(AgentRoutingResponse {
@@ -593,13 +598,18 @@ pub fn send_acp_prompt_with_routing(
     match &routing_response {
         Ok(response) => {
             handle.active_specialist = Some(response.specialist);
-            log_routing_decision(&response.specialist, response.confidence, &response.reasoning);
+            log_routing_decision(
+                &response.specialist,
+                response.confidence,
+                &response.reasoning,
+            );
 
             let augmented_prompt = augment_prompt_with_context(&prompt, &handle.execution_history);
 
             if response.confidence >= 0.7 {
-                if let Ok(specialist_response) =
-                    handle.coordinator.dispatch(response.specialist, &routing_request)
+                if let Ok(specialist_response) = handle
+                    .coordinator
+                    .dispatch(response.specialist, &routing_request)
                 {
                     eprintln!(
                         "[acp::routing] Dispatched to {:?}: {}",

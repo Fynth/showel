@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 #[derive(Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum BlobViewMode {
     Hex,
     Text,
@@ -14,6 +15,7 @@ pub struct BlobData {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct HexLine {
     pub address: String,
     pub bytes: Vec<HexByte>,
@@ -21,6 +23,7 @@ pub struct HexLine {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct HexByte {
     pub hex: String,
     pub char: char,
@@ -213,6 +216,7 @@ pub fn BlobViewer(mut blob_data: Signal<Option<BlobData>>, on_close: Callback<()
     }
 }
 
+#[allow(dead_code)]
 fn detect_blob_type(data: &[u8], mime_hint: Option<&str>) -> BlobViewMode {
     if let Some(mime) = mime_hint {
         if mime.starts_with("image/") {
@@ -250,6 +254,7 @@ fn detect_blob_type(data: &[u8], mime_hint: Option<&str>) -> BlobViewMode {
     BlobViewMode::Hex
 }
 
+#[allow(dead_code)]
 fn render_hex_dump(data: &[u8], bytes_per_line: usize) -> Vec<HexLine> {
     data.chunks(bytes_per_line)
         .enumerate()
@@ -277,10 +282,12 @@ fn render_hex_dump(data: &[u8], bytes_per_line: usize) -> Vec<HexLine> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn render_text_preview(data: &[u8]) -> String {
     String::from_utf8_lossy(data).into_owned()
 }
 
+#[allow(dead_code)]
 fn render_image_preview(data: &[u8]) -> Option<String> {
     let mime = if data.len() >= 4 {
         match [data[0], data[1], data[2], data[3]] {
@@ -298,6 +305,7 @@ fn render_image_preview(data: &[u8]) -> Option<String> {
     Some(format!("data:{mime};base64,{base64}"))
 }
 
+#[allow(dead_code)]
 fn base64_encode(data: &[u8]) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut result = String::new();
@@ -323,6 +331,7 @@ fn base64_encode(data: &[u8]) -> String {
     result
 }
 
+#[allow(dead_code)]
 fn format_bytes(size: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;

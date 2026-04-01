@@ -53,6 +53,7 @@ impl Default for IntrospectionConfig {
 /// - Separate pool from user connection pool
 pub struct IntrospectionPool {
     connection: DatabaseConnection,
+    #[allow(dead_code)]
     config: IntrospectionConfig,
 }
 
@@ -243,7 +244,9 @@ impl IntrospectionPool {
     }
 
     /// Create a dedicated pool with max 2 connections and 5s timeout
-    async fn create_dedicated_pool(request: &ConnectionRequest) -> Result<DatabaseConnection, String> {
+    async fn create_dedicated_pool(
+        request: &ConnectionRequest,
+    ) -> Result<DatabaseConnection, String> {
         match request {
             ConnectionRequest::Sqlite(data) => {
                 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
@@ -534,10 +537,7 @@ impl IntrospectionPool {
     }
 
     /// Collect index statistics from PostgreSQL
-    async fn collect_pg_index_stats(
-        &self,
-        pool: &sqlx::PgPool,
-    ) -> Result<Vec<IndexStat>, String> {
+    async fn collect_pg_index_stats(&self, pool: &sqlx::PgPool) -> Result<Vec<IndexStat>, String> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -571,10 +571,7 @@ impl IntrospectionPool {
     }
 
     /// Collect table statistics from PostgreSQL
-    async fn collect_pg_table_stats(
-        &self,
-        pool: &sqlx::PgPool,
-    ) -> Result<Vec<TableStat>, String> {
+    async fn collect_pg_table_stats(&self, pool: &sqlx::PgPool) -> Result<Vec<TableStat>, String> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -596,31 +593,24 @@ impl IntrospectionPool {
         )
         .fetch_all(pool)
         .await
-                .map_err(|e| format!("Failed to collect PostgreSQL table stats: {e}"))?;
-        Ok(rows) => {
-            let mut stats = Vec::new();
-            for row in rows {
-                stats.push(TableStat {
-                    schema: row.try_get::<String, _>("schema").unwrap_or_default(),
-                    table: row.try_get::<String, _>("table").unwrap_or_default(),
-                    seq_scan: row.try_get::<i64, _>("seq_scan").unwrap_or(0),
-                    seq_tup_read: row.try_get::<i64, _>("seq_tup_read").unwrap_or(0),
-                    idx_scan: row.try_get::<i64, _>("idx_scan").unwrap_or(0),
-                    idx_tup_fetch: row.try_get::<i64, _>("idx_tup_fetch").unwrap_or(0),
-                    n_tup_ins: row.try_get::<i64, _>("n_tup_ins").unwrap_or(0),
-                    n_tup_upd: row.try_get::<i64, _>("n_tup_upd").unwrap_or(0),
-                    n_tup_del: row.try_get::<i64, _>("n_tup_del").unwrap_or(0),
-                    n_live_tup: row.try_get::<i64, _>("n_live_tup").unwrap_or(0),
-                    n_dead_tup: row.try_get::<i64, _>("n_dead_tup").unwrap_or(0),
-                });
-            }
-            Ok(stats)
+        .map_err(|e| format!("Failed to collect PostgreSQL table stats: {e}"))?;
+
+        let mut stats = Vec::new();
+        for row in rows {
+            stats.push(TableStat {
+                schema: row.try_get::<String, _>("schema").unwrap_or_default(),
+                table: row.try_get::<String, _>("table").unwrap_or_default(),
+                seq_scan: row.try_get::<i64, _>("seq_scan").unwrap_or(0),
+                seq_tup_read: row.try_get::<i64, _>("seq_tup_read").unwrap_or(0),
+                idx_scan: row.try_get::<i64, _>("idx_scan").unwrap_or(0),
+                idx_tup_fetch: row.try_get::<i64, _>("idx_tup_fetch").unwrap_or(0),
+                n_tup_ins: row.try_get::<i64, _>("n_tup_ins").unwrap_or(0),
+                n_tup_upd: row.try_get::<i64, _>("n_tup_upd").unwrap_or(0),
+                n_tup_del: row.try_get::<i64, _>("n_tup_del").unwrap_or(0),
+                n_live_tup: row.try_get::<i64, _>("n_live_tup").unwrap_or(0),
+                n_dead_tup: row.try_get::<i64, _>("n_dead_tup").unwrap_or(0),
+            });
         }
-        Err(e) => {
-            tracing::warn!("Failed to collect PostgreSQL table stats: {}", e);
-            Ok(Vec::new())
-        }
-    }
         Ok(stats)
     }
 
@@ -670,7 +660,9 @@ impl IntrospectionPool {
             for col_row in column_rows {
                 columns.push(ColumnInfo {
                     name: col_row.try_get::<String, _>("name").unwrap_or_default(),
-                    data_type: col_row.try_get::<String, _>("data_type").unwrap_or_default(),
+                    data_type: col_row
+                        .try_get::<String, _>("data_type")
+                        .unwrap_or_default(),
                     nullable: col_row.try_get::<bool, _>("nullable").unwrap_or(true),
                     default: col_row.try_get("default_value").ok(),
                 });
@@ -745,10 +737,15 @@ impl IntrospectionPool {
                 let mut locks = Vec::new();
                 for row in rows {
                     locks.push(LockInfo {
-                        database: row.try_get::<String, _>("database_name").unwrap_or_default(),
+                        database: row
+                            .try_get::<String, _>("database_name")
+                            .unwrap_or_default(),
                         relation: row.try_get("relation").ok(),
                         mode: row.try_get::<String, _>("mode").unwrap_or_default(),
-                        granted: row.try_get::<i8, _>("granted").map(|g| g != 0).unwrap_or(false),
+                        granted: row
+                            .try_get::<i8, _>("granted")
+                            .map(|g| g != 0)
+                            .unwrap_or(false),
                         query: row.try_get("query").ok(),
                         pid: row.try_get::<i64, _>("pid").ok(),
                         wait_start: None,
@@ -798,7 +795,10 @@ impl IntrospectionPool {
                 query: row.try_get::<String, _>("query").unwrap_or_default(),
                 state: row.try_get::<String, _>("state").unwrap_or_default(),
                 start_time: None,
-                duration_ms: row.try_get::<i64, _>("duration_seconds").map(|s| s * 1000).ok(),
+                duration_ms: row
+                    .try_get::<i64, _>("duration_seconds")
+                    .map(|s| s * 1000)
+                    .ok(),
             });
         }
         Ok(queries)
@@ -926,7 +926,10 @@ impl IntrospectionPool {
     }
 
     /// Collect schema information from MySQL
-    async fn collect_mysql_schema_info(&self, pool: &sqlx::MySqlPool) -> Result<SchemaInfo, String> {
+    async fn collect_mysql_schema_info(
+        &self,
+        pool: &sqlx::MySqlPool,
+    ) -> Result<SchemaInfo, String> {
         let mut schema_info = SchemaInfo::default();
 
         // Get tables
@@ -971,8 +974,13 @@ impl IntrospectionPool {
             for col_row in column_rows {
                 columns.push(ColumnInfo {
                     name: col_row.try_get::<String, _>("name").unwrap_or_default(),
-                    data_type: col_row.try_get::<String, _>("data_type").unwrap_or_default(),
-                    nullable: col_row.try_get::<i8, _>("nullable").map(|n| n != 0).unwrap_or(true),
+                    data_type: col_row
+                        .try_get::<String, _>("data_type")
+                        .unwrap_or_default(),
+                    nullable: col_row
+                        .try_get::<i8, _>("nullable")
+                        .map(|n| n != 0)
+                        .unwrap_or(true),
                     default: col_row.try_get("default_value").ok(),
                 });
             }
@@ -1008,7 +1016,10 @@ impl IntrospectionPool {
                 table: row.try_get::<String, _>("table").unwrap_or_default(),
                 name: row.try_get::<String, _>("name").unwrap_or_default(),
                 columns: Vec::new(),
-                unique: row.try_get::<i64, _>("is_unique").map(|u| u != 0).unwrap_or(false),
+                unique: row
+                    .try_get::<i64, _>("is_unique")
+                    .map(|u| u != 0)
+                    .unwrap_or(false),
             });
         }
 
@@ -1090,7 +1101,10 @@ impl IntrospectionPool {
                 let mut queries = Vec::new();
                 for row in response.data {
                     queries.push(ActiveQueryInfo {
-                        pid: row.get(0).and_then(|v| v.as_str()).and_then(|s| s.parse().ok()),
+                        pid: row
+                            .get(0)
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse().ok()),
                         database: config.database.clone(),
                         username: row
                             .get(1)
@@ -1279,8 +1293,16 @@ impl IntrospectionPool {
 
         if let Ok(response) = result {
             for row in response.data {
-                let schema = row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let name = row.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let schema = row
+                    .get(0)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = row
+                    .get(1)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
 
                 // Get columns for this table
                 let col_result = driver_clickhouse::execute_json_query(
@@ -1478,11 +1500,30 @@ impl IntrospectionPool {
         )
         .fetch_all(pool)
         .await
-                .map_err(|e| {
-                tracing::warn!("Failed to collect SQLite schema info: {}", e);
-                Ok(SchemaInfo::default())
-            })
-        }
+        .map_err(|e| format!("Failed to collect SQLite schema info: {e}"))?;
+
+        for row in rows {
+            let schema: String = row.try_get("schema").unwrap_or_default();
+            let name: String = row.try_get("name").unwrap_or_default();
+
+            // Get columns for this table
+            let column_rows = sqlx::query(&format!("PRAGMA table_info(\"{}\")", name))
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+
+            let mut columns = Vec::new();
+            for col_row in column_rows {
+                columns.push(ColumnInfo {
+                    name: col_row.try_get::<String, _>("name").unwrap_or_default(),
+                    data_type: col_row.try_get::<String, _>("type").unwrap_or_default(),
+                    nullable: col_row
+                        .try_get::<i32, _>("notnull")
+                        .map(|n| n == 0)
+                        .unwrap_or(true),
+                    default: col_row.try_get("dflt_value").ok(),
+                });
+            }
 
             schema_info.tables.push(TableInfo {
                 schema,
@@ -1510,7 +1551,9 @@ impl IntrospectionPool {
 
         for row in index_rows {
             let sql: Option<String> = row.try_get("sql").ok();
-            let unique = sql.map(|s| s.to_uppercase().contains("UNIQUE")).unwrap_or(false);
+            let unique = sql
+                .map(|s| s.to_uppercase().contains("UNIQUE"))
+                .unwrap_or(false);
 
             schema_info.indexes.push(IndexInfo {
                 schema: row.try_get::<String, _>("schema").unwrap_or_default(),

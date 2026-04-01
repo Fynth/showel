@@ -1,4 +1,4 @@
-use crate::app_state::{open_connection_screen, open_settings_modal, show_workspace, APP_STATE};
+use crate::app_state::{APP_STATE, open_connection_screen, open_settings_modal, show_workspace};
 use dioxus::prelude::*;
 
 const APP_ICON: &str = include_str!("../../../app/assets/icon.svg");

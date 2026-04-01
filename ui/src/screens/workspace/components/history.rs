@@ -6,7 +6,6 @@ use crate::screens::workspace::actions::set_active_tab_sql;
 
 const PAGE_SIZE: usize = 50;
 
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DateFilter {
     All,
@@ -60,7 +59,6 @@ impl OutcomeFilter {
         [Self::All, Self::Success, Self::Error]
     }
 }
-
 
 fn unix_timestamp_now() -> i64 {
     std::time::SystemTime::now()
@@ -177,7 +175,9 @@ fn redact_sql_display(sql: &str) -> String {
 }
 
 fn build_csv(items: &[QueryHistoryItem]) -> String {
-    let mut csv = String::from("id,sql,outcome,duration_ms,rows_returned,executed_at,connection_name,connection_type,error_message\n");
+    let mut csv = String::from(
+        "id,sql,outcome,duration_ms,rows_returned,executed_at,connection_name,connection_type,error_message\n",
+    );
     for item in items {
         let sql_escaped = format!("\"{}\"", item.sql.replace('"', "\"\""));
         let rows_str = item
@@ -210,7 +210,6 @@ fn build_csv(items: &[QueryHistoryItem]) -> String {
     }
     csv
 }
-
 
 #[component]
 pub fn QueryHistoryPanel(
@@ -256,7 +255,12 @@ pub fn QueryHistoryPanel(
         names
     };
 
-    let filtered = apply_filters(base_items, date_filter(), &connection_filter(), outcome_filter());
+    let filtered = apply_filters(
+        base_items,
+        date_filter(),
+        &connection_filter(),
+        outcome_filter(),
+    );
 
     let total_items = filtered.len();
     let total_pages = if total_items == 0 {

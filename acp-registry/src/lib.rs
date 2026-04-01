@@ -17,6 +17,7 @@ const ACP_REGISTRY_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const ACP_ARCHIVE_CONNECT_TIMEOUT: Duration = Duration::from_secs(6);
 const ACP_ARCHIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
 
+#[allow(dead_code)]
 struct SpecialistCapability {
     keywords: &'static [&'static str],
     description: &'static str,
@@ -28,21 +29,11 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
         &AgentSpecialist::SqlExpert,
         SpecialistCapability {
             keywords: &[
-                "SELECT",
-                "INSERT",
-                "UPDATE",
-                "DELETE",
-                "FROM",
-                "WHERE",
-                "JOIN",
-                "GROUP BY",
+                "SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "WHERE", "JOIN", "GROUP BY",
                 "ORDER BY",
             ],
             description: "SQL query optimization and generation expert",
-            example_queries: &[
-                "Optimize this query",
-                "How do I join these tables?",
-            ],
+            example_queries: &["Optimize this query", "How do I join these tables?"],
         },
     ),
     (
@@ -60,10 +51,7 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
                 "statistics",
             ],
             description: "Data analysis and visualization expert",
-            example_queries: &[
-                "Show me sales trends",
-                "What's the average order value?",
-            ],
+            example_queries: &["Show me sales trends", "What's the average order value?"],
         },
     ),
     (
@@ -79,10 +67,7 @@ const SPECIALIST_REGISTRY: &[(&AgentSpecialist, SpecialistCapability)] = &[
                 "design",
             ],
             description: "Database schema design and migration expert",
-            example_queries: &[
-                "Design a table for users",
-                "How do I add an index?",
-            ],
+            example_queries: &["Design a table for users", "How do I add an index?"],
         },
     ),
 ];

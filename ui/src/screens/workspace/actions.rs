@@ -20,7 +20,8 @@ fn redact_sql(sql: &str) -> String {
                             if let Some(eq_pos) = line.find('=') {
                                 let (before, after) = line.split_at(eq_pos + 1);
                                 let after_trimmed = after.trim_start();
-                                if after_trimmed.starts_with('\'') || after_trimmed.starts_with('"') {
+                                if after_trimmed.starts_with('\'') || after_trimmed.starts_with('"')
+                                {
                                     let quote_char = after_trimmed.chars().next().unwrap();
                                     if after_trimmed[1..].find(quote_char).is_some() {
                                         format!("{} [REDACTED]", before.trim_end())
@@ -28,8 +29,14 @@ fn redact_sql(sql: &str) -> String {
                                         format!("{} [REDACTED]", before.trim_end())
                                     }
                                 } else {
-                                    let value_end = after_trimmed.find(|c: char| !c.is_alphanumeric() && c != '_').unwrap_or(after_trimmed.len());
-                                    format!("{}{} [REDACTED]", before.trim_end(), &after_trimmed[..value_end])
+                                    let value_end = after_trimmed
+                                        .find(|c: char| !c.is_alphanumeric() && c != '_')
+                                        .unwrap_or(after_trimmed.len());
+                                    format!(
+                                        "{}{} [REDACTED]",
+                                        before.trim_end(),
+                                        &after_trimmed[..value_end]
+                                    )
                                 }
                             } else {
                                 line.to_string()

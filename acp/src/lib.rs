@@ -12,12 +12,14 @@ pub use agents::{
     SpecialistResponse, SqlExpert, UserIntent,
 };
 pub use context::{build_acp_database_context, warm_acp_database_schema_context};
-pub use embedding::{LazyEmbeddingModel, cosine_similarity, EmbeddingModel, EMBEDDING_DIM, MODEL_FILENAME};
+pub use embedding::{
+    EMBEDDING_DIM, EmbeddingModel, LazyEmbeddingModel, MODEL_FILENAME, cosine_similarity,
+};
 pub use introspection::{
-    explain_query_plan_mysql, explain_query_plan_postgres, explain_query_plan_sqlite,
     ActiveQueryInfo, ColumnInfo, IndexInfo, IndexStat, IntrospectionConfig, IntrospectionPool,
     IntrospectionRateLimiter, IntrospectionResult, LockInfo, QueryHistoryEntry, SchemaInfo,
-    TableInfo, TableStat,
+    TableInfo, TableStat, explain_query_plan_mysql, explain_query_plan_postgres,
+    explain_query_plan_sqlite,
 };
 pub use ollama::{
     EmbeddedOllamaAgentConfig, OllamaSpecialistAdapter, build_embedded_ollama_launch,

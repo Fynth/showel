@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::chat::chat_pool;
 
 /// Semantic cache entry ID type
+#[allow(dead_code)]
 pub type CacheEntryId = String;
 
 /// SemanticCacheStore provides semantic similarity-based caching for LLM responses
@@ -63,16 +64,20 @@ impl SemanticCacheStore {
     }
 
     /// Look up a cached response by embedding similarity
-    /// 
+    ///
     /// # Arguments
     /// * `embedding` - The query embedding vector (384-dimensional f32)
     /// * `threshold` - Minimum similarity threshold (0.0 to 1.0, higher = more similar)
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Some(response_text))` - If a similar query is found within threshold
     /// * `Ok(None)` - If no similar query is found
     /// * `Err(String)` - If database error occurs
-    pub async fn lookup(&self, embedding: &[f32], threshold: f32) -> Result<Option<String>, String> {
+    pub async fn lookup(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+    ) -> Result<Option<String>, String> {
         let pool = chat_pool().await?;
         self.lookup_with_pool(pool, embedding, threshold).await
     }
@@ -92,8 +97,10 @@ impl SemanticCacheStore {
         }
 
         // Convert embedding to JSON format for sqlite-vec
-        let embedding_json = format!("[{}]", 
-            embedding.iter()
+        let embedding_json = format!(
+            "[{}]",
+            embedding
+                .iter()
                 .map(|f| f.to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -146,13 +153,13 @@ impl SemanticCacheStore {
     }
 
     /// Store a new entry in the semantic cache
-    /// 
+    ///
     /// # Arguments
     /// * `query` - The original query text
     /// * `embedding` - The query embedding vector (384-dimensional f32)
     /// * `response` - The response text to cache
     /// * `threshold` - The similarity threshold used for this entry
-    /// 
+    ///
     /// # Returns
     /// * `Ok(())` - If stored successfully
     /// * `Err(String)` - If database error occurs
@@ -164,7 +171,8 @@ impl SemanticCacheStore {
         threshold: f32,
     ) -> Result<(), String> {
         let pool = chat_pool().await?;
-        self.store_with_pool(pool, query, embedding, response, threshold).await
+        self.store_with_pool(pool, query, embedding, response, threshold)
+            .await
     }
 
     /// Store with provided pool (for testing)
@@ -213,15 +221,17 @@ impl SemanticCacheStore {
         .map_err(|err| format!("failed to store semantic cache entry: {err}"))?;
 
         // Insert into vec0 virtual table using last_insert_rowid() within same transaction
-        let embedding_json = format!("[{}]", 
-            embedding.iter()
+        let embedding_json = format!(
+            "[{}]",
+            embedding
+                .iter()
                 .map(|f| f.to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
 
         sqlx::query(
-            "INSERT INTO semantic_cache_vec (rowid, embedding) VALUES (last_insert_rowid(), ?)"
+            "INSERT INTO semantic_cache_vec (rowid, embedding) VALUES (last_insert_rowid(), ?)",
         )
         .bind(&embedding_json)
         .execute(&mut *tx)
@@ -236,10 +246,10 @@ impl SemanticCacheStore {
     }
 
     /// Invalidate (delete) a specific cache entry by ID
-    /// 
+    ///
     /// # Arguments
     /// * `entry_id` - The ID of the entry to invalidate
-    /// 
+    ///
     /// # Returns
     /// * `Ok(())` - If deleted successfully or entry didn't exist
     /// * `Err(String)` - If database error occurs
@@ -251,11 +261,12 @@ impl SemanticCacheStore {
     /// Invalidate with provided pool (for testing)
     async fn invalidate_with_pool(&self, pool: &SqlitePool, entry_id: &str) -> Result<(), String> {
         // Get the rowid first
-        let rowid: Option<i64> = sqlx::query_scalar("SELECT rowid FROM semantic_cache WHERE id = ?")
-            .bind(entry_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|err| format!("failed to find cache entry: {err}"))?;
+        let rowid: Option<i64> =
+            sqlx::query_scalar("SELECT rowid FROM semantic_cache WHERE id = ?")
+                .bind(entry_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|err| format!("failed to find cache entry: {err}"))?;
 
         if let Some(rowid) = rowid {
             // Delete from vec0 virtual table first (maintains referential consistency)
@@ -277,10 +288,10 @@ impl SemanticCacheStore {
     }
 
     /// Clean up expired entries based on TTL (time-to-live)
-    /// 
+    ///
     /// # Arguments
     /// * `ttl_seconds` - Time-to-live in seconds; entries older than this will be deleted
-    /// 
+    ///
     /// # Returns
     /// * `Ok(usize)` - Number of entries deleted
     /// * `Err(String)` - If database error occurs
@@ -298,13 +309,12 @@ impl SemanticCacheStore {
         let cutoff_time = unix_timestamp() - ttl_seconds;
 
         // Get rowids of expired entries
-        let rowids: Vec<i64> = sqlx::query_scalar(
-            "SELECT rowid FROM semantic_cache WHERE created_at < ?"
-        )
-        .bind(cutoff_time)
-        .fetch_all(pool)
-        .await
-        .map_err(|err| format!("failed to find expired entries: {err}"))?;
+        let rowids: Vec<i64> =
+            sqlx::query_scalar("SELECT rowid FROM semantic_cache WHERE created_at < ?")
+                .bind(cutoff_time)
+                .fetch_all(pool)
+                .await
+                .map_err(|err| format!("failed to find expired entries: {err}"))?;
 
         let deleted_count = rowids.len();
 
@@ -342,15 +352,17 @@ impl SemanticCacheStore {
             .await
             .map_err(|err| format!("failed to count entries: {err}"))?;
 
-        let total_hits: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(hit_count), 0) FROM semantic_cache")
-            .fetch_one(pool)
-            .await
-            .map_err(|err| format!("failed to sum hits: {err}"))?;
+        let total_hits: i64 =
+            sqlx::query_scalar("SELECT COALESCE(SUM(hit_count), 0) FROM semantic_cache")
+                .fetch_one(pool)
+                .await
+                .map_err(|err| format!("failed to sum hits: {err}"))?;
 
-        let oldest_entry: Option<i64> = sqlx::query_scalar("SELECT MIN(created_at) FROM semantic_cache")
-            .fetch_optional(pool)
-            .await
-            .map_err(|err| format!("failed to get oldest entry: {err}"))?;
+        let oldest_entry: Option<i64> =
+            sqlx::query_scalar("SELECT MIN(created_at) FROM semantic_cache")
+                .fetch_optional(pool)
+                .await
+                .map_err(|err| format!("failed to get oldest entry: {err}"))?;
 
         Ok(CacheStats {
             total_entries: total_entries as usize,
@@ -380,20 +392,17 @@ pub struct CacheStats {
 /// Generate a unique cache entry ID
 fn generate_cache_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
-    
+
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let counter = COUNTER.fetch_add(1, Ordering::SeqCst);
     let timestamp = unix_timestamp();
-    
+
     format!("cache_{}_{}", timestamp, counter)
 }
 
 /// Convert f32 embedding vector to bytes for BLOB storage
 fn embedding_to_bytes(embedding: &[f32]) -> Vec<u8> {
-    embedding
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect()
+    embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
 /// Convert bytes back to f32 embedding vector
@@ -402,13 +411,13 @@ fn bytes_to_embedding(bytes: &[u8]) -> Result<Vec<f32>, String> {
     if bytes.len() % 4 != 0 {
         return Err("invalid embedding bytes length".to_string());
     }
-    
+
     let mut embedding = Vec::with_capacity(bytes.len() / 4);
     for chunk in bytes.chunks_exact(4) {
         let bytes_array: [u8; 4] = chunk.try_into().map_err(|_| "chunk conversion failed")?;
         embedding.push(f32::from_le_bytes(bytes_array));
     }
-    
+
     Ok(embedding)
 }
 
@@ -433,7 +442,7 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .expect("failed to create test pool");
-        
+
         pool
     }
 
@@ -446,15 +455,20 @@ mod tests {
     async fn test_schema_initialization() {
         let pool = create_test_pool().await;
         let store = SemanticCacheStore::new();
-        
-        store.initialize_schema_with_pool(&pool).await.expect("failed to initialize schema");
-        
-        // Verify tables exist by running a simple query
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='semantic_cache'")
-            .fetch_one(&pool)
+
+        store
+            .initialize_schema_with_pool(&pool)
             .await
-            .expect("failed to check table existence");
-        
+            .expect("failed to initialize schema");
+
+        // Verify tables exist by running a simple query
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='semantic_cache'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("failed to check table existence");
+
         assert_eq!(count, 1, "semantic_cache table should exist");
     }
 
@@ -462,23 +476,34 @@ mod tests {
     async fn test_store_and_lookup() {
         let pool = create_test_pool().await;
         let store = SemanticCacheStore::new();
-        
-        store.initialize_schema_with_pool(&pool).await.expect("failed to initialize schema");
-        
+
+        store
+            .initialize_schema_with_pool(&pool)
+            .await
+            .expect("failed to initialize schema");
+
         // Store an entry
         let embedding = create_test_embedding(0.5);
         let query = "test query".to_string();
         let response = "test response".to_string();
-        
-        store.store_with_pool(&pool, query.clone(), embedding.clone(), response.clone(), 0.8)
+
+        store
+            .store_with_pool(
+                &pool,
+                query.clone(),
+                embedding.clone(),
+                response.clone(),
+                0.8,
+            )
             .await
             .expect("failed to store");
-        
+
         // Lookup with same embedding (should find it)
-        let found = store.lookup_with_pool(&pool, &embedding, 0.8)
+        let found = store
+            .lookup_with_pool(&pool, &embedding, 0.8)
             .await
             .expect("failed to lookup");
-        
+
         assert_eq!(found, Some(response));
     }
 
@@ -486,24 +511,29 @@ mod tests {
     async fn test_lookup_threshold() {
         let pool = create_test_pool().await;
         let store = SemanticCacheStore::new();
-        
-        store.initialize_schema_with_pool(&pool).await.expect("failed to initialize schema");
-        
+
+        store
+            .initialize_schema_with_pool(&pool)
+            .await
+            .expect("failed to initialize schema");
+
         // Store an entry
         let embedding = create_test_embedding(0.5);
         let query = "test query".to_string();
         let response = "test response".to_string();
-        
-        store.store_with_pool(&pool, query, embedding.clone(), response, 0.8)
+
+        store
+            .store_with_pool(&pool, query, embedding.clone(), response, 0.8)
             .await
             .expect("failed to store");
-        
+
         // Lookup with very high threshold (should not find it due to exact match requirement)
         let different_embedding = create_test_embedding(0.9);
-        let found = store.lookup_with_pool(&pool, &different_embedding, 0.99)
+        let found = store
+            .lookup_with_pool(&pool, &different_embedding, 0.99)
             .await
             .expect("failed to lookup");
-        
+
         assert_eq!(found, None);
     }
 
@@ -511,34 +541,43 @@ mod tests {
     async fn test_invalidate() {
         let pool = create_test_pool().await;
         let store = SemanticCacheStore::new();
-        
-        store.initialize_schema_with_pool(&pool).await.expect("failed to initialize schema");
-        
+
+        store
+            .initialize_schema_with_pool(&pool)
+            .await
+            .expect("failed to initialize schema");
+
         // Store an entry
         let embedding = create_test_embedding(0.5);
         let query = "test query".to_string();
         let response = "test response".to_string();
-        
-        store.store_with_pool(&pool, query, embedding.clone(), response.clone(), 0.8)
+
+        store
+            .store_with_pool(&pool, query, embedding.clone(), response.clone(), 0.8)
             .await
             .expect("failed to store");
-        
+
         // Verify it exists
-        let found = store.lookup_with_pool(&pool, &embedding, 0.8)
+        let found = store
+            .lookup_with_pool(&pool, &embedding, 0.8)
             .await
             .expect("failed to lookup");
         assert!(found.is_some());
-        
+
         // Get the entry ID and invalidate it
         let id: String = sqlx::query_scalar("SELECT id FROM semantic_cache LIMIT 1")
             .fetch_one(&pool)
             .await
             .expect("failed to get id");
-        
-        store.invalidate_with_pool(&pool, &id).await.expect("failed to invalidate");
-        
+
+        store
+            .invalidate_with_pool(&pool, &id)
+            .await
+            .expect("failed to invalidate");
+
         // Verify it's gone
-        let found = store.lookup_with_pool(&pool, &embedding, 0.8)
+        let found = store
+            .lookup_with_pool(&pool, &embedding, 0.8)
             .await
             .expect("failed to lookup");
         assert_eq!(found, None);
@@ -548,9 +587,12 @@ mod tests {
     async fn test_cleanup_expired() {
         let pool = create_test_pool().await;
         let store = SemanticCacheStore::new();
-        
-        store.initialize_schema_with_pool(&pool).await.expect("failed to initialize schema");
-        
+
+        store
+            .initialize_schema_with_pool(&pool)
+            .await
+            .expect("failed to initialize schema");
+
         // Insert an entry with an old timestamp directly
         sqlx::query(
             "INSERT INTO semantic_cache (id, embedding, query_text, response_text, created_at, hit_count, similarity_threshold_used)
@@ -559,23 +601,27 @@ mod tests {
         .execute(&pool)
         .await
         .expect("failed to insert old entry");
-        
+
         // Verify entry exists
         let count_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM semantic_cache")
             .fetch_one(&pool)
             .await
             .expect("failed to count");
         assert_eq!(count_before, 1);
-        
+
         // Clean up with TTL of 3600 (should delete entries older than 1 hour)
-        let deleted = store.cleanup_expired_with_pool(&pool, 3600)
+        let deleted = store
+            .cleanup_expired_with_pool(&pool, 3600)
             .await
             .expect("failed to cleanup");
-        
+
         assert_eq!(deleted, 1);
-        
+
         // Verify stats show 0 entries
-        let stats = store.get_stats_with_pool(&pool).await.expect("failed to get stats");
+        let stats = store
+            .get_stats_with_pool(&pool)
+            .await
+            .expect("failed to get stats");
         assert_eq!(stats.total_entries, 0);
     }
 
@@ -583,27 +629,35 @@ mod tests {
     async fn test_hit_count_increment() {
         let pool = create_test_pool().await;
         let store = SemanticCacheStore::new();
-        
-        store.initialize_schema_with_pool(&pool).await.expect("failed to initialize schema");
-        
+
+        store
+            .initialize_schema_with_pool(&pool)
+            .await
+            .expect("failed to initialize schema");
+
         // Store an entry
         let embedding = create_test_embedding(0.5);
         let query = "test query".to_string();
         let response = "test response".to_string();
-        
-        store.store_with_pool(&pool, query, embedding.clone(), response, 0.8)
+
+        store
+            .store_with_pool(&pool, query, embedding.clone(), response, 0.8)
             .await
             .expect("failed to store");
-        
+
         // Lookup multiple times
         for _ in 0..3 {
-            let _ = store.lookup_with_pool(&pool, &embedding, 0.8)
+            let _ = store
+                .lookup_with_pool(&pool, &embedding, 0.8)
                 .await
                 .expect("failed to lookup");
         }
-        
+
         // Verify hit count
-        let stats = store.get_stats_with_pool(&pool).await.expect("failed to get stats");
+        let stats = store
+            .get_stats_with_pool(&pool)
+            .await
+            .expect("failed to get stats");
         assert_eq!(stats.total_hits, 3);
     }
 
@@ -611,15 +665,26 @@ mod tests {
     async fn test_embedding_dimension_validation() {
         let pool = create_test_pool().await;
         let store = SemanticCacheStore::new();
-        
-        store.initialize_schema_with_pool(&pool).await.expect("failed to initialize schema");
-        
+
+        store
+            .initialize_schema_with_pool(&pool)
+            .await
+            .expect("failed to initialize schema");
+
         // Try to store with wrong dimensions
         let wrong_embedding = vec![0.5; 100]; // Only 100 dimensions
-        let result = store.store_with_pool(&pool, "query".to_string(), wrong_embedding, "response".to_string(), 0.8).await;
+        let result = store
+            .store_with_pool(
+                &pool,
+                "query".to_string(),
+                wrong_embedding,
+                "response".to_string(),
+                0.8,
+            )
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("384"));
-        
+
         // Try to lookup with wrong dimensions
         let wrong_embedding = vec![0.5; 100];
         let result = store.lookup_with_pool(&pool, &wrong_embedding, 0.8).await;

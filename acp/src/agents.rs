@@ -569,15 +569,21 @@ mod tests {
     fn coordinator_new_registers_all_specialists() {
         let coordinator = AgentCoordinator::new();
 
-        assert!(coordinator
-            .specialists
-            .contains_key(&AgentSpecialist::SqlExpert));
-        assert!(coordinator
-            .specialists
-            .contains_key(&AgentSpecialist::DataAnalyst));
-        assert!(coordinator
-            .specialists
-            .contains_key(&AgentSpecialist::SchemaArchitect));
+        assert!(
+            coordinator
+                .specialists
+                .contains_key(&AgentSpecialist::SqlExpert)
+        );
+        assert!(
+            coordinator
+                .specialists
+                .contains_key(&AgentSpecialist::DataAnalyst)
+        );
+        assert!(
+            coordinator
+                .specialists
+                .contains_key(&AgentSpecialist::SchemaArchitect)
+        );
     }
 
     #[test]
@@ -635,15 +641,21 @@ mod tests {
         };
 
         // All three specialists should work
-        assert!(coordinator
-            .dispatch(AgentSpecialist::SqlExpert, &request)
-            .is_ok());
-        assert!(coordinator
-            .dispatch(AgentSpecialist::DataAnalyst, &request)
-            .is_ok());
-        assert!(coordinator
-            .dispatch(AgentSpecialist::SchemaArchitect, &request)
-            .is_ok());
+        assert!(
+            coordinator
+                .dispatch(AgentSpecialist::SqlExpert, &request)
+                .is_ok()
+        );
+        assert!(
+            coordinator
+                .dispatch(AgentSpecialist::DataAnalyst, &request)
+                .is_ok()
+        );
+        assert!(
+            coordinator
+                .dispatch(AgentSpecialist::SchemaArchitect, &request)
+                .is_ok()
+        );
     }
 
     #[test]

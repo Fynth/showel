@@ -19,6 +19,7 @@ pub struct AppToast {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum ToastKind {
     Info,
     Success,
@@ -81,14 +82,17 @@ pub fn toast_error(message: impl Into<String>) {
     show_toast(message, ToastKind::Error);
 }
 
+#[allow(dead_code)]
 pub fn toast_info(message: impl Into<String>) {
     show_toast(message, ToastKind::Info);
 }
 
+#[allow(dead_code)]
 pub fn toast_success(message: impl Into<String>) {
     show_toast(message, ToastKind::Success);
 }
 
+#[allow(dead_code)]
 pub fn toast_warning(message: impl Into<String>) {
     show_toast(message, ToastKind::Warning);
 }

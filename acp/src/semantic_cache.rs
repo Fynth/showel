@@ -1,4 +1,4 @@
-use crate::embedding::{cosine_similarity, EmbeddingModel};
+use crate::embedding::{EmbeddingModel, cosine_similarity};
 use std::sync::Arc;
 use storage::{CacheStats, SemanticCacheStore};
 use tokio::sync::RwLock;
@@ -14,7 +14,7 @@ pub const DEFAULT_TTL_SECONDS: i64 = 7 * 24 * 60 * 60;
 pub const DEFAULT_CLEANUP_INTERVAL_SECONDS: u64 = 60 * 60;
 
 /// Semantic cache for LLM responses with embedding-based similarity matching
-/// 
+///
 /// Provides efficient caching of LLM responses based on semantic similarity
 /// of queries. Uses cosine similarity between embeddings to find cached
 /// responses for semantically equivalent queries.
@@ -28,11 +28,11 @@ pub struct SemanticCache {
 
 impl SemanticCache {
     /// Create a new SemanticCache instance
-    /// 
+    ///
     /// # Arguments
     /// * `embedding_model` - Optional embedding model for generating embeddings.
     ///                       If None, cache operations will fail gracefully.
-    /// 
+    ///
     /// # Returns
     /// * `Ok(SemanticCache)` - New cache instance with background cleanup task started
     /// * `Err(String)` - If initialization failed
@@ -59,12 +59,12 @@ impl SemanticCache {
     }
 
     /// Create a new SemanticCache with custom parameters
-    /// 
+    ///
     /// # Arguments
     /// * `embedding_model` - Optional embedding model
     /// * `similarity_threshold` - Minimum cosine similarity for cache hits (0.0-1.0)
     /// * `ttl_seconds` - Time-to-live for cache entries in seconds
-    /// 
+    ///
     /// # Returns
     /// * `Ok(SemanticCache)` - New cache instance
     pub async fn with_params(
@@ -91,14 +91,14 @@ impl SemanticCache {
     }
 
     /// Look up a cached response using a pre-computed embedding
-    /// 
+    ///
     /// This method is useful when you already have the embedding and want to
     /// avoid re-generating it for the cache lookup.
-    /// 
+    ///
     /// # Arguments
     /// * `embedding` - 384-dimensional query embedding vector
     /// * `threshold` - Optional custom similarity threshold (uses default if None)
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Some(response))` - Cached response if found within threshold
     /// * `Ok(None)` - No matching cache entry found
@@ -113,19 +113,23 @@ impl SemanticCache {
     }
 
     /// Look up a cached response for the given query text
-    /// 
+    ///
     /// Generates an embedding for the query text and searches for similar
     /// cached responses. Returns None if no embedding model is available.
-    /// 
+    ///
     /// # Arguments
     /// * `query` - Query text to look up
     /// * `threshold` - Optional custom similarity threshold
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Some(response))` - Cached response if found
     /// * `Ok(None)` - No matching entry or no embedding model available
     /// * `Err(String)` - If lookup failed
-    pub async fn lookup(&self, query: &str, threshold: Option<f32>) -> Result<Option<String>, String> {
+    pub async fn lookup(
+        &self,
+        query: &str,
+        threshold: Option<f32>,
+    ) -> Result<Option<String>, String> {
         let embedding_model = match &self.embedding_model {
             Some(model) => model,
             None => return Ok(None),
@@ -135,7 +139,10 @@ impl SemanticCache {
         let embedding = match embedding_model.embed(query.to_string()).await {
             Ok(emb) => emb,
             Err(e) => {
-                tracing::warn!("Embedding generation failed during cache lookup, skipping cache: {}", e);
+                tracing::warn!(
+                    "Embedding generation failed during cache lookup, skipping cache: {}",
+                    e
+                );
                 return Ok(None);
             }
         };
@@ -148,19 +155,15 @@ impl SemanticCache {
             }
         }
     }
-        };
-
-        self.lookup_with_embedding(&embedding, threshold).await
-    }
 
     /// Store a response with a pre-computed embedding
-    /// 
+    ///
     /// # Arguments
     /// * `query` - Original query text
     /// * `embedding` - 384-dimensional query embedding vector
     /// * `response` - Response text to cache
     /// * `threshold` - Optional custom similarity threshold used for this entry
-    /// 
+    ///
     /// # Returns
     /// * `Ok(())` - If stored successfully
     /// * `Err(String)` - If storage failed
@@ -172,19 +175,21 @@ impl SemanticCache {
         threshold: Option<f32>,
     ) -> Result<(), String> {
         let effective_threshold = threshold.unwrap_or(self.similarity_threshold);
-        self.store.store(query, embedding, response, effective_threshold).await
+        self.store
+            .store(query, embedding, response, effective_threshold)
+            .await
     }
 
     /// Store a response for the given query text
-    /// 
+    ///
     /// Generates an embedding and stores the query-response pair.
     /// Does nothing if no embedding model is available.
-    /// 
+    ///
     /// # Arguments
     /// * `query` - Query text
     /// * `response` - Response text to cache
     /// * `threshold` - Optional custom similarity threshold
-    /// 
+    ///
     /// # Returns
     /// * `Ok(())` - If stored successfully or no model available
     /// * `Err(String)` - If storage failed
@@ -202,12 +207,18 @@ impl SemanticCache {
         let embedding = match embedding_model.embed(query.clone()).await {
             Ok(emb) => emb,
             Err(e) => {
-                tracing::warn!("Embedding generation failed during cache store, skipping cache write: {}", e);
+                tracing::warn!(
+                    "Embedding generation failed during cache store, skipping cache write: {}",
+                    e
+                );
                 return Ok(());
             }
         };
 
-        if let Err(e) = self.store_with_embedding(query, embedding, response, threshold).await {
+        if let Err(e) = self
+            .store_with_embedding(query, embedding, response, threshold)
+            .await
+        {
             tracing::warn!("Cache store failed, continuing without cache: {}", e);
         }
 
@@ -215,14 +226,14 @@ impl SemanticCache {
     }
 
     /// Calculate similarity between two embeddings
-    /// 
+    ///
     /// Convenience method that delegates to the embedding module's
     /// cosine_similarity function.
-    /// 
+    ///
     /// # Arguments
     /// * `vec1` - First embedding vector
     /// * `vec2` - Second embedding vector
-    /// 
+    ///
     /// # Returns
     /// Cosine similarity in range [-1.0, 1.0]
     pub fn similarity(&self, vec1: &[f32], vec2: &[f32]) -> f32 {
@@ -230,7 +241,7 @@ impl SemanticCache {
     }
 
     /// Get cache statistics
-    /// 
+    ///
     /// # Returns
     /// * `Ok(CacheStats)` - Current cache statistics
     /// * `Err(String)` - If query failed
@@ -239,7 +250,7 @@ impl SemanticCache {
     }
 
     /// Clean up expired entries manually
-    /// 
+    ///
     /// # Returns
     /// * `Ok(count)` - Number of entries deleted
     /// * `Err(String)` - If cleanup failed
@@ -254,10 +265,10 @@ impl SemanticCache {
     }
 
     /// Start the background TTL cleanup task
-    /// 
+    ///
     /// This spawns a tokio task that periodically cleans up expired cache entries.
     /// The task runs until the SemanticCache is dropped.
-    /// 
+    ///
     /// # Arguments
     /// * `interval_seconds` - Interval between cleanup runs
     fn start_cleanup_task(&self, interval_seconds: u64) {
@@ -275,7 +286,10 @@ impl SemanticCache {
                 match store.cleanup_expired(ttl_seconds).await {
                     Ok(deleted) => {
                         if deleted > 0 {
-                            tracing::debug!("Cleaned up {} expired semantic cache entries", deleted);
+                            tracing::debug!(
+                                "Cleaned up {} expired semantic cache entries",
+                                deleted
+                            );
                         }
                     }
                     Err(e) => {
@@ -292,7 +306,7 @@ impl SemanticCache {
     }
 
     /// Stop the background cleanup task
-    /// 
+    ///
     /// This is called automatically on drop, but can be called manually
     /// if you need to ensure cleanup stops before the cache is dropped.
     pub async fn stop_cleanup_task(&self) {
@@ -415,7 +429,10 @@ mod tests {
         let builder = SemanticCacheBuilder::new();
         assert_eq!(builder.similarity_threshold, DEFAULT_SIMILARITY_THRESHOLD);
         assert_eq!(builder.ttl_seconds, DEFAULT_TTL_SECONDS);
-        assert_eq!(builder.cleanup_interval_seconds, DEFAULT_CLEANUP_INTERVAL_SECONDS);
+        assert_eq!(
+            builder.cleanup_interval_seconds,
+            DEFAULT_CLEANUP_INTERVAL_SECONDS
+        );
     }
 
     #[test]
@@ -432,12 +449,10 @@ mod tests {
 
     #[test]
     fn test_threshold_clamping() {
-        let builder = SemanticCacheBuilder::new()
-            .with_similarity_threshold(1.5); // Should clamp to 1.0
+        let builder = SemanticCacheBuilder::new().with_similarity_threshold(1.5); // Should clamp to 1.0
         assert_eq!(builder.similarity_threshold, 1.0);
 
-        let builder = SemanticCacheBuilder::new()
-            .with_similarity_threshold(-0.5); // Should clamp to 0.0
+        let builder = SemanticCacheBuilder::new().with_similarity_threshold(-0.5); // Should clamp to 0.0
         assert_eq!(builder.similarity_threshold, 0.0);
     }
 }
