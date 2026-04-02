@@ -1,0 +1,307 @@
+name: Publish Package Repos to Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v"
+        required: true
+        type: string
+      git_ref:
+        description: "Git ref or commit to package; defaults to tag v<version>"
+        required: false
+        type: string
+
+concurrency:
+  group: repo-pages-${{ github.event.inputs.version }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-apt-site:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.git_ref || format('refs/tags/v{0}', github.event.inputs.version) }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Debian packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            dpkg-dev \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libxdo-dev
+
+      - name: Build release binary
+        run: cargo build --locked --release -p app --features desktop
+
+      - name: Build Debian package
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/build-deb-package.sh scripts/build-apt-repo.sh scripts/resolve-pkgrel.sh
+          mkdir -p packaging/deb/generated
+          scripts/build-deb-package.sh "${{ github.event.inputs.version }}" packaging/deb/generated
+
+      - name: Build APT repository metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apt-site/apt/pool/main/s/showel
+          cp packaging/deb/generated/*.deb apt-site/apt/pool/main/s/showel/
+          scripts/build-apt-repo.sh \
+            apt-site/apt \
+            "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt"
+
+      - name: Upload APT site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apt-site
+          path: apt-site
+          if-no-files-found: error
+          retention-days: 7
+
+  build-arch-site:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.git_ref || format('refs/tags/v{0}', github.event.inputs.version) }}
+
+      - name: Resolve source selector
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git_ref="${{ github.event.inputs.git_ref }}"
+          version="${{ github.event.inputs.version }}"
+
+          if [[ -n "${git_ref}" ]]; then
+            source_selector="commit=${git_ref}"
+          else
+            source_selector="tag=v${version}"
+          fi
+
+          echo "source_selector=${source_selector}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Arch build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm \
+            git \
+            pacman-contrib \
+            rust \
+            pkgconf \
+            gtk3 \
+            webkit2gtk-4.1 \
+            xdotool \
+            fakeroot
+
+      - name: Render Arch packaging files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/render-arch-package.sh \
+            "${{ github.event.inputs.version }}" \
+            "${{ github.repository_owner }}" \
+            "${{ github.event.repository.name }}" \
+            "${GITHUB_WORKSPACE}/packaging/arch/generated" \
+            "${{ steps.meta.outputs.source_selector }}"
+
+      - name: Build Arch package
+        shell: bash
+        run: |
+          set -euo pipefail
+          useradd --create-home builder
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+          su builder -c "cd '${GITHUB_WORKSPACE}/packaging/arch/generated' && makepkg --noconfirm --cleanbuild --clean"
+
+      - name: Build pacman repository metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pacman-repo/arch/x86_64
+          cp packaging/arch/generated/*.pkg.tar.* pacman-repo/arch/x86_64/
+          ./scripts/build-pacman-repo.sh pacman-repo/arch/x86_64 showel
+          cat <<'EOF' > pacman-repo/index.html
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Showel Arch Repository</title>
+          </head>
+          <body>
+            <h1>Showel Arch Repository</h1>
+            <p>Repository URL: <code>https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/arch/$arch</code></p>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload Arch site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacman-site
+          path: pacman-repo
+          if-no-files-found: error
+          retention-days: 7
+
+  build-flatpak-site:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.git_ref || format('refs/tags/v{0}', github.event.inputs.version) }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            appstream \
+            desktop-file-utils \
+            flatpak \
+            flatpak-builder
+
+      - name: Install Flatpak runtimes
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub \
+            org.gnome.Platform//48 \
+            org.gnome.Sdk//48 \
+            org.freedesktop.Sdk.Extension.rust-stable//24.08
+
+      - name: Build Flatpak repository metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/build-flatpak-repo.sh
+          scripts/build-flatpak-repo.sh \
+            "${{ github.event.inputs.version }}" \
+            flatpak-site \
+            "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/flatpak"
+
+      - name: Upload Flatpak site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-site
+          path: flatpak-site
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy-pages:
+    needs:
+      - build-apt-site
+      - build-arch-site
+      - build-flatpak-site
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download APT site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apt-site
+          path: _site-input/apt-site
+
+      - name: Download Arch site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pacman-site
+          path: _site-input/pacman-site
+
+      - name: Download Flatpak site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flatpak-site
+          path: _site-input/flatpak-site
+
+      - name: Assemble combined Pages site
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          apt_source="_site-input/apt-site/apt"
+          if [[ ! -d "${apt_source}" ]]; then
+            apt_source="_site-input/apt-site/apt-site/apt"
+          fi
+
+          pacman_source="_site-input/pacman-site"
+          if [[ -d "_site-input/pacman-site/pacman-repo" ]]; then
+            pacman_source="_site-input/pacman-site/pacman-repo"
+          fi
+
+          flatpak_source="_site-input/flatpak-site"
+          if [[ -d "_site-input/flatpak-site/flatpak-site" ]]; then
+            flatpak_source="_site-input/flatpak-site/flatpak-site"
+          fi
+
+          mkdir -p site
+          cp -R "${apt_source}" site/apt
+          mkdir -p site/arch
+          cp -R "${pacman_source}/arch/." site/arch/
+          cp "${pacman_source}/index.html" site/arch/index.html
+          cp -R "${flatpak_source}" site/flatpak
+
+          cat <<'EOF' > site/index.html
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Showel Package Repositories</title>
+          </head>
+          <body>
+            <h1>Showel Package Repositories</h1>
+            <ul>
+              <li><a href="./apt/">APT repository</a></li>
+              <li><a href="./arch/">Arch repository</a></li>
+              <li><a href="./flatpak/">Flatpak repository</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy package repositories to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

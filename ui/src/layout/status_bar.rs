@@ -52,10 +52,7 @@ mod tests {
 
     #[test]
     fn session_label_shows_name_without_prefix() {
-        assert_eq!(
-            status_bar_session_label(Some("My Database")),
-            "My Database"
-        );
+        assert_eq!(status_bar_session_label(Some("My Database")), "My Database");
     }
 
     #[test]

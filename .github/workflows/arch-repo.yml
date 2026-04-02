@@ -3,15 +3,15 @@ name: Publish Arch Repo
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version without leading v'
+        description: "Release version without leading v"
         required: true
         type: string
       git_ref:
-        description: 'Git ref or commit to package; defaults to the current workflow commit'
+        description: "Git ref or commit to package; defaults to the current workflow commit"
         required: false
         type: string
 
@@ -124,11 +124,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload pacman repo artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: pacman-repo
-
       - name: Publish GitHub release assets
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
@@ -136,23 +131,3 @@ jobs:
           tag_name: v${{ steps.meta.outputs.version }}
           files: |
             packaging/arch/generated/*.pkg.tar.*
-
-  deploy-pages:
-    needs: build-arch-package
-    runs-on: ubuntu-latest
-
-    permissions:
-      pages: write
-      id-token: write
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Deploy pacman repository to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

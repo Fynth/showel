@@ -93,11 +93,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload APT repository artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: apt-site
-
       - name: Publish GitHub release assets
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
@@ -105,23 +100,3 @@ jobs:
           tag_name: v${{ steps.meta.outputs.version }}
           files: |
             packaging/deb/generated/*.deb
-
-  deploy-pages:
-    needs: build-deb-package
-    runs-on: ubuntu-latest
-
-    permissions:
-      pages: write
-      id-token: write
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Deploy APT repository to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

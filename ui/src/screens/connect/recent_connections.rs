@@ -34,10 +34,7 @@ mod tests {
 
     #[test]
     fn empty_state_text_is_preserved() {
-        assert_eq!(
-            recent_connections_empty_text(),
-            "No saved connections yet."
-        );
+        assert_eq!(recent_connections_empty_text(), "No saved connections yet.");
     }
 
     #[test]

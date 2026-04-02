@@ -122,7 +122,10 @@ mod tests {
     #[test]
     fn test_status_text_removes_status_prefix() {
         assert_eq!(status_text_for_display("Status: Connected"), "Connected");
-        assert_eq!(status_text_for_display("Status: Error: failed"), "Error: failed");
+        assert_eq!(
+            status_text_for_display("Status: Error: failed"),
+            "Error: failed"
+        );
     }
 
     #[test]
@@ -139,7 +142,9 @@ mod tests {
 
     #[test]
     fn test_detects_debug_formatting() {
-        assert!(contains_debug_formatting("Error: ErrorKind(ConnectionRefused)"));
+        assert!(contains_debug_formatting(
+            "Error: ErrorKind(ConnectionRefused)"
+        ));
         assert!(contains_debug_formatting("error: {err:?}"));
         assert!(contains_debug_formatting("Error: Some(ErrorKind::Timeout)"));
         assert!(!contains_debug_formatting("Error: connection refused"));
