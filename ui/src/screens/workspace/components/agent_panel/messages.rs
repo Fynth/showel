@@ -51,7 +51,7 @@ pub(super) fn copy_text_to_clipboard(
                         Ok(true) => format!("Copied {label} to clipboard."),
                         Ok(false) => format!("Clipboard error: {native_err}"),
                         Err(err) => {
-                            format!("Clipboard error: {native_err}; fallback failed: {err:?}")
+                            format_clipboard_fallback_error(&native_err, err)
                         }
                     };
                 });
@@ -316,11 +316,38 @@ pub(super) fn artifact_title(artifact: &ChatArtifact) -> &'static str {
     }
 }
 
+pub fn format_clipboard_fallback_error(native_err: &str, fallback_err: impl std::fmt::Display) -> String {
+    format!("Clipboard error: {native_err}; fallback failed: {fallback_err}")
+}
+
+pub fn acp_registry_loading_text() -> &'static str {
+    "Loading agents..."
+}
+
+pub fn acp_registry_preparing_text(name: &str) -> String {
+    format!("Preparing {name}...")
+}
+
+pub fn acp_registry_connecting_text(name: &str) -> String {
+    format!("Connecting to {name}...")
+}
+
+pub fn is_verbose_acp_registry_loading_text(text: &str) -> bool {
+    text == "Loading ACP registry..."
+}
+
+pub fn is_verbose_acp_registry_preparing_text(text: &str) -> bool {
+    text.starts_with("Preparing ") && text.contains(" from the ACP registry")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
+        acp_registry_connecting_text, acp_registry_loading_text, acp_registry_preparing_text,
         artifact_title, build_thread_meta, compact_connection_label, compact_header_title,
-        is_visible_message, render_message_markdown_html, should_render_message_text,
+        format_clipboard_fallback_error, is_verbose_acp_registry_loading_text,
+        is_verbose_acp_registry_preparing_text, is_visible_message, render_message_markdown_html,
+        should_render_message_text,
     };
     use models::{AcpMessageKind, AcpOllamaConfig, AcpPanelState, AcpUiMessage, ChatArtifact};
 
@@ -493,9 +520,35 @@ mod tests {
     #[test]
     fn sanitizes_raw_html_in_markdown_messages() {
         let html = render_message_markdown_html("hello <script>alert(1)</script> world");
-
         assert!(!html.contains("<script>"));
         assert!(html.contains("hello"));
         assert!(html.contains("world"));
+    }
+
+    #[test]
+    fn clipboard_fallback_uses_display_not_debug() {
+        let formatted = format_clipboard_fallback_error("native error", "eval failed");
+        assert_eq!(formatted, "Clipboard error: native error; fallback failed: eval failed");
+        assert!(!formatted.contains(":?"));
+    }
+
+    #[test]
+    fn registry_loading_text_is_compact() {
+        let text = acp_registry_loading_text();
+        assert!(!is_verbose_acp_registry_loading_text(text));
+        assert_eq!(text, "Loading agents...");
+    }
+
+    #[test]
+    fn verbose_registry_preparing_text_is_detected() {
+        assert!(is_verbose_acp_registry_preparing_text("Preparing OpenCode from the ACP registry..."));
+        assert!(is_verbose_acp_registry_preparing_text("Preparing some agent from the ACP registry..."));
+        assert!(!is_verbose_acp_registry_preparing_text("Preparing agents..."));
+    }
+
+    #[test]
+    fn registry_connecting_text_is_compact() {
+        let text = acp_registry_connecting_text("OpenCode");
+        assert_eq!(text, "Connecting to OpenCode...");
     }
 }

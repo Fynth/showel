@@ -5,6 +5,56 @@ use models::SavedConnection;
 use super::edit_connection_modal::EditConnectionModal;
 use super::forms::connection_status_class;
 
+pub fn recent_connections_loading_text() -> &'static str {
+    "Loading connections…"
+}
+
+pub fn recent_connections_empty_text() -> &'static str {
+    "No saved connections yet."
+}
+
+pub fn format_connection_failed_error(err: impl std::fmt::Display) -> String {
+    format!("Connection failed: {err}")
+}
+
+pub fn is_verbose_loading_text(text: &str) -> bool {
+    text == "Loading saved connections..."
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loading_text_is_short() {
+        let text = recent_connections_loading_text();
+        assert!(!is_verbose_loading_text(text));
+        assert!(text.len() < "Loading saved connections...".len());
+    }
+
+    #[test]
+    fn empty_state_text_is_preserved() {
+        assert_eq!(
+            recent_connections_empty_text(),
+            "No saved connections yet."
+        );
+    }
+
+    #[test]
+    fn connection_error_uses_display_not_debug() {
+        let formatted = format_connection_failed_error("timeout");
+        assert_eq!(formatted, "Connection failed: timeout");
+        assert!(!formatted.contains(":?"));
+    }
+
+    #[test]
+    fn detects_verbose_loading_text() {
+        assert!(is_verbose_loading_text("Loading saved connections..."));
+        assert!(!is_verbose_loading_text("Loading connections…"));
+        assert!(!is_verbose_loading_text("Loading..."));
+    }
+}
+
 #[component]
 pub fn RecentConnections(
     saved_connections: Option<Vec<SavedConnection>>,
@@ -67,7 +117,7 @@ pub fn RecentConnections(
                                                             }
                                                         }
                                                         Err(err) => {
-                                                            status.set(format!("Error: {err:?}"));
+                                                            status.set(format!("Connection failed: {err}"));
                                                         }
                                                     }
                                                 });
@@ -81,7 +131,7 @@ pub fn RecentConnections(
                     }
                 },
                 None => rsx! {
-                    p { class: "empty-state", "Loading saved connections..." }
+                    p { class: "empty-state", "Loading connections…" }
                 },
             }
             if !status().is_empty() {

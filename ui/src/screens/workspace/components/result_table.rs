@@ -161,9 +161,11 @@ pub fn ResultTable(
                                                 class: "results__toolbar-chip",
                                                 "{rows_toolbar_summary(page.offset, page.rows.len(), page.page_size)}"
                                             }
-                                            span {
-                                                class: "results__toolbar-chip",
-                                                "Status: {status_text}"
+                                            if should_render_result_status_chip(&status_text, has_pending_changes) {
+                                                span {
+                                                    class: "results__toolbar-chip",
+                                                    "{result_status_text_for_display(&status_text)}"
+                                                }
                                             }
                                             p {
                                                 class: "results__toolbar-meta",
@@ -698,12 +700,38 @@ fn result_error_message(status: &str) -> Option<String> {
     .map(ToOwned::to_owned)
 }
 
+pub fn should_render_result_status_chip(status: &str, has_pending_changes: bool) -> bool {
+    let status = status.trim();
+    if status.is_empty() {
+        return has_pending_changes;
+    }
+
+    let is_loading = status.starts_with("Loading") || status.starts_with("Running");
+    let is_error = status.starts_with("Error:")
+        || status.starts_with("Preview error:")
+        || status.starts_with("Structure error:")
+        || status.starts_with("Load more error:");
+    let is_ready = status == "Ready";
+    let is_loaded = status.starts_with("Loaded rows");
+
+    is_loading || is_error || has_pending_changes || (!is_ready && !is_loaded)
+}
+
+pub fn result_status_text_for_display(status: &str) -> &str {
+    status.strip_prefix("Status: ").unwrap_or(status)
+}
+
+pub fn format_row_edit_error(operation: &str, err: impl std::fmt::Display) -> String {
+    format!("{operation} error: {err}")
+}
+
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
         filter_panel_should_auto_open, filter_panel_should_collapse_after_clear,
-        result_error_message,
+        format_row_edit_error, result_error_message, result_status_text_for_display,
+        should_render_result_status_chip,
     };
     use crate::screens::workspace::actions::rows_toolbar_summary;
     use models::{QueryFilter, QueryFilterMode, QueryFilterOperator, QueryFilterRule};
@@ -758,7 +786,6 @@ mod tests {
 
     #[test]
     fn compact_layout_supports_25_rows_at_default_window() {
-        // Budget calculation for default 920px window height
         const WINDOW_HEIGHT: i32 = 920;
         const APP_TOOLBAR: i32 = 44;
         const STATUSBAR: i32 = 26;
@@ -777,11 +804,59 @@ mod tests {
         let available_height = WINDOW_HEIGHT - chrome_height;
         let visible_rows = available_height / ROW_HEIGHT_PX;
 
-        // At compact layout, we should see at least 25 rows
         assert!(
             visible_rows >= 25,
             "Expected >= 25 visible rows (got {visible_rows}) with {available_height}px available"
         );
+    }
+
+    #[test]
+    fn status_chip_visible_for_loading_states() {
+        assert!(should_render_result_status_chip("Loading rows...", false));
+        assert!(should_render_result_status_chip("Running query...", false));
+    }
+
+    #[test]
+    fn status_chip_visible_for_error_states() {
+        assert!(should_render_result_status_chip("Error: connection failed", false));
+        assert!(should_render_result_status_chip("Preview error: timeout", false));
+    }
+
+    #[test]
+    fn status_chip_visible_for_pending_changes() {
+        assert!(should_render_result_status_chip("Ready", true));
+        assert!(should_render_result_status_chip("", true));
+    }
+
+    #[test]
+    fn status_chip_hidden_for_ready_and_loaded_states() {
+        assert!(!should_render_result_status_chip("Ready", false));
+        assert!(!should_render_result_status_chip("Loaded rows 1-10 of 100", false));
+    }
+
+    #[test]
+    fn status_chip_hidden_for_empty_status() {
+        assert!(!should_render_result_status_chip("", false));
+        assert!(!should_render_result_status_chip("   ", false));
+    }
+
+    #[test]
+    fn status_text_removes_status_prefix() {
+        assert_eq!(result_status_text_for_display("Status: Loading..."), "Loading...");
+        assert_eq!(result_status_text_for_display("Status: Ready"), "Ready");
+    }
+
+    #[test]
+    fn status_text_preserves_text_without_prefix() {
+        assert_eq!(result_status_text_for_display("Loading..."), "Loading...");
+        assert_eq!(result_status_text_for_display("Error: failed"), "Error: failed");
+    }
+
+    #[test]
+    fn row_edit_error_uses_display_not_debug() {
+        let formatted = format_row_edit_error("Row insert", "constraint violation");
+        assert_eq!(formatted, "Row insert error: constraint violation");
+        assert!(!formatted.contains(":?"));
     }
 }
 
@@ -1400,7 +1475,7 @@ fn insert_empty_row(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Signal<
                 set_active_tab_status(
                     tabs,
                     current_id,
-                    format!("Draft row added without auto id: {err:?}"),
+                    format_row_edit_error("Draft row added without auto id", err),
                 );
             }
         }
@@ -1455,7 +1530,7 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
             )
             .await
             {
-                set_active_tab_status(tabs, current_id, format!("Row insert error: {err:?}"));
+                set_active_tab_status(tabs, current_id, format_row_edit_error("Row insert", err));
                 return;
             }
         }
@@ -1470,7 +1545,7 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
             )
             .await
             {
-                set_active_tab_status(tabs, current_id, format!("Cell update error: {err:?}"));
+                set_active_tab_status(tabs, current_id, format_row_edit_error("Cell update", err));
                 return;
             }
         }
@@ -1480,7 +1555,7 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
                 query::delete_table_row(connection.clone(), editable.source.clone(), delete.locator)
                     .await
             {
-                set_active_tab_status(tabs, current_id, format!("Row delete error: {err:?}"));
+                set_active_tab_status(tabs, current_id, format_row_edit_error("Row delete", err));
                 return;
             }
         }

@@ -30,9 +30,9 @@ use self::{
     helpers::{
         DockDropTarget, INSPECTOR_MAX_WIDTH, INSPECTOR_MIN_WIDTH, SIDEBAR_MAX_WIDTH,
         SIDEBAR_MIN_WIDTH, WORKSPACE_ROOT_ID, apply_tool_panel_drop, derive_chat_thread_title,
-        launch_uses_opencode, load_explorer_section, reset_panel_for_thread, tool_panel_class,
-        unloaded_explorer_section, upsert_chat_thread_summary, visible_tool_panels,
-        workspace_resize_script,
+        launch_uses_opencode, load_explorer_section, reset_panel_for_thread,
+        should_render_explorer_status, tool_panel_class, unloaded_explorer_section,
+        upsert_chat_thread_summary, visible_tool_panels, workspace_resize_script,
     },
 };
 
@@ -91,7 +91,9 @@ fn ExplorerToolPanel(
             div {
                 class: "workspace__panel-header",
                 h2 { class: "workspace__section-title", "Explorer" }
-                p { class: "workspace__hint", "{tree_status()}" }
+                if should_render_explorer_status(&tree_status()) {
+                    p { class: "workspace__hint", "{tree_status()}" }
+                }
             }
             SidebarConnectionTree {
                 sections: tree_sections(),

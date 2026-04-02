@@ -15,8 +15,9 @@ use super::{ActionIcon, IconButton};
 use self::{
     composer::AgentComposer,
     messages::{
-        AGENT_MESSAGE_BATCH, MessageChunk, artifact_title, build_thread_meta, code_chunk_sql,
-        compact_header_title, copy_text_to_clipboard, is_visible_message, parse_message_chunks,
+        AGENT_MESSAGE_BATCH, MessageChunk, acp_registry_loading_text, acp_registry_preparing_text,
+        artifact_title, build_thread_meta, code_chunk_sql, compact_header_title,
+        copy_text_to_clipboard, is_visible_message, parse_message_chunks,
         render_message_markdown_html, should_render_message_text,
     },
     prompt::insert_sql_into_editor,
@@ -834,7 +835,7 @@ pub fn AcpAgentPanel(
                                         .unwrap_or("Registry agent");
                                     let registry_hint = selected_registry_mode
                                         .registry_hint()
-                                        .unwrap_or("Quick start from the ACP registry.");
+                                        .unwrap_or("Quick start an agent.");
                                     let registry_agent_id = selected_registry_mode
                                         .registry_agent_id()
                                         .unwrap_or_default()
@@ -860,9 +861,7 @@ pub fn AcpAgentPanel(
                                             let registry_name = registry_name.to_string();
                                             let registry_agent_id = registry_agent_id.clone();
                                             registry_busy.set(true);
-                                            registry_status.set(format!(
-                                                "Preparing {registry_name} from the ACP registry..."
-                                            ));
+                                            registry_status.set(acp_registry_preparing_text(&registry_name));
                                             spawn(async move {
                                                 match acp::install_acp_registry_agent(registry_agent_id, cwd).await {
                                                     Ok(launch) => {
@@ -917,7 +916,7 @@ pub fn AcpAgentPanel(
                                         },
                                     }
                                 } else {
-                                    p { class: "agent-panel__hint", "Loading ACP registry..." }
+                                    p { class: "agent-panel__hint", "{acp_registry_loading_text()}" }
                                 }
                                     }
                                 }

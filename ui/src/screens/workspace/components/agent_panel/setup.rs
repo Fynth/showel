@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use models::{AcpMessageKind, AcpPanelState};
 
+use super::messages::acp_registry_preparing_text;
 use super::state::{apply_connected, push_message};
 
 const OPENCODE_REGISTRY_AGENT_ID: &str = "opencode";
@@ -15,7 +16,7 @@ async fn connect_registry_agent(
     let cwd = panel_state().launch.cwd.clone();
     panel_state.with_mut(|state| {
         state.busy = true;
-        state.status = format!("Preparing {agent_name} from the ACP registry...");
+        state.status = acp_registry_preparing_text(agent_name);
     });
 
     let launch = match acp::install_acp_registry_agent(agent_id.to_string(), cwd).await {
@@ -130,8 +131,8 @@ impl AgentSetupMode {
 
     pub(super) fn registry_hint(self) -> Option<&'static str> {
         match self {
-            Self::OpenCode => Some("OpenCode from the ACP registry."),
-            Self::Codex => Some("Codex CLI from the ACP registry."),
+            Self::OpenCode => Some("OpenCode agent."),
+            Self::Codex => Some("Codex CLI agent."),
             Self::Ollama | Self::Custom => None,
         }
     }

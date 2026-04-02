@@ -3,12 +3,12 @@ use dioxus::prelude::*;
 use models::{ConnectionRequest, SqliteFormData};
 use rfd::AsyncFileDialog;
 
-use super::connection_status_class;
+use super::{connection_status_class, format_connection_error};
 
 #[component]
 pub fn SqliteForm() -> Element {
     let mut path = use_signal(|| "".to_string());
-    let mut status = use_signal(|| "Idle".to_string());
+    let mut status = use_signal(String::new);
     let status_value = status();
     let status_class = connection_status_class(&status_value);
 
@@ -43,7 +43,7 @@ pub fn SqliteForm() -> Element {
                             }
                         }
                         Err(err) => {
-                            status.set(format!("Error: {err:?}"));
+                            status.set(format_connection_error(err));
                         }
                     }
                 });
@@ -94,7 +94,9 @@ pub fn SqliteForm() -> Element {
                     r#type: "submit",
                     "Connect"
                 }
-                p { class: "{status_class}", "Status: {status_value}" }
+                if !status_value.is_empty() {
+                    p { class: "{status_class}", "{status_value}" }
+                }
             }
         }
     }

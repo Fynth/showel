@@ -14,6 +14,28 @@ pub const INSPECTOR_MIN_WIDTH: f64 = 260.0;
 pub const INSPECTOR_MAX_WIDTH: f64 = 640.0;
 pub const WORKSPACE_ROOT_ID: &str = "workspace-root";
 
+pub fn format_explorer_error(err: impl std::fmt::Display) -> String {
+    format!("Error: {err}")
+}
+
+pub fn should_render_explorer_status(status: &str) -> bool {
+    let status = status.trim();
+    if status.is_empty() {
+        return false;
+    }
+
+    status.starts_with("Loading")
+        || status.starts_with("Error:")
+        || status == "Explorer hidden"
+        || status == "Select or create a connection"
+        || status.contains("failed")
+}
+
+pub fn is_low_signal_explorer_status(status: &str) -> bool {
+    let status = status.trim();
+    status == "Explorer ready for the active connection" || status == "Ready"
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct DockDropTarget {
     pub dock: WorkspaceToolDock,
@@ -109,7 +131,7 @@ pub async fn load_explorer_section(
             session_id: session.id,
             name: connection_target_label(&session.request),
             kind_label,
-            status: format!("Error: {err:?}"),
+            status: format_explorer_error(&err),
             is_active: Some(session.id) == active_session_id,
             nodes: Vec::new(),
         },
@@ -391,7 +413,10 @@ pub fn tool_panel_class(panel: WorkspaceToolPanel) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{derive_chat_thread_title, launch_uses_opencode, reset_panel_for_thread};
+    use super::{
+        derive_chat_thread_title, format_explorer_error, is_low_signal_explorer_status,
+        launch_uses_opencode, reset_panel_for_thread, should_render_explorer_status,
+    };
     use models::{AcpLaunchRequest, AcpOllamaConfig, AcpPanelState, AcpUiMessage};
 
     #[test]
@@ -455,5 +480,50 @@ mod tests {
         );
 
         assert!(!launch_uses_opencode(&state));
+    }
+
+    #[test]
+    fn explorer_error_uses_display_not_debug() {
+        let formatted = format_explorer_error("connection timeout");
+        assert_eq!(formatted, "Error: connection timeout");
+        assert!(!formatted.contains(":?"));
+    }
+
+    #[test]
+    fn explorer_status_visible_for_loading_states() {
+        assert!(should_render_explorer_status("Loading explorer..."));
+        assert!(should_render_explorer_status("Loading..."));
+    }
+
+    #[test]
+    fn explorer_status_visible_for_error_states() {
+        assert!(should_render_explorer_status("Error: connection failed"));
+        assert!(should_render_explorer_status("Explorer failed for the active connection"));
+    }
+
+    #[test]
+    fn explorer_status_visible_for_hidden_and_no_connection() {
+        assert!(should_render_explorer_status("Explorer hidden"));
+        assert!(should_render_explorer_status("Select or create a connection"));
+    }
+
+    #[test]
+    fn explorer_status_hidden_for_ready_state() {
+        assert!(!should_render_explorer_status("Explorer ready for the active connection"));
+        assert!(!should_render_explorer_status("Ready"));
+    }
+
+    #[test]
+    fn explorer_status_hidden_for_empty() {
+        assert!(!should_render_explorer_status(""));
+        assert!(!should_render_explorer_status("   "));
+    }
+
+    #[test]
+    fn low_signal_status_detection() {
+        assert!(is_low_signal_explorer_status("Explorer ready for the active connection"));
+        assert!(is_low_signal_explorer_status("Ready"));
+        assert!(!is_low_signal_explorer_status("Loading..."));
+        assert!(!is_low_signal_explorer_status("Error: failed"));
     }
 }
