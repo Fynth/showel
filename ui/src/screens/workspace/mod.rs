@@ -458,6 +458,7 @@ fn WorkspaceBody(
     next_saved_query_id: Signal<u64>,
     tree_status: Signal<String>,
     tree_sections: Signal<Vec<ExplorerConnectionSection>>,
+    show_saved_queries: Signal<bool>,
     show_connections: Signal<bool>,
     show_explorer: Signal<bool>,
     show_sql_editor: Signal<bool>,
@@ -557,6 +558,23 @@ fn WorkspaceBody(
                 class: "workspace__header",
                 div {
                     class: "workspace__toolbar",
+                    IconButton {
+                        icon: ActionIcon::SavedQueries,
+                        label: if show_saved_queries() {
+                            "Hide saved queries".to_string()
+                        } else {
+                            "Show saved queries".to_string()
+                        },
+                        active: show_saved_queries(),
+                        small: true,
+                        onclick: move |_| {
+                            let next = !show_saved_queries();
+                            show_saved_queries.set(next);
+                            APP_UI_SETTINGS.with_mut(|settings| {
+                                settings.show_saved_queries = next;
+                            });
+                        },
+                    }
                     IconButton {
                         icon: ActionIcon::Connections,
                         label: if show_connections() {
@@ -777,6 +795,7 @@ pub fn Workspace() -> Element {
     let mut tabs = use_signal(Vec::<QueryTabState>::new);
     let mut history = use_signal(Vec::<QueryHistoryItem>::new);
     let mut saved_queries = use_signal(Vec::<SavedQuery>::new);
+    let mut show_saved_queries = use_signal(|| APP_UI_SETTINGS().show_saved_queries);
     let mut show_connections = use_signal(|| APP_UI_SETTINGS().show_connections);
     let mut show_explorer = use_signal(|| APP_UI_SETTINGS().show_explorer);
     let mut show_sql_editor = use_signal(|| APP_UI_SETTINGS().show_sql_editor);
@@ -1035,6 +1054,7 @@ pub fn Workspace() -> Element {
 
     use_effect(move || {
         let settings = APP_UI_SETTINGS();
+        show_saved_queries.set(settings.show_saved_queries);
         show_connections.set(settings.show_connections);
         show_explorer.set(settings.show_explorer);
         show_sql_editor.set(settings.show_sql_editor);
@@ -1301,6 +1321,7 @@ pub fn Workspace() -> Element {
     let tool_panel_layout = APP_UI_SETTINGS().tool_panel_layout.normalized();
     let sidebar_panels = visible_tool_panels(
         &tool_panel_layout.sidebar,
+        show_saved_queries(),
         show_connections(),
         show_explorer(),
         show_history,
@@ -1309,6 +1330,7 @@ pub fn Workspace() -> Element {
     );
     let inspector_panels = visible_tool_panels(
         &tool_panel_layout.inspector,
+        show_saved_queries(),
         show_connections(),
         show_explorer(),
         show_history,
@@ -1348,6 +1370,7 @@ pub fn Workspace() -> Element {
                         dragging_panel,
                         drop_target,
                         target,
+                        show_saved_queries(),
                         show_connections(),
                         show_explorer(),
                         APP_SHOW_HISTORY(),
@@ -1382,6 +1405,7 @@ pub fn Workspace() -> Element {
                 next_saved_query_id,
                 tree_status,
                 tree_sections,
+                show_saved_queries,
                 show_connections,
                 show_explorer,
                 show_sql_editor,

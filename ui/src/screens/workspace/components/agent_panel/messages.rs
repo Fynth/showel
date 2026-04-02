@@ -50,9 +50,7 @@ pub(super) fn copy_text_to_clipboard(
                     state.status = match result {
                         Ok(true) => format!("Copied {label} to clipboard."),
                         Ok(false) => format!("Clipboard error: {native_err}"),
-                        Err(err) => {
-                            format_clipboard_fallback_error(&native_err, err)
-                        }
+                        Err(err) => format_clipboard_fallback_error(&native_err, err),
                     };
                 });
             });
@@ -316,7 +314,10 @@ pub(super) fn artifact_title(artifact: &ChatArtifact) -> &'static str {
     }
 }
 
-pub fn format_clipboard_fallback_error(native_err: &str, fallback_err: impl std::fmt::Display) -> String {
+pub fn format_clipboard_fallback_error(
+    native_err: &str,
+    fallback_err: impl std::fmt::Display,
+) -> String {
     format!("Clipboard error: {native_err}; fallback failed: {fallback_err}")
 }
 
@@ -528,7 +529,10 @@ mod tests {
     #[test]
     fn clipboard_fallback_uses_display_not_debug() {
         let formatted = format_clipboard_fallback_error("native error", "eval failed");
-        assert_eq!(formatted, "Clipboard error: native error; fallback failed: eval failed");
+        assert_eq!(
+            formatted,
+            "Clipboard error: native error; fallback failed: eval failed"
+        );
         assert!(!formatted.contains(":?"));
     }
 
@@ -541,9 +545,15 @@ mod tests {
 
     #[test]
     fn verbose_registry_preparing_text_is_detected() {
-        assert!(is_verbose_acp_registry_preparing_text("Preparing OpenCode from the ACP registry..."));
-        assert!(is_verbose_acp_registry_preparing_text("Preparing some agent from the ACP registry..."));
-        assert!(!is_verbose_acp_registry_preparing_text("Preparing agents..."));
+        assert!(is_verbose_acp_registry_preparing_text(
+            "Preparing OpenCode from the ACP registry..."
+        ));
+        assert!(is_verbose_acp_registry_preparing_text(
+            "Preparing some agent from the ACP registry..."
+        ));
+        assert!(!is_verbose_acp_registry_preparing_text(
+            "Preparing agents..."
+        ));
     }
 
     #[test]

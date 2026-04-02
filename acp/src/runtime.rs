@@ -813,17 +813,7 @@ async fn run_acp_worker(
         }
     };
 
-    let mut child_command = tokio::process::Command::new(command);
-    child_command
-        .args(&args)
-        .current_dir(&cwd)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    apply_hidden_process_flags(&mut child_command);
-
-    let mut child = match child_command.spawn() {
+    let mut child = match spawn_acp_child(command, &args, &cwd).await {
         Ok(child) => child,
         Err(err) => {
             let _ = ready_tx.send(Err(format!("Failed to start ACP agent: {err}")));
@@ -995,6 +985,53 @@ async fn run_acp_worker(
 
     drop(child);
     let _ = event_tx.send(AcpEvent::Disconnected);
+}
+
+async fn spawn_acp_child(
+    command: &str,
+    args: &[String],
+    cwd: &PathBuf,
+) -> Result<Child, std::io::Error> {
+    const TEXT_FILE_BUSY_RETRIES: usize = 6;
+    const TEXT_FILE_BUSY_DELAY_MS: u64 = 150;
+
+    let mut attempt = 0;
+    loop {
+        let mut child_command = tokio::process::Command::new(command);
+        child_command
+            .args(args)
+            .current_dir(cwd)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        apply_hidden_process_flags(&mut child_command);
+
+        match child_command.spawn() {
+            Ok(child) => return Ok(child),
+            Err(err) if is_text_file_busy_error(&err) && attempt < TEXT_FILE_BUSY_RETRIES => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    TEXT_FILE_BUSY_DELAY_MS * attempt as u64,
+                ))
+                .await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+fn is_text_file_busy_error(err: &std::io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        err.raw_os_error() == Some(26)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = err;
+        false
+    }
 }
 
 fn normalize_cwd(cwd: &str) -> Result<PathBuf, String> {
@@ -1346,7 +1383,7 @@ fn respond_to_permission_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{acp, format_error_with_stderr, normalize_cwd_path};
+    use super::{acp, format_error_with_stderr, is_text_file_busy_error, normalize_cwd_path};
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -1392,5 +1429,12 @@ mod tests {
 
         assert!(message.contains("ACP initialize failed"));
         assert!(message.contains("Agent stderr: line 1\nline 2"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detects_text_file_busy_os_error() {
+        let err = std::io::Error::from_raw_os_error(26);
+        assert!(is_text_file_busy_error(&err));
     }
 }

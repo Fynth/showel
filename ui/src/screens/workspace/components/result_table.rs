@@ -818,8 +818,14 @@ mod tests {
 
     #[test]
     fn status_chip_visible_for_error_states() {
-        assert!(should_render_result_status_chip("Error: connection failed", false));
-        assert!(should_render_result_status_chip("Preview error: timeout", false));
+        assert!(should_render_result_status_chip(
+            "Error: connection failed",
+            false
+        ));
+        assert!(should_render_result_status_chip(
+            "Preview error: timeout",
+            false
+        ));
     }
 
     #[test]
@@ -831,7 +837,10 @@ mod tests {
     #[test]
     fn status_chip_hidden_for_ready_and_loaded_states() {
         assert!(!should_render_result_status_chip("Ready", false));
-        assert!(!should_render_result_status_chip("Loaded rows 1-10 of 100", false));
+        assert!(!should_render_result_status_chip(
+            "Loaded rows 1-10 of 100",
+            false
+        ));
     }
 
     #[test]
@@ -842,14 +851,20 @@ mod tests {
 
     #[test]
     fn status_text_removes_status_prefix() {
-        assert_eq!(result_status_text_for_display("Status: Loading..."), "Loading...");
+        assert_eq!(
+            result_status_text_for_display("Status: Loading..."),
+            "Loading..."
+        );
         assert_eq!(result_status_text_for_display("Status: Ready"), "Ready");
     }
 
     #[test]
     fn status_text_preserves_text_without_prefix() {
         assert_eq!(result_status_text_for_display("Loading..."), "Loading...");
-        assert_eq!(result_status_text_for_display("Error: failed"), "Error: failed");
+        assert_eq!(
+            result_status_text_for_display("Error: failed"),
+            "Error: failed"
+        );
     }
 
     #[test]

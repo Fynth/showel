@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ActionIcon {
+    SavedQueries,
     Connections,
     Explorer,
     History,
@@ -112,6 +113,11 @@ fn IconGlyph(icon: ActionIcon) -> Element {
             stroke_linecap: "round",
             stroke_linejoin: "round",
             match icon {
+                ActionIcon::SavedQueries => rsx! {
+                    path { d: "M6 5h12a1 1 0 0 1 1 1v13l-4-2.5L12 19l-3-2.5L5 19V6a1 1 0 0 1 1-1z" }
+                    path { d: "M8 9h8" }
+                    path { d: "M8 12h6" }
+                },
                 ActionIcon::Connections => rsx! {
                     rect { x: "4", y: "4", width: "16", height: "6", rx: "2" }
                     rect { x: "4", y: "14", width: "16", height: "6", rx: "2" }

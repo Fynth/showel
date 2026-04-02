@@ -168,6 +168,19 @@ pub fn SettingsModal() -> Element {
                             class: "settings-modal__toggle",
                             input {
                                 r#type: "checkbox",
+                                checked: settings.show_saved_queries,
+                                oninput: move |event| {
+                                    APP_UI_SETTINGS.with_mut(|current| {
+                                        current.show_saved_queries = event.checked();
+                                    });
+                                },
+                            }
+                            span { "Show saved queries panel by default" }
+                        }
+                        label {
+                            class: "settings-modal__toggle",
+                            input {
+                                r#type: "checkbox",
                                 checked: settings.show_connections,
                                 oninput: move |event| {
                                     APP_UI_SETTINGS.with_mut(|current| {

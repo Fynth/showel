@@ -120,6 +120,7 @@ pub struct AppUiSettings {
     pub theme: AppThemePreference,
     pub ai_features_enabled: bool,
     pub restore_session_on_launch: bool,
+    pub show_saved_queries: bool,
     pub show_connections: bool,
     pub show_explorer: bool,
     pub show_history: bool,
@@ -135,6 +136,7 @@ impl Default for AppUiSettings {
             theme: AppThemePreference::Dark,
             ai_features_enabled: true,
             restore_session_on_launch: true,
+            show_saved_queries: true,
             show_connections: false,
             show_explorer: true,
             show_history: false,
@@ -163,6 +165,7 @@ mod tests {
                 "theme":"Dark",
                 "ai_features_enabled":true,
                 "restore_session_on_launch":true,
+                "show_saved_queries":true,
                 "show_connections":false,
                 "show_explorer":true,
                 "show_history":false,
@@ -178,5 +181,29 @@ mod tests {
         .expect("settings fixture should deserialize");
 
         assert!(settings.show_sql_editor);
+    }
+
+    #[test]
+    fn persisted_settings_without_saved_queries_flag_keep_it_visible() {
+        let settings: AppUiSettings = serde_json::from_str(
+            r#"{
+                "theme":"Dark",
+                "ai_features_enabled":true,
+                "restore_session_on_launch":true,
+                "show_connections":false,
+                "show_explorer":true,
+                "show_history":false,
+                "show_sql_editor":false,
+                "show_agent_panel":false,
+                "default_page_size":100,
+                "tool_panel_layout":{
+                    "sidebar":["Connections","Explorer","SavedQueries","History"],
+                    "inspector":["Agent"]
+                }
+            }"#,
+        )
+        .expect("legacy settings fixture should deserialize");
+
+        assert!(settings.show_saved_queries);
     }
 }

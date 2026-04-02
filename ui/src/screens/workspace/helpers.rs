@@ -166,6 +166,7 @@ pub fn unloaded_explorer_section(
 
 fn is_tool_panel_visible(
     panel: WorkspaceToolPanel,
+    show_saved_queries: bool,
     show_connections: bool,
     show_explorer: bool,
     show_history: bool,
@@ -173,9 +174,9 @@ fn is_tool_panel_visible(
     ai_features_enabled: bool,
 ) -> bool {
     match panel {
+        WorkspaceToolPanel::SavedQueries => show_saved_queries,
         WorkspaceToolPanel::Connections => show_connections,
         WorkspaceToolPanel::Explorer => show_explorer,
-        WorkspaceToolPanel::SavedQueries => true,
         WorkspaceToolPanel::History => show_history,
         WorkspaceToolPanel::Agent => ai_features_enabled && show_agent_panel,
     }
@@ -183,6 +184,7 @@ fn is_tool_panel_visible(
 
 pub fn visible_tool_panels(
     panels: &[WorkspaceToolPanel],
+    show_saved_queries: bool,
     show_connections: bool,
     show_explorer: bool,
     show_history: bool,
@@ -195,6 +197,7 @@ pub fn visible_tool_panels(
         .filter(|panel| {
             is_tool_panel_visible(
                 *panel,
+                show_saved_queries,
                 show_connections,
                 show_explorer,
                 show_history,
@@ -208,6 +211,7 @@ pub fn visible_tool_panels(
 fn visible_insert_index(
     panels: &[WorkspaceToolPanel],
     target_visible_index: usize,
+    show_saved_queries: bool,
     show_connections: bool,
     show_explorer: bool,
     show_history: bool,
@@ -217,6 +221,7 @@ fn visible_insert_index(
     if !panels.iter().any(|panel| {
         is_tool_panel_visible(
             *panel,
+            show_saved_queries,
             show_connections,
             show_explorer,
             show_history,
@@ -231,6 +236,7 @@ fn visible_insert_index(
     for (index, panel) in panels.iter().enumerate() {
         if !is_tool_panel_visible(
             *panel,
+            show_saved_queries,
             show_connections,
             show_explorer,
             show_history,
@@ -255,6 +261,7 @@ pub fn move_tool_panel_layout(
     layout: &mut WorkspaceToolLayout,
     panel: WorkspaceToolPanel,
     target: DockDropTarget,
+    show_saved_queries: bool,
     show_connections: bool,
     show_explorer: bool,
     show_history: bool,
@@ -272,6 +279,7 @@ pub fn move_tool_panel_layout(
     let insert_at = visible_insert_index(
         target_panels,
         target.index,
+        show_saved_queries,
         show_connections,
         show_explorer,
         show_history,
@@ -289,6 +297,7 @@ pub fn apply_tool_panel_drop(
     mut dragging_panel: Signal<Option<WorkspaceToolPanel>>,
     mut drop_target: Signal<Option<DockDropTarget>>,
     target: DockDropTarget,
+    show_saved_queries: bool,
     show_connections: bool,
     show_explorer: bool,
     show_history: bool,
@@ -301,6 +310,7 @@ pub fn apply_tool_panel_drop(
                 &mut settings.tool_panel_layout,
                 panel,
                 target,
+                show_saved_queries,
                 show_connections,
                 show_explorer,
                 show_history,
@@ -498,18 +508,24 @@ mod tests {
     #[test]
     fn explorer_status_visible_for_error_states() {
         assert!(should_render_explorer_status("Error: connection failed"));
-        assert!(should_render_explorer_status("Explorer failed for the active connection"));
+        assert!(should_render_explorer_status(
+            "Explorer failed for the active connection"
+        ));
     }
 
     #[test]
     fn explorer_status_visible_for_hidden_and_no_connection() {
         assert!(should_render_explorer_status("Explorer hidden"));
-        assert!(should_render_explorer_status("Select or create a connection"));
+        assert!(should_render_explorer_status(
+            "Select or create a connection"
+        ));
     }
 
     #[test]
     fn explorer_status_hidden_for_ready_state() {
-        assert!(!should_render_explorer_status("Explorer ready for the active connection"));
+        assert!(!should_render_explorer_status(
+            "Explorer ready for the active connection"
+        ));
         assert!(!should_render_explorer_status("Ready"));
     }
 
@@ -521,7 +537,9 @@ mod tests {
 
     #[test]
     fn low_signal_status_detection() {
-        assert!(is_low_signal_explorer_status("Explorer ready for the active connection"));
+        assert!(is_low_signal_explorer_status(
+            "Explorer ready for the active connection"
+        ));
         assert!(is_low_signal_explorer_status("Ready"));
         assert!(!is_low_signal_explorer_status("Loading..."));
         assert!(!is_low_signal_explorer_status("Error: failed"));
