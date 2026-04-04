@@ -28,14 +28,17 @@ pub(super) fn format_connection_error(err: impl std::fmt::Display) -> String {
     format!("Error: {err}")
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn should_render_status(status: &str) -> bool {
     !status.trim().is_empty()
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn status_text_for_display(status: &str) -> &str {
     status.strip_prefix("Status: ").unwrap_or(status)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn contains_debug_formatting(text: &str) -> bool {
     text.contains(":?") || text.contains("ErrorKind")
 }

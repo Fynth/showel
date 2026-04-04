@@ -1,6 +1,7 @@
 use crate::app_state::APP_STATE;
 use dioxus::prelude::*;
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn status_bar_session_label(session_name: Option<&str>) -> String {
     match session_name {
         Some(name) if !name.is_empty() => name.to_string(),
@@ -8,10 +9,12 @@ pub fn status_bar_session_label(session_name: Option<&str>) -> String {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn status_bar_session_count(count: usize) -> String {
     format!("Sessions {count}")
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn is_allowed_status_bar_item(text: &str) -> bool {
     let text = text.trim();
 

@@ -31,6 +31,7 @@ pub fn should_render_explorer_status(status: &str) -> bool {
         || status.contains("failed")
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn is_low_signal_explorer_status(status: &str) -> bool {
     let status = status.trim();
     status == "Explorer ready for the active connection" || status == "Ready"

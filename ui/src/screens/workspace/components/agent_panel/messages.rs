@@ -329,14 +329,17 @@ pub fn acp_registry_preparing_text(name: &str) -> String {
     format!("Preparing {name}...")
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn acp_registry_connecting_text(name: &str) -> String {
     format!("Connecting to {name}...")
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn is_verbose_acp_registry_loading_text(text: &str) -> bool {
     text == "Loading ACP registry..."
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn is_verbose_acp_registry_preparing_text(text: &str) -> bool {
     text.starts_with("Preparing ") && text.contains(" from the ACP registry")
 }

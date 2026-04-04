@@ -5,18 +5,22 @@ use models::SavedConnection;
 use super::edit_connection_modal::EditConnectionModal;
 use super::forms::connection_status_class;
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn recent_connections_loading_text() -> &'static str {
     "Loading connections…"
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn recent_connections_empty_text() -> &'static str {
     "No saved connections yet."
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn format_connection_failed_error(err: impl std::fmt::Display) -> String {
     format!("Connection failed: {err}")
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn is_verbose_loading_text(text: &str) -> bool {
     text == "Loading saved connections..."
 }

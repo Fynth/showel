@@ -40,7 +40,7 @@ struct AcpRuntimeHandle {
     event_rx: mpsc::Receiver<AcpEvent>,
     permission_registry: PermissionRegistry,
     terminal_registry: TerminalRegistry,
-    _thread: thread::JoinHandle<()>,
+    thread: thread::JoinHandle<()>,
     active_specialist: Option<AgentSpecialist>,
     coordinator: AgentCoordinator,
     execution_history: Vec<String>,
@@ -512,7 +512,7 @@ pub async fn connect_acp_agent(request: AcpLaunchRequest) -> Result<AcpConnectio
         event_rx,
         permission_registry,
         terminal_registry,
-        _thread: thread,
+        thread,
         active_specialist: None,
         coordinator: AgentCoordinator::new(),
         execution_history: Vec::new(),
@@ -719,7 +719,10 @@ pub fn disconnect_acp_agent() -> Result<(), String> {
         .lock()
         .map_err(|_| "ACP runtime lock poisoned".to_string())?;
 
-    if let Some(handle) = slot.take() {
+    let handle = slot.take();
+    drop(slot);
+
+    if let Some(handle) = handle {
         let request_ids = handle
             .permission_registry
             .pending
@@ -735,6 +738,7 @@ pub fn disconnect_acp_agent() -> Result<(), String> {
             let _ = handle.terminal_registry.take(&terminal_id);
         }
         let _ = handle.command_tx.send(AcpCommand::Disconnect);
+        let _ = handle.thread.join();
     }
 
     Ok(())
@@ -1005,6 +1009,7 @@ async fn spawn_acp_child(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
+        apply_agent_runtime_environment(&mut child_command, command);
         apply_hidden_process_flags(&mut child_command);
 
         match child_command.spawn() {
@@ -1019,6 +1024,65 @@ async fn spawn_acp_child(
             Err(err) => return Err(err),
         }
     }
+}
+
+fn apply_agent_runtime_environment(command: &mut tokio::process::Command, executable: &str) {
+    if !is_opencode_command(executable) {
+        return;
+    }
+
+    let Some(envs) = opencode_runtime_environment() else {
+        return;
+    };
+
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+}
+
+fn is_opencode_command(executable: &str) -> bool {
+    executable
+        .rsplit(['/', '\\'])
+        .next()
+        .is_some_and(|file_name| {
+            file_name.eq_ignore_ascii_case("opencode")
+                || file_name.eq_ignore_ascii_case("opencode.exe")
+        })
+}
+
+fn opencode_runtime_environment() -> Option<[(&'static str, PathBuf); 3]> {
+    let runtime_root = storage::acp_agent_runtime_root("opencode")
+        .or_else(|_| {
+            let fallback = std::env::temp_dir()
+                .join("showel")
+                .join("acp")
+                .join("runtime")
+                .join("opencode");
+            if let Err(err) = std::fs::create_dir_all(&fallback) {
+                return Err(format!(
+                    "failed to create fallback ACP runtime root {}: {err}",
+                    fallback.display()
+                ));
+            }
+            Ok(fallback)
+        })
+        .ok()?;
+
+    let data_home = runtime_root.join("xdg-data");
+    let state_home = runtime_root.join("xdg-state");
+    let cache_home = runtime_root.join("xdg-cache");
+
+    for path in [&data_home, &state_home, &cache_home] {
+        if std::fs::create_dir_all(path).is_err() {
+            return None;
+        }
+    }
+
+    Some([
+        ("XDG_DATA_HOME", data_home),
+        ("XDG_STATE_HOME", state_home),
+        ("XDG_CACHE_HOME", cache_home),
+    ])
 }
 
 fn is_text_file_busy_error(err: &std::io::Error) -> bool {
@@ -1383,7 +1447,10 @@ fn respond_to_permission_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{acp, format_error_with_stderr, is_text_file_busy_error, normalize_cwd_path};
+    use super::{
+        acp, format_error_with_stderr, is_opencode_command, is_text_file_busy_error,
+        normalize_cwd_path, opencode_runtime_environment,
+    };
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -1436,5 +1503,27 @@ mod tests {
     fn detects_text_file_busy_os_error() {
         let err = std::io::Error::from_raw_os_error(26);
         assert!(is_text_file_busy_error(&err));
+    }
+
+    #[test]
+    fn detects_opencode_command_by_file_name() {
+        assert!(is_opencode_command("opencode"));
+        assert!(is_opencode_command("/tmp/tools/opencode"));
+        assert!(is_opencode_command(r"C:\tools\opencode.exe"));
+        assert!(!is_opencode_command("codex-acp"));
+    }
+
+    #[test]
+    fn opencode_runtime_environment_isolated_under_showel_storage() {
+        let envs = opencode_runtime_environment().expect("opencode env should be available");
+
+        for (key, value) in envs {
+            assert!(matches!(
+                key,
+                "XDG_DATA_HOME" | "XDG_STATE_HOME" | "XDG_CACHE_HOME"
+            ));
+            let value = value.to_string_lossy().to_string();
+            assert!(value.contains("showel/acp/runtime/opencode"));
+        }
     }
 }

@@ -87,6 +87,7 @@ fn main_window_builder() -> WindowBuilder {
         .with_min_inner_size(LogicalSize::new(720.0, 480.0))
         .with_always_on_top(false)
         .with_resizable(true)
+        .with_decorations(false)
         .with_window_icon(Some(load_app_icon()));
 
     #[cfg(target_os = "windows")]

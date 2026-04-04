@@ -14,6 +14,7 @@ impl EditorSelection {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn clamped(self, sql: &str) -> Self {
         let len = sql.len();
         Self {
@@ -23,6 +24,7 @@ impl EditorSelection {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn clamp_to_char_boundary(sql: &str, index: usize) -> usize {
     let mut index = index.min(sql.len());
     while index > 0 && !sql.is_char_boundary(index) {
@@ -31,6 +33,7 @@ fn clamp_to_char_boundary(sql: &str, index: usize) -> usize {
     index
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn current_token_range(sql: &str, selection: EditorSelection) -> std::ops::Range<usize> {
     let selection = selection.clamped(sql);
     let start = selection.start.min(selection.end);
@@ -60,6 +63,7 @@ pub(super) fn current_token_range(sql: &str, selection: EditorSelection) -> std:
     range_start..range_end
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn is_token_boundary(ch: char) -> bool {
     ch.is_whitespace()
         || matches!(
@@ -82,6 +86,7 @@ fn is_token_boundary(ch: char) -> bool {
         )
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn clean_token(token: &str) -> String {
     token
         .trim_matches(|ch: char| {
@@ -90,6 +95,7 @@ pub(super) fn clean_token(token: &str) -> String {
         .to_string()
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn normalize_identifier(value: &str) -> String {
     value
         .chars()
@@ -99,6 +105,7 @@ pub(super) fn normalize_identifier(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn apply_suggestion(
     sql: &str,
     selection: EditorSelection,
@@ -150,6 +157,7 @@ fn selection_query_script(editor_id: &str) -> String {
     )
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn set_editor_selection_script(editor_id: &str, position: usize) -> String {
     format!(
         r#"

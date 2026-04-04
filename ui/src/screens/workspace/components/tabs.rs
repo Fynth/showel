@@ -483,6 +483,36 @@ pub fn TabsManager(
                                         placeholder: "For example: show failed payments from the last 7 days grouped by provider",
                                         value: "{generate_sql_prompt}",
                                         oninput: move |event| generate_sql_prompt.set(event.value()),
+                                        onkeydown: move |event| {
+                                            if event.key() != Key::Enter
+                                                || event.modifiers().contains(Modifiers::SHIFT)
+                                                || generate_sql_busy
+                                                || generate_sql_prompt_empty
+                                            {
+                                                return;
+                                            }
+                                            event.prevent_default();
+
+                                            let Some(current_tab) = tabs
+                                                .read()
+                                                .iter()
+                                                .find(|tab| tab.id == active_tab_id())
+                                                .cloned()
+                                            else {
+                                                return;
+                                            };
+
+                                            submit_generated_sql_request(
+                                                tabs,
+                                                active_tab_id(),
+                                                current_tab,
+                                                acp_panel_state,
+                                                chat_revision,
+                                                allow_agent_db_read(),
+                                                generate_sql_prompt,
+                                                show_generate_sql_window,
+                                            );
+                                        },
                                     }
                                 }
                                 div { class: "editor__generate-sql-actions",

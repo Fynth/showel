@@ -28,3 +28,14 @@ pub fn acp_workspace_root() -> Result<std::path::PathBuf, String> {
         .map_err(|err| format!("failed to create ACP workspace {}: {err}", path.display()))?;
     Ok(path)
 }
+
+pub fn acp_agent_runtime_root(agent_name: &str) -> Result<std::path::PathBuf, String> {
+    let path = fs_store::acp_agent_runtime_root(agent_name);
+    std::fs::create_dir_all(&path).map_err(|err| {
+        format!(
+            "failed to create ACP runtime root {}: {err}",
+            path.display()
+        )
+    })?;
+    Ok(path)
+}

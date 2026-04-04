@@ -12,6 +12,10 @@ pub(crate) fn acp_workspace_root() -> PathBuf {
     storage_root().join("acp").join("workspace")
 }
 
+pub(crate) fn acp_agent_runtime_root(agent_name: &str) -> PathBuf {
+    storage_root().join("acp").join("runtime").join(agent_name)
+}
+
 pub(crate) fn saved_connections_path() -> PathBuf {
     storage_root().join("saved_connections.json")
 }

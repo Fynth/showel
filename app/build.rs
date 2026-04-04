@@ -82,10 +82,6 @@ fn write_generated_css(path: &Path, css: &str) -> Result<(), Box<dyn Error>> {
 
     if needs_write {
         fs::write(path, css)?;
-        println!(
-            "cargo:warning=generated {} from styles/app.scss",
-            path.display()
-        );
     }
 
     Ok(())

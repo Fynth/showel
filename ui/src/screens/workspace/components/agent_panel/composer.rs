@@ -87,6 +87,7 @@ pub(super) fn AgentComposer(
             }
             textarea {
                 class: "input agent-panel__prompt",
+                rows: 5,
                 value: "{prompt_draft}",
                 placeholder: "For example: show active users created today",
                 oninput: move |event| prompt_draft.set(event.value()),

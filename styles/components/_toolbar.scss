@@ -2,28 +2,39 @@
 @use "../base/states" as *;
 
 .toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 clamp(10px, 1vw, $spacing-md);
-  border-bottom: 1px solid var(--color-border);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  min-height: calc($toolbar-height + 6px);
+  padding-left: clamp(8px, 0.9vw, $spacing-md);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-strong) 78%, transparent);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 98%, white 1%),
-      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 18%, var(--color-surface-sidebar, var(--color-panel)))
+      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 96%, white 2%),
+      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 86%, black 10%)
     );
   box-shadow:
-    inset 0 -1px 0 rgba(255, 255, 255, 0.025),
-    0 8px 22px rgba(8, 10, 14, 0.12);
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 24px rgba(8, 10, 14, 0.16);
+  user-select: none;
+}
+
+.toolbar__drag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  overflow: hidden;
+  padding: 4px 10px 4px 0;
 }
 
 .toolbar__brand {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .toolbar__logo {
@@ -31,7 +42,7 @@
   height: 24px;
   display: block;
   flex: 0 0 auto;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.14));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.18));
 }
 
 .toolbar__logo svg {
@@ -66,7 +77,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  min-width: 0;
+  max-width: min(48vw, 760px);
+  padding: 5px 10px;
   border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
   border-radius: 999px;
   background:
@@ -77,7 +90,6 @@
     );
   color: var(--color-text-muted);
   font-size: $font-size-sm;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -92,38 +104,149 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 15%, transparent);
 }
 
+.toolbar__spacer {
+  flex: 1 1 auto;
+  min-width: 20px;
+}
+
 .toolbar__actions {
-  margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 6px;
+  padding: 4px 10px 4px 0;
+}
+
+.toolbar__window-controls {
+  display: flex;
+  align-items: stretch;
+  margin-left: 2px;
+  border-left: 1px solid color-mix(in srgb, var(--color-border) 62%, transparent);
+}
+
+.toolbar__window-button {
+  position: relative;
+  width: 44px;
+  min-width: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.toolbar__window-button:hover {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+}
+
+.toolbar__window-button--close:hover {
+  background: color-mix(in srgb, var(--color-danger) 82%, transparent);
+}
+
+.toolbar__window-symbol {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+}
+
+.toolbar__window-symbol::before,
+.toolbar__window-symbol::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.toolbar__window-symbol--minimize::before {
+  inset: auto 0 2px 0;
+  height: 1.5px;
+  background: currentColor;
+}
+
+.toolbar__window-symbol--maximize::before {
+  border: 1.5px solid currentColor;
+}
+
+.toolbar__window-symbol--close::before,
+.toolbar__window-symbol--close::after {
+  left: 50%;
+  top: 0;
+  width: 1.5px;
+  height: 12px;
+  background: currentColor;
+  transform-origin: center;
+}
+
+.toolbar__window-symbol--close::before {
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.toolbar__window-symbol--close::after {
+  transform: translateX(-50%) rotate(-45deg);
+}
+
+@media (max-width: 1100px) {
+  .toolbar__brand-copy {
+    display: none;
+  }
+
+  .toolbar__connection {
+    max-width: min(44vw, 520px);
+  }
 }
 
 @media (max-width: 920px) {
   .toolbar {
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .toolbar__connection {
-    flex: 1 1 auto;
+  .toolbar__drag {
+    gap: 8px;
+  }
+
+  .toolbar__actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .toolbar__window-controls {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 62%, transparent);
   }
 }
 
 @media (max-width: 760px) {
   .toolbar {
-    height: auto;
-    min-height: $toolbar-height;
-    padding-top: $spacing-xs;
-    padding-bottom: $spacing-xs;
+    grid-template-columns: 1fr;
+    padding-left: $spacing-sm;
+  }
+
+  .toolbar__drag {
+    padding-right: $spacing-sm;
     flex-wrap: wrap;
-    align-content: center;
+  }
+
+  .toolbar__connection {
+    order: 3;
+    max-width: none;
+    width: 100%;
+  }
+
+  .toolbar__spacer {
+    display: none;
   }
 
   .toolbar__actions {
-    width: 100%;
-    margin-left: 0;
+    padding: 0 $spacing-sm $spacing-xs;
     justify-content: flex-start;
+  }
+
+  .toolbar__window-controls {
+    border-top: 0;
+    border-left: 0;
+    justify-content: flex-end;
   }
 }
