@@ -37,6 +37,7 @@ mkdir -p "${source_root}/.cargo"
 
 flatpak-builder \
   --force-clean \
+  --default-branch=stable \
   --repo="${repo_dir}" \
   "${state_root}" \
   "${source_root}/${manifest_rel}"
