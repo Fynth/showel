@@ -893,14 +893,16 @@ mod tests {
 
     #[test]
     fn postgres_missing_ssh_tunnel_field_deserializes_as_none() {
-        let json = r#"{"host":"localhost","port":5432,"username":"pg","password":"pw","database":"db"}"#;
+        let json =
+            r#"{"host":"localhost","port":5432,"username":"pg","password":"pw","database":"db"}"#;
         let parsed: PostgresFormData = serde_json::from_str(json).expect("deserialize");
         assert!(parsed.ssh_tunnel.is_none());
     }
 
     #[test]
     fn mysql_missing_ssh_tunnel_field_deserializes_as_none() {
-        let json = r#"{"host":"localhost","port":3306,"username":"root","password":"pw","database":"db"}"#;
+        let json =
+            r#"{"host":"localhost","port":3306,"username":"root","password":"pw","database":"db"}"#;
         let parsed: MySqlFormData = serde_json::from_str(json).expect("deserialize");
         assert!(parsed.ssh_tunnel.is_none());
     }

@@ -116,6 +116,24 @@ impl AppThemePreference {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct CodeStralSettings {
+    pub enabled: bool,
+    pub api_key: String,
+    pub model: String,
+}
+
+impl Default for CodeStralSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_key: String::new(),
+            model: "codestral-latest".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppUiSettings {
     pub theme: AppThemePreference,
     pub ai_features_enabled: bool,
@@ -128,6 +146,7 @@ pub struct AppUiSettings {
     pub show_agent_panel: bool,
     pub default_page_size: u32,
     pub tool_panel_layout: WorkspaceToolLayout,
+    pub codestral: CodeStralSettings,
 }
 
 impl Default for AppUiSettings {
@@ -144,6 +163,7 @@ impl Default for AppUiSettings {
             show_agent_panel: false,
             default_page_size: 100,
             tool_panel_layout: WorkspaceToolLayout::default(),
+            codestral: CodeStralSettings::default(),
         }
     }
 }

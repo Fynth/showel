@@ -1396,9 +1396,9 @@ impl ClickHouseEnginePreset {
 #[cfg(test)]
 mod tests {
     use super::{
+        ClickHouseEnginePreset, CreateTableColumnDraft, CreateTableDraft,
         build_create_table_request, preview_clickhouse_engine_clause,
-        selected_create_table_type_value, ClickHouseEnginePreset, CreateTableColumnDraft,
-        CreateTableDraft,
+        selected_create_table_type_value,
     };
     use models::DatabaseKind;
 

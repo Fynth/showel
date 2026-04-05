@@ -24,8 +24,14 @@ pub async fn describe_table_mysql(
     .await
     .map_err(DatabaseError::MySql)?;
     if let Some(row) = overview_rows.first() {
-        let table_type = row.try_get::<String, _>("table_type").unwrap_or_else(|_| "TABLE".to_string());
-        let engine = row.try_get::<Option<String>, _>("engine").ok().flatten().unwrap_or_else(|| table_type.clone());
+        let table_type = row
+            .try_get::<String, _>("table_type")
+            .unwrap_or_else(|_| "TABLE".to_string());
+        let engine = row
+            .try_get::<Option<String>, _>("engine")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| table_type.clone());
         rows.push(structure_row(
             "table",
             table.clone(),
@@ -75,11 +81,24 @@ pub async fn describe_table_mysql(
     .await
     .map_err(DatabaseError::MySql)?;
     for row in column_rows {
-        let column_name = row.try_get::<String, _>("column_name").map_err(DatabaseError::MySql)?;
-        let column_type = row.try_get::<String, _>("column_type").unwrap_or_else(|_| "text".to_string());
-        let is_nullable = row.try_get::<String, _>("is_nullable").unwrap_or_else(|_| "YES".to_string());
-        let default_value = row.try_get::<Option<String>, _>("column_default").ok().flatten();
-        let extra = row.try_get::<Option<String>, _>("extra").ok().flatten().unwrap_or_default();
+        let column_name = row
+            .try_get::<String, _>("column_name")
+            .map_err(DatabaseError::MySql)?;
+        let column_type = row
+            .try_get::<String, _>("column_type")
+            .unwrap_or_else(|_| "text".to_string());
+        let is_nullable = row
+            .try_get::<String, _>("is_nullable")
+            .unwrap_or_else(|_| "YES".to_string());
+        let default_value = row
+            .try_get::<Option<String>, _>("column_default")
+            .ok()
+            .flatten();
+        let extra = row
+            .try_get::<Option<String>, _>("extra")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         rows.push(structure_row(
             "column",
             column_name,
@@ -103,13 +122,27 @@ pub async fn describe_table_mysql(
     .fetch_all(pool)
     .await
     .map_err(DatabaseError::MySql)?;
-    let mut grouped_indexes: std::collections::BTreeMap<String, (bool, String, Vec<String>)> = std::collections::BTreeMap::new();
+    let mut grouped_indexes: std::collections::BTreeMap<String, (bool, String, Vec<String>)> =
+        std::collections::BTreeMap::new();
     for row in index_rows {
-        let index_name = row.try_get::<String, _>("index_name").map_err(DatabaseError::MySql)?;
+        let index_name = row
+            .try_get::<String, _>("index_name")
+            .map_err(DatabaseError::MySql)?;
         let non_unique = row.try_get::<i64, _>("non_unique").unwrap_or(1) != 0;
-        let index_type = row.try_get::<Option<String>, _>("index_type").ok().flatten().unwrap_or_else(|| "INDEX".to_string());
-        let column_name = row.try_get::<Option<String>, _>("column_name").ok().flatten().unwrap_or_default();
-        let entry = grouped_indexes.entry(index_name).or_insert((non_unique, index_type, Vec::new()));
+        let index_type = row
+            .try_get::<Option<String>, _>("index_type")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "INDEX".to_string());
+        let column_name = row
+            .try_get::<Option<String>, _>("column_name")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let entry =
+            grouped_indexes
+                .entry(index_name)
+                .or_insert((non_unique, index_type, Vec::new()));
         if !column_name.is_empty() {
             entry.2.push(column_name);
         }
@@ -118,7 +151,11 @@ pub async fn describe_table_mysql(
         rows.push(structure_row(
             "index",
             index_name,
-            if non_unique { index_type } else { format!("UNIQUE {index_type}") },
+            if non_unique {
+                index_type
+            } else {
+                format!("UNIQUE {index_type}")
+            },
             columns.join(", "),
             String::new(),
         ));
@@ -149,16 +186,39 @@ pub async fn describe_table_mysql(
     .fetch_all(pool)
     .await
     .map_err(DatabaseError::MySql)?;
-    let mut grouped_constraints: std::collections::BTreeMap<String, (String, Vec<String>, Vec<String>)> = std::collections::BTreeMap::new();
+    let mut grouped_constraints: std::collections::BTreeMap<
+        String,
+        (String, Vec<String>, Vec<String>),
+    > = std::collections::BTreeMap::new();
     for row in constraint_rows {
-        let constraint_name = row.try_get::<String, _>("constraint_name").map_err(DatabaseError::MySql)?;
-        let constraint_type = row.try_get::<String, _>("constraint_type").unwrap_or_else(|_| "CONSTRAINT".to_string());
-        let column_name = row.try_get::<Option<String>, _>("column_name").ok().flatten();
-        let referenced_schema = row.try_get::<Option<String>, _>("referenced_table_schema").ok().flatten();
-        let referenced_table = row.try_get::<Option<String>, _>("referenced_table_name").ok().flatten();
-        let referenced_column = row.try_get::<Option<String>, _>("referenced_column_name").ok().flatten();
+        let constraint_name = row
+            .try_get::<String, _>("constraint_name")
+            .map_err(DatabaseError::MySql)?;
+        let constraint_type = row
+            .try_get::<String, _>("constraint_type")
+            .unwrap_or_else(|_| "CONSTRAINT".to_string());
+        let column_name = row
+            .try_get::<Option<String>, _>("column_name")
+            .ok()
+            .flatten();
+        let referenced_schema = row
+            .try_get::<Option<String>, _>("referenced_table_schema")
+            .ok()
+            .flatten();
+        let referenced_table = row
+            .try_get::<Option<String>, _>("referenced_table_name")
+            .ok()
+            .flatten();
+        let referenced_column = row
+            .try_get::<Option<String>, _>("referenced_column_name")
+            .ok()
+            .flatten();
 
-        let entry = grouped_constraints.entry(constraint_name).or_insert((constraint_type, Vec::new(), Vec::new()));
+        let entry = grouped_constraints.entry(constraint_name).or_insert((
+            constraint_type,
+            Vec::new(),
+            Vec::new(),
+        ));
         if let Some(column_name) = column_name {
             entry.1.push(column_name);
         }
@@ -199,10 +259,18 @@ pub async fn describe_table_mysql(
     .await
     .map_err(DatabaseError::MySql)?;
     for row in trigger_rows {
-        let trigger_name = row.try_get::<String, _>("trigger_name").map_err(DatabaseError::MySql)?;
-        let timing = row.try_get::<String, _>("action_timing").unwrap_or_else(|_| String::new());
-        let event = row.try_get::<String, _>("event_manipulation").unwrap_or_else(|_| String::new());
-        let action = row.try_get::<String, _>("action_statement").unwrap_or_else(|_| String::new());
+        let trigger_name = row
+            .try_get::<String, _>("trigger_name")
+            .map_err(DatabaseError::MySql)?;
+        let timing = row
+            .try_get::<String, _>("action_timing")
+            .unwrap_or_else(|_| String::new());
+        let event = row
+            .try_get::<String, _>("event_manipulation")
+            .unwrap_or_else(|_| String::new());
+        let action = row
+            .try_get::<String, _>("action_statement")
+            .unwrap_or_else(|_| String::new());
         rows.push(structure_row(
             "trigger",
             trigger_name,
@@ -240,7 +308,10 @@ pub async fn load_table_columns_mysql(
     .map_err(DatabaseError::MySql)?;
 
     rows.into_iter()
-        .map(|row| row.try_get::<String, _>("column_name").map_err(DatabaseError::MySql))
+        .map(|row| {
+            row.try_get::<String, _>("column_name")
+                .map_err(DatabaseError::MySql)
+        })
         .collect()
 }
 
@@ -259,12 +330,19 @@ pub async fn load_connection_tree_mysql(
     .await
     .map_err(DatabaseError::MySql)?;
 
-    let mut grouped: std::collections::BTreeMap<String, Vec<ExplorerNode>> = std::collections::BTreeMap::new();
+    let mut grouped: std::collections::BTreeMap<String, Vec<ExplorerNode>> =
+        std::collections::BTreeMap::new();
 
     for row in rows {
-        let schema = row.try_get::<String, _>("table_schema").map_err(DatabaseError::MySql)?;
-        let name = row.try_get::<String, _>("table_name").map_err(DatabaseError::MySql)?;
-        let table_type = row.try_get::<String, _>("table_type").map_err(DatabaseError::MySql)?;
+        let schema = row
+            .try_get::<String, _>("table_schema")
+            .map_err(DatabaseError::MySql)?;
+        let name = row
+            .try_get::<String, _>("table_name")
+            .map_err(DatabaseError::MySql)?;
+        let table_type = row
+            .try_get::<String, _>("table_type")
+            .map_err(DatabaseError::MySql)?;
 
         let kind = if table_type.eq_ignore_ascii_case("view") {
             ExplorerNodeKind::View
@@ -362,7 +440,9 @@ fn structure_page(rows: Vec<Vec<String>>) -> models::QueryPage {
 
 fn mysql_column_details(is_nullable: &str, default_value: Option<String>, extra: &str) -> String {
     super::join_non_empty([
-        is_nullable.eq_ignore_ascii_case("NO").then(|| "NOT NULL".to_string()),
+        is_nullable
+            .eq_ignore_ascii_case("NO")
+            .then(|| "NOT NULL".to_string()),
         default_value.map(|value| format!("default {value}")),
         (!extra.trim().is_empty()).then(|| extra.trim().to_string()),
     ])

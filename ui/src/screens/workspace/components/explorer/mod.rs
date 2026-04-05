@@ -2,7 +2,7 @@ mod create_table_modal;
 mod duplicate_table_modal;
 mod tree_views;
 
-use crate::app_state::{activate_session, remove_session, APP_STATE};
+use crate::app_state::{APP_STATE, activate_session, remove_session};
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
 use models::{DatabaseKind, ExplorerNode, ExplorerNodeKind, QueryTabState};
@@ -302,8 +302,8 @@ fn matches_query(value: &str, query: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        filter_connection_sections, filter_node, filter_nodes, matches_query,
-        ExplorerConnectionSection, ExplorerNodeKind,
+        ExplorerConnectionSection, ExplorerNodeKind, filter_connection_sections, filter_node,
+        filter_nodes, matches_query,
     };
     use models::ExplorerNode;
 

@@ -1779,8 +1779,14 @@ mod tests {
     #[test]
     fn leading_keyword_extracts_first_sql_word() {
         assert_eq!(leading_sql_keyword("SELECT 1"), Some("select".to_string()));
-        assert_eq!(leading_sql_keyword("insert into t values (1)"), Some("insert".to_string()));
-        assert_eq!(leading_sql_keyword("  update t set x = 1"), Some("update".to_string()));
+        assert_eq!(
+            leading_sql_keyword("insert into t values (1)"),
+            Some("insert".to_string())
+        );
+        assert_eq!(
+            leading_sql_keyword("  update t set x = 1"),
+            Some("update".to_string())
+        );
         assert_eq!(leading_sql_keyword(""), None);
         assert_eq!(leading_sql_keyword("   "), None);
     }
@@ -1793,7 +1799,9 @@ mod tests {
         assert!(is_read_only_sql("show tables"));
         assert!(is_read_only_sql("WITH cte AS (select 1) select * from cte"));
         assert!(is_read_only_sql("pragma table_info(users)"));
-        assert!(!is_read_only_sql("insert into users (name) values ('test')"));
+        assert!(!is_read_only_sql(
+            "insert into users (name) values ('test')"
+        ));
         assert!(!is_read_only_sql("update users set name = 'test'"));
         assert!(!is_read_only_sql("delete from users"));
         assert!(!is_read_only_sql("drop table users"));

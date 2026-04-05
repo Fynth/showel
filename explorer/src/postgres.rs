@@ -29,10 +29,19 @@ pub async fn describe_table_postgres(
     .await
     .map_err(DatabaseError::Postgres)?;
     for row in column_rows {
-        let column_name = row.try_get::<String, _>("column_name").map_err(DatabaseError::Postgres)?;
-        let data_type = row.try_get::<String, _>("data_type").unwrap_or_else(|_| "text".to_string());
-        let is_nullable = row.try_get::<String, _>("is_nullable").unwrap_or_else(|_| "YES".to_string());
-        let default_value = row.try_get::<Option<String>, _>("column_default").ok().flatten();
+        let column_name = row
+            .try_get::<String, _>("column_name")
+            .map_err(DatabaseError::Postgres)?;
+        let data_type = row
+            .try_get::<String, _>("data_type")
+            .unwrap_or_else(|_| "text".to_string());
+        let is_nullable = row
+            .try_get::<String, _>("is_nullable")
+            .unwrap_or_else(|_| "YES".to_string());
+        let default_value = row
+            .try_get::<Option<String>, _>("column_default")
+            .ok()
+            .flatten();
 
         rows.push(structure_row(
             "column",
@@ -58,8 +67,12 @@ pub async fn describe_table_postgres(
     .await
     .map_err(DatabaseError::Postgres)?;
     for row in index_rows {
-        let index_name = row.try_get::<String, _>("indexname").map_err(DatabaseError::Postgres)?;
-        let index_definition = row.try_get::<String, _>("indexdef").unwrap_or_else(|_| String::new());
+        let index_name = row
+            .try_get::<String, _>("indexname")
+            .map_err(DatabaseError::Postgres)?;
+        let index_definition = row
+            .try_get::<String, _>("indexdef")
+            .unwrap_or_else(|_| String::new());
         rows.push(structure_row(
             "index",
             index_name,
@@ -100,9 +113,15 @@ pub async fn describe_table_postgres(
     .await
     .map_err(DatabaseError::Postgres)?;
     for row in constraint_rows {
-        let constraint_name = row.try_get::<String, _>("constraint_name").map_err(DatabaseError::Postgres)?;
-        let constraint_type = row.try_get::<String, _>("constraint_type").unwrap_or_else(|_| "CONSTRAINT".to_string());
-        let definition = row.try_get::<String, _>("definition").unwrap_or_else(|_| String::new());
+        let constraint_name = row
+            .try_get::<String, _>("constraint_name")
+            .map_err(DatabaseError::Postgres)?;
+        let constraint_type = row
+            .try_get::<String, _>("constraint_type")
+            .unwrap_or_else(|_| "CONSTRAINT".to_string());
+        let definition = row
+            .try_get::<String, _>("definition")
+            .unwrap_or_else(|_| String::new());
 
         rows.push(structure_row(
             "constraint",
@@ -133,10 +152,18 @@ pub async fn describe_table_postgres(
     .await
     .map_err(DatabaseError::Postgres)?;
     for row in trigger_rows {
-        let trigger_name = row.try_get::<String, _>("trigger_name").map_err(DatabaseError::Postgres)?;
-        let timing = row.try_get::<String, _>("action_timing").unwrap_or_else(|_| String::new());
-        let events = row.try_get::<String, _>("events").unwrap_or_else(|_| String::new());
-        let action = row.try_get::<String, _>("action_statement").unwrap_or_else(|_| String::new());
+        let trigger_name = row
+            .try_get::<String, _>("trigger_name")
+            .map_err(DatabaseError::Postgres)?;
+        let timing = row
+            .try_get::<String, _>("action_timing")
+            .unwrap_or_else(|_| String::new());
+        let events = row
+            .try_get::<String, _>("events")
+            .unwrap_or_else(|_| String::new());
+        let action = row
+            .try_get::<String, _>("action_statement")
+            .unwrap_or_else(|_| String::new());
 
         rows.push(structure_row(
             "trigger",
@@ -175,7 +202,10 @@ pub async fn load_table_columns_postgres(
     .map_err(DatabaseError::Postgres)?;
 
     rows.into_iter()
-        .map(|row| row.try_get::<String, _>("column_name").map_err(DatabaseError::Postgres))
+        .map(|row| {
+            row.try_get::<String, _>("column_name")
+                .map_err(DatabaseError::Postgres)
+        })
         .collect()
 }
 
@@ -194,19 +224,30 @@ pub async fn load_connection_tree_postgres(
     .await
     .map_err(DatabaseError::Postgres)?;
 
-    let mut grouped: std::collections::BTreeMap<String, Vec<ExplorerNode>> = std::collections::BTreeMap::new();
+    let mut grouped: std::collections::BTreeMap<String, Vec<ExplorerNode>> =
+        std::collections::BTreeMap::new();
 
     for row in rows {
-        let schema = row.try_get::<String, _>("table_schema").map_err(DatabaseError::Postgres)?;
-        let name = row.try_get::<String, _>("table_name").map_err(DatabaseError::Postgres)?;
-        let table_type = row.try_get::<String, _>("table_type").map_err(DatabaseError::Postgres)?;
+        let schema = row
+            .try_get::<String, _>("table_schema")
+            .map_err(DatabaseError::Postgres)?;
+        let name = row
+            .try_get::<String, _>("table_name")
+            .map_err(DatabaseError::Postgres)?;
+        let table_type = row
+            .try_get::<String, _>("table_type")
+            .map_err(DatabaseError::Postgres)?;
 
         let kind = if table_type.eq_ignore_ascii_case("view") {
             ExplorerNodeKind::View
         } else {
             ExplorerNodeKind::Table
         };
-        let qualified_name = format!("{}.{}", super::quote_identifier(&schema), super::quote_identifier(&name));
+        let qualified_name = format!(
+            "{}.{}",
+            super::quote_identifier(&schema),
+            super::quote_identifier(&name)
+        );
 
         grouped
             .entry(schema.clone())
@@ -268,7 +309,9 @@ fn structure_page(rows: Vec<Vec<String>>) -> models::QueryPage {
 
 fn postgres_column_details(is_nullable: &str, default_value: Option<String>) -> String {
     super::join_non_empty([
-        is_nullable.eq_ignore_ascii_case("NO").then(|| "NOT NULL".to_string()),
+        is_nullable
+            .eq_ignore_ascii_case("NO")
+            .then(|| "NOT NULL".to_string()),
         default_value.map(|value| format!("default {value}")),
     ])
 }

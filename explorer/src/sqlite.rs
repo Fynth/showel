@@ -39,12 +39,17 @@ pub async fn describe_table_sqlite(
         .await
         .map_err(DatabaseError::Sqlite)?;
     for row in column_rows {
-        let column_name = row.try_get::<String, _>("name").map_err(DatabaseError::Sqlite)?;
+        let column_name = row
+            .try_get::<String, _>("name")
+            .map_err(DatabaseError::Sqlite)?;
         let data_type = row
             .try_get::<String, _>("type")
             .unwrap_or_else(|_| "TEXT".to_string());
         let not_null = row.try_get::<i64, _>("notnull").unwrap_or(0) == 1;
-        let default_value = row.try_get::<Option<String>, _>("dflt_value").ok().flatten();
+        let default_value = row
+            .try_get::<Option<String>, _>("dflt_value")
+            .ok()
+            .flatten();
         let pk_position = row.try_get::<i64, _>("pk").unwrap_or(0);
         rows.push(structure_row(
             "column",
@@ -69,11 +74,16 @@ pub async fn describe_table_sqlite(
         .await
         .map_err(DatabaseError::Sqlite)?;
     for row in index_rows {
-        let index_name = row.try_get::<String, _>("name").map_err(DatabaseError::Sqlite)?;
+        let index_name = row
+            .try_get::<String, _>("name")
+            .map_err(DatabaseError::Sqlite)?;
         let unique = row.try_get::<i64, _>("unique").unwrap_or(0) == 1;
-        let origin = row.try_get::<String, _>("origin").unwrap_or_else(|_| String::new());
+        let origin = row
+            .try_get::<String, _>("origin")
+            .unwrap_or_else(|_| String::new());
         let partial = row.try_get::<i64, _>("partial").unwrap_or(0) == 1;
-        let index_columns = super::load_sqlite_index_columns(pool, &schema_name, &index_name).await?;
+        let index_columns =
+            super::load_sqlite_index_columns(pool, &schema_name, &index_name).await?;
         let create_sql = sqlx::query_scalar::<_, Option<String>>(&format!(
             "select sql from {}.sqlite_master where type = 'index' and name = ?1",
             super::quote_identifier(&schema_name)
@@ -109,11 +119,21 @@ pub async fn describe_table_sqlite(
         .map_err(DatabaseError::Sqlite)?;
     for row in foreign_key_rows {
         let id = row.try_get::<i64, _>("id").unwrap_or_default();
-        let from_column = row.try_get::<String, _>("from").unwrap_or_else(|_| String::new());
-        let target_table = row.try_get::<String, _>("table").unwrap_or_else(|_| String::new());
-        let target_column = row.try_get::<String, _>("to").unwrap_or_else(|_| String::new());
-        let on_update = row.try_get::<String, _>("on_update").unwrap_or_else(|_| String::new());
-        let on_delete = row.try_get::<String, _>("on_delete").unwrap_or_else(|_| String::new());
+        let from_column = row
+            .try_get::<String, _>("from")
+            .unwrap_or_else(|_| String::new());
+        let target_table = row
+            .try_get::<String, _>("table")
+            .unwrap_or_else(|_| String::new());
+        let target_column = row
+            .try_get::<String, _>("to")
+            .unwrap_or_else(|_| String::new());
+        let on_update = row
+            .try_get::<String, _>("on_update")
+            .unwrap_or_else(|_| String::new());
+        let on_delete = row
+            .try_get::<String, _>("on_delete")
+            .unwrap_or_else(|_| String::new());
 
         rows.push(structure_row(
             "constraint",
@@ -137,8 +157,14 @@ pub async fn describe_table_sqlite(
         .await
         .map_err(DatabaseError::Sqlite)?;
     for row in trigger_rows {
-        let trigger_name = row.try_get::<String, _>("name").map_err(DatabaseError::Sqlite)?;
-        let sql = row.try_get::<Option<String>, _>("sql").ok().flatten().unwrap_or_default();
+        let trigger_name = row
+            .try_get::<String, _>("name")
+            .map_err(DatabaseError::Sqlite)?;
+        let sql = row
+            .try_get::<Option<String>, _>("sql")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         rows.push(structure_row(
             "trigger",
             trigger_name,
@@ -163,10 +189,16 @@ pub async fn load_table_columns_sqlite(
         super::quote_identifier(&table)
     );
 
-    let rows = sqlx::query(&sql).fetch_all(pool).await.map_err(DatabaseError::Sqlite)?;
+    let rows = sqlx::query(&sql)
+        .fetch_all(pool)
+        .await
+        .map_err(DatabaseError::Sqlite)?;
 
     rows.into_iter()
-        .map(|row| row.try_get::<String, _>("name").map_err(DatabaseError::Sqlite))
+        .map(|row| {
+            row.try_get::<String, _>("name")
+                .map_err(DatabaseError::Sqlite)
+        })
         .collect()
 }
 
@@ -190,8 +222,12 @@ pub async fn load_connection_tree_sqlite(
     let mut views = Vec::new();
 
     for row in rows {
-        let name = row.try_get::<String, _>("name").map_err(DatabaseError::Sqlite)?;
-        let kind = row.try_get::<String, _>("type").map_err(DatabaseError::Sqlite)?;
+        let name = row
+            .try_get::<String, _>("name")
+            .map_err(DatabaseError::Sqlite)?;
+        let kind = row
+            .try_get::<String, _>("type")
+            .map_err(DatabaseError::Sqlite)?;
 
         match kind.as_str() {
             "table" => tables.push(ExplorerNode {

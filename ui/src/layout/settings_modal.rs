@@ -268,6 +268,75 @@ pub fn SettingsModal() -> Element {
                             settings: sql_format_settings,
                         }
                     }
+
+                    section {
+                        class: "settings-modal__section",
+                        div {
+                            class: "settings-modal__section-header",
+                            h3 { class: "settings-modal__section-title", "CodeStral Completion" }
+                            p {
+                                class: "settings-modal__section-hint",
+                                "AI-powered SQL code completion via CodeStral API."
+                            }
+                        }
+                        label {
+                            class: "settings-modal__toggle",
+                            input {
+                                r#type: "checkbox",
+                                checked: settings.codestral.enabled,
+                                disabled: settings.codestral.api_key.is_empty(),
+                                oninput: move |event| {
+                                    APP_UI_SETTINGS.with_mut(|current| {
+                                        current.codestral.enabled = event.checked();
+                                    });
+                                },
+                            }
+                            span { "Enable CodeStral inline completion" }
+                        }
+                        div {
+                            class: "field",
+                            span { class: "field__label", "API Key" }
+                            input {
+                                class: "input",
+                                r#type: "password",
+                                placeholder: "sk-...",
+                                value: "{settings.codestral.api_key}",
+                                oninput: move |event| {
+                                    APP_UI_SETTINGS.with_mut(|current| {
+                                        current.codestral.api_key = event.value();
+                                        if current.codestral.api_key.is_empty() {
+                                            current.codestral.enabled = false;
+                                        }
+                                    });
+                                },
+                            }
+                        }
+                        div {
+                            class: "field",
+                            span { class: "field__label", "Model" }
+                            input {
+                                class: "input",
+                                placeholder: "codestral-latest",
+                                value: "{settings.codestral.model}",
+                                oninput: move |event| {
+                                    APP_UI_SETTINGS.with_mut(|current| {
+                                        current.codestral.model = event.value();
+                                    });
+                                },
+                            }
+                        }
+                        if settings.codestral.api_key.is_empty() {
+                            p {
+                                class: "settings-modal__section-hint",
+                                "Enter an API key to enable CodeStral completion. Get your key from "
+                                a {
+                                    href: "https://codestral.mistral.ai/",
+                                    target: "_blank",
+                                    "codestral.mistral.ai"
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
