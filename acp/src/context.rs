@@ -305,15 +305,13 @@ pub async fn build_full_ai_context(
     let cache_key = format!("{}:{:?}", connection_label, focus_source);
 
     // Check cache first
-    if let Ok(cache) = full_context_cache().lock() {
-        if let Some(cached) = cache.get(&cache_key) {
-            if cached.connection_label == connection_label
-                && cached.built_at.elapsed() <= FULL_CONTEXT_CACHE_TTL
-            {
-                tracing::debug!("Using cached full AI context for {}", connection_label);
-                return Ok(cached.context.clone());
-            }
-        }
+    if let Ok(cache) = full_context_cache().lock()
+        && let Some(cached) = cache.get(&cache_key)
+        && cached.connection_label == connection_label
+        && cached.built_at.elapsed() <= FULL_CONTEXT_CACHE_TTL
+    {
+        tracing::debug!("Using cached full AI context for {}", connection_label);
+        return Ok(cached.context.clone());
     }
 
     // Build base context

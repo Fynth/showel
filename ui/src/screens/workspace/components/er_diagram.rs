@@ -196,7 +196,7 @@ pub fn ErDiagramViewer(
                         ErTableCard {
                             table: table.clone(),
                             position: table_positions.get(&table.name).copied(),
-                            on_click: on_table_click.clone(),
+                            on_click: on_table_click,
                         }
                     }
                 }

@@ -238,10 +238,8 @@ fn detect_blob_type(data: &[u8], mime_hint: Option<&str>) -> BlobViewMode {
         }
     }
 
-    if data.len() >= 5 {
-        if data.starts_with(b"<?xml") || data.starts_with(b"<svg") {
-            return BlobViewMode::Text;
-        }
+    if data.len() >= 5 && (data.starts_with(b"<?xml") || data.starts_with(b"<svg")) {
+        return BlobViewMode::Text;
     }
 
     if data.len() >= 6 {
@@ -263,7 +261,7 @@ fn render_hex_dump(data: &[u8], bytes_per_line: usize) -> Vec<HexLine> {
             let bytes: Vec<HexByte> = chunk
                 .iter()
                 .map(|&b| {
-                    let is_printable = b >= 0x20 && b < 0x7f;
+                    let is_printable = (0x20..0x7f).contains(&b);
                     let char = if is_printable { b as char } else { '.' };
                     HexByte {
                         hex: format!("{:02x}", b),

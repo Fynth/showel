@@ -138,15 +138,16 @@ impl OllamaAgent {
 
     fn set_specialist(&self, specialist: AgentSpecialist) {
         let prev = self.active_specialist.get();
-        if prev.is_some() && prev != Some(specialist) {
-            if let Ok(sessions) = self.sessions.lock() {
-                let mut all_history = Vec::new();
-                for session in sessions.values() {
-                    all_history.extend(session.history.iter().cloned());
-                }
-                if let Ok(mut handoff) = self.handoff_context.lock() {
-                    *handoff = all_history;
-                }
+        if prev.is_some()
+            && prev != Some(specialist)
+            && let Ok(sessions) = self.sessions.lock()
+        {
+            let mut all_history = Vec::new();
+            for session in sessions.values() {
+                all_history.extend(session.history.iter().cloned());
+            }
+            if let Ok(mut handoff) = self.handoff_context.lock() {
+                *handoff = all_history;
             }
         }
         self.active_specialist.set(Some(specialist));
@@ -251,22 +252,22 @@ impl acp::Agent for OllamaAgent {
                 content: get_specialist_system_prompt(specialist).to_string(),
             });
 
-            if let Ok(handoff) = self.handoff_context.lock() {
-                if !handoff.is_empty() {
-                    let context_summary: String = handoff
-                        .iter()
-                        .filter(|msg| msg.role != "system")
-                        .map(|msg| format!("{}: {}", msg.role, msg.content))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    if !context_summary.is_empty() {
-                        request_messages.push(OllamaChatMessage {
-                            role: "system".to_string(),
-                            content: format!(
-                                "[Handoff context from previous specialist]\n{context_summary}"
-                            ),
-                        });
-                    }
+            if let Ok(handoff) = self.handoff_context.lock()
+                && !handoff.is_empty()
+            {
+                let context_summary: String = handoff
+                    .iter()
+                    .filter(|msg| msg.role != "system")
+                    .map(|msg| format!("{}: {}", msg.role, msg.content))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !context_summary.is_empty() {
+                    request_messages.push(OllamaChatMessage {
+                        role: "system".to_string(),
+                        content: format!(
+                            "[Handoff context from previous specialist]\n{context_summary}"
+                        ),
+                    });
                 }
             }
 

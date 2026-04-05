@@ -22,12 +22,8 @@ fn redact_sql(sql: &str) -> String {
                                 let after_trimmed = after.trim_start();
                                 if after_trimmed.starts_with('\'') || after_trimmed.starts_with('"')
                                 {
-                                    let quote_char = after_trimmed.chars().next().unwrap();
-                                    if after_trimmed[1..].find(quote_char).is_some() {
-                                        format!("{} [REDACTED]", before.trim_end())
-                                    } else {
-                                        format!("{} [REDACTED]", before.trim_end())
-                                    }
+                                    let _quote_char = after_trimmed.chars().next().unwrap();
+                                    format!("{} [REDACTED]", before.trim_end())
                                 } else {
                                     let value_end = after_trimmed
                                         .find(|c: char| !c.is_alphanumeric() && c != '_')

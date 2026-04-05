@@ -1319,24 +1319,16 @@ pub fn Workspace() -> Element {
     });
 
     let tool_panel_layout = APP_UI_SETTINGS().tool_panel_layout.normalized();
-    let sidebar_panels = visible_tool_panels(
-        &tool_panel_layout.sidebar,
-        show_saved_queries(),
-        show_connections(),
-        show_explorer(),
+    let tool_vis = helpers::ToolPanelVisibility {
+        show_saved_queries: show_saved_queries(),
+        show_connections: show_connections(),
+        show_explorer: show_explorer(),
         show_history,
-        show_agent_panel(),
-        ai_features_enabled(),
-    );
-    let inspector_panels = visible_tool_panels(
-        &tool_panel_layout.inspector,
-        show_saved_queries(),
-        show_connections(),
-        show_explorer(),
-        show_history,
-        show_agent_panel(),
-        ai_features_enabled(),
-    );
+        show_agent_panel: show_agent_panel(),
+        ai_features_enabled: ai_features_enabled(),
+    };
+    let sidebar_panels = visible_tool_panels(&tool_panel_layout.sidebar, &tool_vis);
+    let inspector_panels = visible_tool_panels(&tool_panel_layout.inspector, &tool_vis);
     let show_sidebar = !sidebar_panels.is_empty() || dragging_panel().is_some();
     let show_inspector = !inspector_panels.is_empty() || dragging_panel().is_some();
 
@@ -1370,12 +1362,7 @@ pub fn Workspace() -> Element {
                         dragging_panel,
                         drop_target,
                         target,
-                        show_saved_queries(),
-                        show_connections(),
-                        show_explorer(),
-                        APP_SHOW_HISTORY(),
-                        show_agent_panel(),
-                        ai_features_enabled(),
+                        &tool_vis,
                     );
                 } else {
                     dragging_panel.set(None);

@@ -347,11 +347,10 @@ pub fn is_verbose_acp_registry_preparing_text(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        acp_registry_connecting_text, acp_registry_loading_text, acp_registry_preparing_text,
-        artifact_title, build_thread_meta, compact_connection_label, compact_header_title,
-        format_clipboard_fallback_error, is_verbose_acp_registry_loading_text,
-        is_verbose_acp_registry_preparing_text, is_visible_message, render_message_markdown_html,
-        should_render_message_text,
+        acp_registry_connecting_text, acp_registry_loading_text, artifact_title, build_thread_meta,
+        compact_connection_label, compact_header_title, format_clipboard_fallback_error,
+        is_verbose_acp_registry_loading_text, is_verbose_acp_registry_preparing_text,
+        is_visible_message, render_message_markdown_html, should_render_message_text,
     };
     use models::{AcpMessageKind, AcpOllamaConfig, AcpPanelState, AcpUiMessage, ChatArtifact};
 

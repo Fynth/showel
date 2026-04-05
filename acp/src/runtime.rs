@@ -606,17 +606,16 @@ pub fn send_acp_prompt_with_routing(
 
             let augmented_prompt = augment_prompt_with_context(&prompt, &handle.execution_history);
 
-            if response.confidence >= 0.7 {
-                if let Ok(specialist_response) = handle
+            if response.confidence >= 0.7
+                && let Ok(specialist_response) = handle
                     .coordinator
                     .dispatch(response.specialist, &routing_request)
-                {
-                    eprintln!(
-                        "[acp::routing] Dispatched to {:?}: {}",
-                        response.specialist,
-                        specialist_response.lines().next().unwrap_or("no response")
-                    );
-                }
+            {
+                eprintln!(
+                    "[acp::routing] Dispatched to {:?}: {}",
+                    response.specialist,
+                    specialist_response.lines().next().unwrap_or("no response")
+                );
             }
 
             drop(slot);

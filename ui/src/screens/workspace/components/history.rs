@@ -125,10 +125,10 @@ fn apply_filters(
     items
         .into_iter()
         .filter(|item| {
-            if let Some(cutoff) = cutoff {
-                if item.executed_at < cutoff {
-                    return false;
-                }
+            if let Some(cutoff) = cutoff
+                && item.executed_at < cutoff
+            {
+                return false;
             }
             if !connection.is_empty() && item.connection_name != connection {
                 return false;
@@ -266,7 +266,7 @@ pub fn QueryHistoryPanel(
     let total_pages = if total_items == 0 {
         1
     } else {
-        (total_items + PAGE_SIZE - 1) / PAGE_SIZE
+        total_items.div_ceil(PAGE_SIZE)
     };
     let page = current_page().min(total_pages.saturating_sub(1));
     let page_start = page * PAGE_SIZE;

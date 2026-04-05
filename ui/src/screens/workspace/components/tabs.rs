@@ -395,7 +395,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ExportCsv,
                         label: "Export CSV".to_string(),
-                        disabled: !has_tabular_result(&tab),
+                        disabled: !has_tabular_result(tab),
                         onclick: {
                             let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Csv)
@@ -404,7 +404,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ExportJson,
                         label: "Export JSON".to_string(),
-                        disabled: !has_tabular_result(&tab),
+                        disabled: !has_tabular_result(tab),
                         onclick: {
                             let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Json)
@@ -413,7 +413,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ExportXlsx,
                         label: "Export XLSX".to_string(),
-                        disabled: !has_tabular_result(&tab),
+                        disabled: !has_tabular_result(tab),
                         onclick: {
                             let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Xlsx)
@@ -422,7 +422,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ExportXml,
                         label: "Export XML".to_string(),
-                        disabled: !has_tabular_result(&tab),
+                        disabled: !has_tabular_result(tab),
                         onclick: {
                             let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Xml)
@@ -431,7 +431,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ExportHtml,
                         label: "Export HTML".to_string(),
-                        disabled: !has_tabular_result(&tab),
+                        disabled: !has_tabular_result(tab),
                         onclick: {
                             let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::Html)
@@ -440,7 +440,7 @@ pub fn TabsManager(
                     IconButton {
                         icon: ActionIcon::ExportSql,
                         label: "SQL Dump".to_string(),
-                        disabled: !has_tabular_result(&tab),
+                        disabled: !has_tabular_result(tab),
                         onclick: {
                             let current_tab = tab.clone();
                             move |_| export_active_page(tabs, current_tab.clone(), ExportFormat::SqlDump)

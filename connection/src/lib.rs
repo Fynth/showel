@@ -270,9 +270,9 @@ fn parse_clickhouse_target(data: &ClickHouseFormData) -> Result<ClickHouseTarget
             .host_str()
             .ok_or_else(|| DatabaseError::Tunnel("ClickHouse URL has no host".to_string()))?
             .to_string();
-        let remote_port =
-            url.port_or_known_default()
-                .unwrap_or(if data.port == 0 { 8123 } else { data.port });
+        let remote_port = url
+            .port()
+            .unwrap_or(if data.port == 0 { 8123 } else { data.port });
         return Ok(ClickHouseTarget {
             remote_host,
             remote_port,

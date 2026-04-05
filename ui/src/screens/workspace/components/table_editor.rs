@@ -346,10 +346,10 @@ fn generate_table_sql(state: &TableEditorState) -> String {
 
     sql.push_str("\n)");
 
-    if let Some(engine) = &state.engine {
-        if !engine.is_empty() {
-            sql.push_str(&format!(" ENGINE = {}", engine));
-        }
+    if let Some(engine) = &state.engine
+        && !engine.is_empty()
+    {
+        sql.push_str(&format!(" ENGINE = {}", engine));
     }
 
     sql.push(';');

@@ -169,22 +169,12 @@ pub struct QueryTabState {
 }
 
 /// Metrics collected during query execution.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ExecutionMetrics {
     pub duration_ms: u64,
     pub rows_returned: Option<usize>,
     pub error_details: Option<String>,
-}
-
-impl Default for ExecutionMetrics {
-    fn default() -> Self {
-        Self {
-            duration_ms: 0,
-            rows_returned: None,
-            error_details: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,24 +198,13 @@ pub struct QueryHistoryItem {
 }
 
 /// Filter for searching query history.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct QueryHistoryFilter {
     pub from_date: Option<i64>,
     pub to_date: Option<i64>,
     pub connection: Option<String>,
     pub error_status: Option<QueryHistoryErrorStatus>,
-}
-
-impl Default for QueryHistoryFilter {
-    fn default() -> Self {
-        Self {
-            from_date: None,
-            to_date: None,
-            connection: None,
-            error_status: None,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

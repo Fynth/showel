@@ -86,7 +86,7 @@ fn is_token_boundary(ch: char) -> bool {
         )
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[allow(dead_code)]
 pub(super) fn clean_token(token: &str) -> String {
     token
         .trim_matches(|ch: char| {
@@ -95,7 +95,7 @@ pub(super) fn clean_token(token: &str) -> String {
         .to_string()
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[allow(dead_code)]
 pub(super) fn normalize_identifier(value: &str) -> String {
     value
         .chars()
@@ -105,7 +105,7 @@ pub(super) fn normalize_identifier(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[allow(dead_code)]
 pub(super) fn apply_suggestion(
     sql: &str,
     selection: EditorSelection,
@@ -157,7 +157,7 @@ fn selection_query_script(editor_id: &str) -> String {
     )
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[allow(dead_code)]
 pub(super) fn set_editor_selection_script(editor_id: &str, position: usize) -> String {
     format!(
         r#"

@@ -408,7 +408,7 @@ fn embedding_to_bytes(embedding: &[f32]) -> Vec<u8> {
 /// Convert bytes back to f32 embedding vector
 #[allow(dead_code)]
 fn bytes_to_embedding(bytes: &[u8]) -> Result<Vec<f32>, String> {
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return Err("invalid embedding bytes length".to_string());
     }
 
@@ -438,12 +438,10 @@ mod tests {
         // Initialize the vec extension
         crate::chat::ensure_vec_extension_initialized();
 
-        let pool = SqlitePoolOptions::new()
+        SqlitePoolOptions::new()
             .connect("sqlite::memory:")
             .await
-            .expect("failed to create test pool");
-
-        pool
+            .expect("failed to create test pool")
     }
 
     fn create_test_embedding(seed: f32) -> Vec<f32> {

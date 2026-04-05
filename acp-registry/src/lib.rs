@@ -86,7 +86,7 @@ pub fn get_specialist_for_intent(intent: &str) -> Option<AgentSpecialist> {
             .count();
         if score > best_score {
             best_score = score;
-            best_match = Some((*specialist).clone());
+            best_match = Some(*(*specialist));
         }
     }
 

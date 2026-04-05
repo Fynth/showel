@@ -1056,7 +1056,7 @@ impl IntrospectionPool {
                 for row in response.data {
                     locks.push(LockInfo {
                         database: row
-                            .get(0)
+                            .first()
                             .and_then(|v| v.as_str().map(|s| s.to_string()))
                             .unwrap_or_default(),
                         relation: row.get(1).and_then(|v| v.as_str().map(|s| s.to_string())),
@@ -1102,7 +1102,7 @@ impl IntrospectionPool {
                 for row in response.data {
                     queries.push(ActiveQueryInfo {
                         pid: row
-                            .get(0)
+                            .first()
                             .and_then(|v| v.as_str())
                             .and_then(|s| s.parse().ok()),
                         database: config.database.clone(),
@@ -1156,7 +1156,7 @@ impl IntrospectionPool {
                 for row in response.data {
                     entries.push(QueryHistoryEntry {
                         query: row
-                            .get(0)
+                            .first()
                             .and_then(|v| v.as_str().map(|s| s.to_string()))
                             .unwrap_or_default(),
                         calls: row.get(1).and_then(|v| v.as_i64()).unwrap_or(0),
@@ -1197,7 +1197,7 @@ impl IntrospectionPool {
                 for row in response.data {
                     stats.push(IndexStat {
                         schema: row
-                            .get(0)
+                            .first()
                             .and_then(|v| v.as_str().map(|s| s.to_string()))
                             .unwrap_or_default(),
                         table: row
@@ -1246,7 +1246,7 @@ impl IntrospectionPool {
                 for row in response.data {
                     stats.push(TableStat {
                         schema: row
-                            .get(0)
+                            .first()
                             .and_then(|v| v.as_str().map(|s| s.to_string()))
                             .unwrap_or_default(),
                         table: row
@@ -1294,7 +1294,7 @@ impl IntrospectionPool {
         if let Ok(response) = result {
             for row in response.data {
                 let schema = row
-                    .get(0)
+                    .first()
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
@@ -1327,7 +1327,7 @@ impl IntrospectionPool {
                     for col_row in col_response.data {
                         columns.push(ColumnInfo {
                             name: col_row
-                                .get(0)
+                                .first()
                                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                                 .unwrap_or_default(),
                             data_type: col_row

@@ -165,85 +165,51 @@ pub fn unloaded_explorer_section(
     }
 }
 
-fn is_tool_panel_visible(
-    panel: WorkspaceToolPanel,
-    show_saved_queries: bool,
-    show_connections: bool,
-    show_explorer: bool,
-    show_history: bool,
-    show_agent_panel: bool,
-    ai_features_enabled: bool,
-) -> bool {
+pub struct ToolPanelVisibility {
+    pub show_saved_queries: bool,
+    pub show_connections: bool,
+    pub show_explorer: bool,
+    pub show_history: bool,
+    pub show_agent_panel: bool,
+    pub ai_features_enabled: bool,
+}
+
+fn is_tool_panel_visible(panel: WorkspaceToolPanel, vis: &ToolPanelVisibility) -> bool {
     match panel {
-        WorkspaceToolPanel::SavedQueries => show_saved_queries,
-        WorkspaceToolPanel::Connections => show_connections,
-        WorkspaceToolPanel::Explorer => show_explorer,
-        WorkspaceToolPanel::History => show_history,
-        WorkspaceToolPanel::Agent => ai_features_enabled && show_agent_panel,
+        WorkspaceToolPanel::SavedQueries => vis.show_saved_queries,
+        WorkspaceToolPanel::Connections => vis.show_connections,
+        WorkspaceToolPanel::Explorer => vis.show_explorer,
+        WorkspaceToolPanel::History => vis.show_history,
+        WorkspaceToolPanel::Agent => vis.ai_features_enabled && vis.show_agent_panel,
     }
 }
 
 pub fn visible_tool_panels(
     panels: &[WorkspaceToolPanel],
-    show_saved_queries: bool,
-    show_connections: bool,
-    show_explorer: bool,
-    show_history: bool,
-    show_agent_panel: bool,
-    ai_features_enabled: bool,
+    vis: &ToolPanelVisibility,
 ) -> Vec<WorkspaceToolPanel> {
     panels
         .iter()
         .copied()
-        .filter(|panel| {
-            is_tool_panel_visible(
-                *panel,
-                show_saved_queries,
-                show_connections,
-                show_explorer,
-                show_history,
-                show_agent_panel,
-                ai_features_enabled,
-            )
-        })
+        .filter(|panel| is_tool_panel_visible(*panel, vis))
         .collect()
 }
 
 fn visible_insert_index(
     panels: &[WorkspaceToolPanel],
     target_visible_index: usize,
-    show_saved_queries: bool,
-    show_connections: bool,
-    show_explorer: bool,
-    show_history: bool,
-    show_agent_panel: bool,
-    ai_features_enabled: bool,
+    vis: &ToolPanelVisibility,
 ) -> usize {
-    if !panels.iter().any(|panel| {
-        is_tool_panel_visible(
-            *panel,
-            show_saved_queries,
-            show_connections,
-            show_explorer,
-            show_history,
-            show_agent_panel,
-            ai_features_enabled,
-        )
-    }) {
+    if !panels
+        .iter()
+        .any(|panel| is_tool_panel_visible(*panel, vis))
+    {
         return 0;
     }
 
     let mut visible_index = 0;
     for (index, panel) in panels.iter().enumerate() {
-        if !is_tool_panel_visible(
-            *panel,
-            show_saved_queries,
-            show_connections,
-            show_explorer,
-            show_history,
-            show_agent_panel,
-            ai_features_enabled,
-        ) {
+        if !is_tool_panel_visible(*panel, vis) {
             continue;
         }
 
@@ -257,17 +223,11 @@ fn visible_insert_index(
     panels.len()
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn move_tool_panel_layout(
     layout: &mut WorkspaceToolLayout,
     panel: WorkspaceToolPanel,
     target: DockDropTarget,
-    show_saved_queries: bool,
-    show_connections: bool,
-    show_explorer: bool,
-    show_history: bool,
-    show_agent_panel: bool,
-    ai_features_enabled: bool,
+    vis: &ToolPanelVisibility,
 ) {
     let mut normalized = layout.normalized();
     normalized.sidebar.retain(|existing| *existing != panel);
@@ -277,47 +237,21 @@ pub fn move_tool_panel_layout(
         WorkspaceToolDock::Sidebar => &mut normalized.sidebar,
         WorkspaceToolDock::Inspector => &mut normalized.inspector,
     };
-    let insert_at = visible_insert_index(
-        target_panels,
-        target.index,
-        show_saved_queries,
-        show_connections,
-        show_explorer,
-        show_history,
-        show_agent_panel,
-        ai_features_enabled,
-    )
-    .min(target_panels.len());
+    let insert_at = visible_insert_index(target_panels, target.index, vis).min(target_panels.len());
     target_panels.insert(insert_at, panel);
 
     *layout = normalized;
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn apply_tool_panel_drop(
     mut dragging_panel: Signal<Option<WorkspaceToolPanel>>,
     mut drop_target: Signal<Option<DockDropTarget>>,
     target: DockDropTarget,
-    show_saved_queries: bool,
-    show_connections: bool,
-    show_explorer: bool,
-    show_history: bool,
-    show_agent_panel: bool,
-    ai_features_enabled: bool,
+    vis: &ToolPanelVisibility,
 ) {
     if let Some(panel) = dragging_panel() {
         APP_UI_SETTINGS.with_mut(|settings| {
-            move_tool_panel_layout(
-                &mut settings.tool_panel_layout,
-                panel,
-                target,
-                show_saved_queries,
-                show_connections,
-                show_explorer,
-                show_history,
-                show_agent_panel,
-                ai_features_enabled,
-            );
+            move_tool_panel_layout(&mut settings.tool_panel_layout, panel, target, vis);
         });
     }
 
