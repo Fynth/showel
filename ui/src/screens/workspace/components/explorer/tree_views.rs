@@ -1,6 +1,6 @@
 use super::duplicate_table_modal::{DuplicateTableModal, DuplicateTableTarget};
 use super::{count_objects, disconnect_session, split_children};
-use crate::app_state::{APP_STATE, activate_session, session_connection};
+use crate::app_state::{activate_session, session_connection, APP_STATE};
 use crate::screens::workspace::actions::{
     ensure_tab_for_session, mark_table_deleted, mark_table_truncated, run_table_preview_for_tab,
     tab_connection_or_error,

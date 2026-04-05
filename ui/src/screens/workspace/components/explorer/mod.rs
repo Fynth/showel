@@ -2,7 +2,7 @@ mod create_table_modal;
 mod duplicate_table_modal;
 mod tree_views;
 
-use crate::app_state::{APP_STATE, activate_session, remove_session};
+use crate::app_state::{activate_session, remove_session, APP_STATE};
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
 use models::{DatabaseKind, ExplorerNode, ExplorerNodeKind, QueryTabState};
@@ -297,4 +297,302 @@ fn filter_node(node: &ExplorerNode, query: &str) -> Option<ExplorerNode> {
 
 fn matches_query(value: &str, query: &str) -> bool {
     value.to_ascii_lowercase().contains(query)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        filter_connection_sections, filter_node, filter_nodes, matches_query,
+        ExplorerConnectionSection, ExplorerNodeKind,
+    };
+    use models::ExplorerNode;
+
+    fn make_node(name: &str, kind: ExplorerNodeKind, children: Vec<ExplorerNode>) -> ExplorerNode {
+        let schema = if kind == ExplorerNodeKind::Schema {
+            Some(name.to_string())
+        } else {
+            Some("public".to_string())
+        };
+        let qualified_name = if kind == ExplorerNodeKind::Schema {
+            format!("\"{name}\"")
+        } else {
+            format!("\"public\".\"{name}\"")
+        };
+        ExplorerNode {
+            name: name.to_string(),
+            kind,
+            schema,
+            qualified_name,
+            children,
+        }
+    }
+
+    fn make_section(name: &str, nodes: Vec<ExplorerNode>) -> ExplorerConnectionSection {
+        ExplorerConnectionSection {
+            session_id: 1,
+            name: name.to_string(),
+            kind_label: "PostgreSQL".to_string(),
+            status: "Connected".to_string(),
+            is_active: true,
+            nodes,
+        }
+    }
+
+    #[test]
+    fn matches_query_is_case_insensitive() {
+        assert!(matches_query("Users", "users"));
+        assert!(matches_query("USERS", "users"));
+        assert!(matches_query("UserEvents", "userevents"));
+    }
+
+    #[test]
+    fn matches_query_matches_substring() {
+        assert!(matches_query("user_events", "event"));
+        assert!(matches_query("order_items", "item"));
+        assert!(!matches_query("users", "orders"));
+    }
+
+    #[test]
+    fn empty_query_returns_all_sections_unchanged() {
+        let sections = vec![
+            make_section(
+                "prod",
+                vec![make_node(
+                    "public",
+                    ExplorerNodeKind::Schema,
+                    vec![
+                        make_node("users", ExplorerNodeKind::Table, vec![]),
+                        make_node("orders", ExplorerNodeKind::Table, vec![]),
+                    ],
+                )],
+            ),
+            make_section(
+                "staging",
+                vec![make_node(
+                    "public",
+                    ExplorerNodeKind::Schema,
+                    vec![make_node("logs", ExplorerNodeKind::Table, vec![])],
+                )],
+            ),
+        ];
+
+        let result = filter_connection_sections(&sections, "");
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].nodes[0].children.len(), 2);
+        assert_eq!(result[1].nodes[0].children.len(), 1);
+    }
+
+    #[test]
+    fn whitespace_only_query_returns_all_sections() {
+        let sections = vec![make_section(
+            "db",
+            vec![make_node(
+                "public",
+                ExplorerNodeKind::Schema,
+                vec![make_node("users", ExplorerNodeKind::Table, vec![])],
+            )],
+        )];
+
+        let result = filter_connection_sections(&sections, "   ");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].nodes[0].children.len(), 1);
+    }
+
+    #[test]
+    fn partial_match_filters_tables_within_schema() {
+        let schema = make_node(
+            "public",
+            ExplorerNodeKind::Schema,
+            vec![
+                make_node("users", ExplorerNodeKind::Table, vec![]),
+                make_node("user_settings", ExplorerNodeKind::Table, vec![]),
+                make_node("orders", ExplorerNodeKind::Table, vec![]),
+                make_node("order_items", ExplorerNodeKind::Table, vec![]),
+            ],
+        );
+        let sections = vec![make_section("db", vec![schema])];
+
+        let result = filter_connection_sections(&sections, "user");
+        assert_eq!(result.len(), 1);
+        let schema_children = &result[0].nodes[0].children;
+        assert_eq!(schema_children.len(), 2);
+        let names: Vec<&str> = schema_children.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"users"));
+        assert!(names.contains(&"user_settings"));
+    }
+
+    #[test]
+    fn partial_match_qualified_name() {
+        let schema = make_node(
+            "analytics",
+            ExplorerNodeKind::Schema,
+            vec![
+                make_node("events", ExplorerNodeKind::Table, vec![]),
+                make_node("sessions", ExplorerNodeKind::Table, vec![]),
+            ],
+        );
+        let sections = vec![make_section("db", vec![schema])];
+
+        let result = filter_connection_sections(&sections, "analytics");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].nodes[0].children.len(), 2);
+    }
+
+    #[test]
+    fn schema_name_match_preserves_all_children() {
+        let schema = make_node(
+            "analytics",
+            ExplorerNodeKind::Schema,
+            vec![
+                make_node("events", ExplorerNodeKind::Table, vec![]),
+                make_node("sessions", ExplorerNodeKind::Table, vec![]),
+                make_node("page_views", ExplorerNodeKind::View, vec![]),
+            ],
+        );
+        let nodes = vec![schema];
+
+        let result = filter_nodes(&nodes, "analytics");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].children.len(), 3);
+    }
+
+    #[test]
+    fn schema_name_mismatch_filters_children() {
+        let schema = make_node(
+            "public",
+            ExplorerNodeKind::Schema,
+            vec![
+                make_node("user_events", ExplorerNodeKind::Table, vec![]),
+                make_node("orders", ExplorerNodeKind::Table, vec![]),
+            ],
+        );
+        let nodes = vec![schema];
+
+        let result = filter_nodes(&nodes, "event");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].children.len(), 1);
+        assert_eq!(result[0].children[0].name, "user_events");
+    }
+
+    #[test]
+    fn section_name_match_preserves_all_nodes() {
+        let sections = vec![make_section(
+            "production_db",
+            vec![make_node(
+                "public",
+                ExplorerNodeKind::Schema,
+                vec![
+                    make_node("users", ExplorerNodeKind::Table, vec![]),
+                    make_node("orders", ExplorerNodeKind::Table, vec![]),
+                ],
+            )],
+        )];
+
+        let result = filter_connection_sections(&sections, "production");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].nodes[0].children.len(), 2);
+    }
+
+    #[test]
+    fn section_kind_label_match_preserves_all_nodes() {
+        let sections = vec![make_section(
+            "mydb",
+            vec![make_node(
+                "public",
+                ExplorerNodeKind::Schema,
+                vec![make_node("users", ExplorerNodeKind::Table, vec![])],
+            )],
+        )];
+
+        let result = filter_connection_sections(&sections, "postgresql");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].nodes[0].children.len(), 1);
+    }
+
+    #[test]
+    fn no_matching_query_returns_empty() {
+        let sections = vec![make_section(
+            "db",
+            vec![make_node(
+                "public",
+                ExplorerNodeKind::Schema,
+                vec![
+                    make_node("users", ExplorerNodeKind::Table, vec![]),
+                    make_node("orders", ExplorerNodeKind::Table, vec![]),
+                ],
+            )],
+        )];
+
+        let result = filter_connection_sections(&sections, "nonexistent");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn filter_table_node_matches_name() {
+        let node = make_node("users", ExplorerNodeKind::Table, vec![]);
+        assert!(filter_node(&node, "user").is_some());
+        assert!(filter_node(&node, "order").is_none());
+    }
+
+    #[test]
+    fn filter_view_node_matches_name() {
+        let node = make_node("active_users", ExplorerNodeKind::View, vec![]);
+        assert!(filter_node(&node, "active").is_some());
+        assert!(filter_node(&node, "deleted").is_none());
+    }
+
+    #[test]
+    fn filters_across_multiple_sections() {
+        let sections = vec![
+            make_section(
+                "prod",
+                vec![make_node(
+                    "public",
+                    ExplorerNodeKind::Schema,
+                    vec![
+                        make_node("users", ExplorerNodeKind::Table, vec![]),
+                        make_node("orders", ExplorerNodeKind::Table, vec![]),
+                    ],
+                )],
+            ),
+            make_section(
+                "analytics",
+                vec![make_node(
+                    "public",
+                    ExplorerNodeKind::Schema,
+                    vec![
+                        make_node("user_events", ExplorerNodeKind::Table, vec![]),
+                        make_node("page_views", ExplorerNodeKind::View, vec![]),
+                    ],
+                )],
+            ),
+        ];
+
+        let result = filter_connection_sections(&sections, "user");
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].nodes[0].children.len(), 1);
+        assert_eq!(result[0].nodes[0].children[0].name, "users");
+        assert_eq!(result[1].nodes[0].children.len(), 1);
+        assert_eq!(result[1].nodes[0].children[0].name, "user_events");
+    }
+
+    #[test]
+    fn filter_distinguishes_views_from_tables_by_name() {
+        let schema = make_node(
+            "public",
+            ExplorerNodeKind::Schema,
+            vec![
+                make_node("active_sessions", ExplorerNodeKind::View, vec![]),
+                make_node("archived_sessions", ExplorerNodeKind::Table, vec![]),
+                make_node("orders", ExplorerNodeKind::Table, vec![]),
+            ],
+        );
+        let nodes = vec![schema];
+
+        let result = filter_nodes(&nodes, "active_session");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].children.len(), 1);
+        assert_eq!(result[0].children[0].name, "active_sessions");
+        assert_eq!(result[0].children[0].kind, ExplorerNodeKind::View);
+    }
 }

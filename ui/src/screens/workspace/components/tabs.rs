@@ -261,6 +261,7 @@ pub fn TabsManager(
                             active_tab: tab.clone(),
                             tabs,
                             active_tab_id,
+                            explorer_sections,
                         }
                     }
                     div {

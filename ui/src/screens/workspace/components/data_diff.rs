@@ -35,7 +35,7 @@ pub struct DiffRow {
     pub values: Vec<String>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum DiffSide {
     Left,
@@ -254,3 +254,150 @@ fn calculate_diff(left: Option<&QueryPage>, right: Option<&QueryPage>) -> Option
 }
 
 use std::collections::HashSet;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use models::QueryPage;
+
+    fn make_page(columns: Vec<&str>, rows: Vec<Vec<&str>>) -> QueryPage {
+        QueryPage {
+            columns: columns.into_iter().map(String::from).collect(),
+            rows: rows
+                .into_iter()
+                .map(|r| r.into_iter().map(String::from).collect())
+                .collect(),
+            editable: None,
+            offset: 0,
+            page_size: 100,
+            has_previous: false,
+            has_next: false,
+        }
+    }
+
+    #[test]
+    fn calculate_diff_returns_none_when_either_side_is_none() {
+        let page = make_page(vec!["id"], vec![vec!["1"]]);
+        assert!(calculate_diff(None, Some(&page)).is_none());
+        assert!(calculate_diff(Some(&page), None).is_none());
+        assert!(calculate_diff(None, None).is_none());
+    }
+
+    #[test]
+    fn calculate_diff_returns_none_when_columns_differ() {
+        let left = make_page(vec!["id", "name"], vec![vec!["1", "alice"]]);
+        let right = make_page(vec!["id", "email"], vec![vec!["1", "alice@example.com"]]);
+        assert!(calculate_diff(Some(&left), Some(&right)).is_none());
+    }
+
+    #[test]
+    fn calculate_diff_empty_rows_both_sides() {
+        let left = make_page(vec!["id", "name"], vec![]);
+        let right = make_page(vec!["id", "name"], vec![]);
+        let result = calculate_diff(Some(&left), Some(&right)).unwrap();
+        assert_eq!(result.summary.total_rows_left, 0);
+        assert_eq!(result.summary.total_rows_right, 0);
+        assert_eq!(result.summary.identical_rows, 0);
+        assert_eq!(result.summary.different_rows, 0);
+        assert_eq!(result.summary.left_only_rows, 0);
+        assert_eq!(result.summary.right_only_rows, 0);
+        assert!(result.differences.is_empty());
+    }
+
+    #[test]
+    fn calculate_diff_identical_data() {
+        let left = make_page(
+            vec!["id", "name"],
+            vec![vec!["1", "alice"], vec!["2", "bob"]],
+        );
+        let right = make_page(
+            vec!["id", "name"],
+            vec![vec!["1", "alice"], vec!["2", "bob"]],
+        );
+        let result = calculate_diff(Some(&left), Some(&right)).unwrap();
+        assert_eq!(result.summary.identical_rows, 2);
+        assert_eq!(result.summary.left_only_rows, 0);
+        assert_eq!(result.summary.right_only_rows, 0);
+        assert!(result.differences.is_empty());
+    }
+
+    #[test]
+    fn calculate_diff_left_only_rows() {
+        let left = make_page(
+            vec!["id", "name"],
+            vec![vec!["1", "alice"], vec!["2", "bob"]],
+        );
+        let right = make_page(vec!["id", "name"], vec![vec!["1", "alice"]]);
+        let result = calculate_diff(Some(&left), Some(&right)).unwrap();
+        assert_eq!(result.summary.identical_rows, 1);
+        assert_eq!(result.summary.left_only_rows, 1);
+        assert_eq!(result.differences.len(), 1);
+        assert_eq!(result.differences[0].side, DiffSide::Left);
+        assert_eq!(result.differences[0].values, vec!["2", "bob"]);
+    }
+
+    #[test]
+    fn calculate_diff_right_only_rows() {
+        let left = make_page(vec!["id", "name"], vec![vec!["1", "alice"]]);
+        let right = make_page(
+            vec!["id", "name"],
+            vec![vec!["1", "alice"], vec!["3", "carol"]],
+        );
+        let result = calculate_diff(Some(&left), Some(&right)).unwrap();
+        assert_eq!(result.summary.identical_rows, 1);
+        assert_eq!(result.summary.right_only_rows, 1);
+        assert_eq!(result.differences.len(), 1);
+        assert_eq!(result.differences[0].side, DiffSide::Right);
+        assert_eq!(result.differences[0].values, vec!["3", "carol"]);
+    }
+
+    #[test]
+    fn calculate_diff_mixed_changes() {
+        let left = make_page(
+            vec!["id", "name"],
+            vec![vec!["1", "alice"], vec!["2", "bob"]],
+        );
+        let right = make_page(
+            vec!["id", "name"],
+            vec![vec!["1", "alice"], vec!["3", "carol"]],
+        );
+        let result = calculate_diff(Some(&left), Some(&right)).unwrap();
+        assert_eq!(result.summary.identical_rows, 1);
+        assert_eq!(result.summary.left_only_rows, 1);
+        assert_eq!(result.summary.right_only_rows, 1);
+        assert_eq!(result.differences.len(), 2);
+
+        let left_diffs: Vec<_> = result
+            .differences
+            .iter()
+            .filter(|d| d.side == DiffSide::Left)
+            .collect();
+        let right_diffs: Vec<_> = result
+            .differences
+            .iter()
+            .filter(|d| d.side == DiffSide::Right)
+            .collect();
+        assert_eq!(left_diffs.len(), 1);
+        assert_eq!(right_diffs.len(), 1);
+    }
+
+    #[test]
+    fn calculate_diff_one_empty_one_full() {
+        let left = make_page(vec!["id", "name"], vec![]);
+        let right = make_page(vec!["id", "name"], vec![vec!["1", "alice"]]);
+        let result = calculate_diff(Some(&left), Some(&right)).unwrap();
+        assert_eq!(result.summary.total_rows_left, 0);
+        assert_eq!(result.summary.total_rows_right, 1);
+        assert_eq!(result.summary.right_only_rows, 1);
+        assert_eq!(result.differences.len(), 1);
+        assert_eq!(result.differences[0].side, DiffSide::Right);
+    }
+
+    #[test]
+    fn calculate_diff_preserves_columns() {
+        let left = make_page(vec!["id", "name", "email"], vec![vec!["1", "a", "a@b"]]);
+        let right = make_page(vec!["id", "name", "email"], vec![vec!["1", "a", "a@b"]]);
+        let result = calculate_diff(Some(&left), Some(&right)).unwrap();
+        assert_eq!(result.columns, vec!["id", "name", "email"]);
+    }
+}

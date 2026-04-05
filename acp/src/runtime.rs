@@ -1525,4 +1525,31 @@ mod tests {
             assert!(value.contains("showel/acp/runtime/opencode"));
         }
     }
+
+    #[test]
+    fn send_acp_prompt_returns_error_without_connected_agent() {
+        let result = super::send_acp_prompt("select 1".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("ACP agent is not connected"));
+    }
+
+    #[test]
+    fn disconnect_acp_agent_returns_error_without_connected_agent() {
+        let result = super::disconnect_acp_agent();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn cancel_acp_prompt_returns_error_without_connected_agent() {
+        let result = super::cancel_acp_prompt();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("ACP agent is not connected"));
+    }
+
+    #[test]
+    fn respond_acp_permission_returns_error_without_connected_agent() {
+        let result = super::respond_acp_permission(0, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("ACP agent is not connected"));
+    }
 }

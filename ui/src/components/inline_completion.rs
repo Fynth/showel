@@ -253,4 +253,70 @@ mod tests {
         assert!(config.delay_ms >= 100);
         assert!(config.delay_ms <= 150);
     }
+
+    #[test]
+    fn accept_when_no_prediction_returns_none() {
+        let mut state = InlineCompletionState::new();
+        assert!(state.accept_completion().is_none());
+        assert!(state.current_prediction.is_none());
+        assert!(!state.is_discarded);
+    }
+
+    #[test]
+    fn show_after_dismiss_resurrects_completion() {
+        let mut state = InlineCompletionState::new();
+        state.show_completion("first".to_string());
+        state.dismiss_completion();
+        assert!(!state.has_completion());
+
+        state.show_completion("second".to_string());
+        assert!(state.has_completion());
+        assert_eq!(state.suggestion(), Some("second"));
+        assert!(!state.is_discarded);
+    }
+
+    #[test]
+    fn cancel_pending_without_handle_is_noop() {
+        let mut state = InlineCompletionState::new();
+        state.cancel_pending();
+        assert!(state.pending_request.is_none());
+    }
+
+    #[test]
+    fn dismiss_then_show_then_accept_lifecycle() {
+        let mut state = InlineCompletionState::new();
+        state.show_completion("SELECT *".to_string());
+        assert!(state.has_completion());
+
+        state.dismiss_completion();
+        assert!(!state.has_completion());
+
+        state.show_completion("INSERT INTO".to_string());
+        assert!(state.has_completion());
+
+        let accepted = state.accept_completion();
+        assert_eq!(accepted, Some("INSERT INTO".to_string()));
+        assert!(state.current_prediction.is_none());
+        assert!(!state.has_completion());
+    }
+
+    #[test]
+    fn suggestion_returns_none_when_discarded() {
+        let mut state = InlineCompletionState::new();
+        state.show_completion("hidden".to_string());
+        state.dismiss_completion();
+        assert!(state.suggestion().is_none());
+    }
+
+    #[test]
+    fn double_accept_returns_none_on_second_call() {
+        let mut state = InlineCompletionState::new();
+        state.show_completion("once".to_string());
+
+        let first = state.accept_completion();
+        assert_eq!(first, Some("once".to_string()));
+
+        let second = state.accept_completion();
+        assert!(second.is_none());
+    }
 }

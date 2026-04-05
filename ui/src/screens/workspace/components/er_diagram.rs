@@ -340,3 +340,111 @@ fn calculate_table_positions(
 
     positions
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_table(name: &str) -> ErTable {
+        ErTable {
+            schema: "public".to_string(),
+            name: name.to_string(),
+            columns: vec![ErColumn {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                is_nullable: false,
+                is_primary_key: true,
+            }],
+            primary_key: vec!["id".to_string()],
+            foreign_keys: vec![],
+        }
+    }
+
+    fn make_relationship(from: &str, from_col: &str, to: &str, to_col: &str) -> ErRelationship {
+        ErRelationship {
+            from_table: from.to_string(),
+            from_column: from_col.to_string(),
+            to_table: to.to_string(),
+            to_column: to_col.to_string(),
+        }
+    }
+
+    #[test]
+    fn calculate_positions_empty_tables() {
+        let positions = calculate_table_positions(&[], &[]);
+        assert!(positions.is_empty());
+    }
+
+    #[test]
+    fn calculate_positions_single_table() {
+        let tables = vec![make_table("users")];
+        let positions = calculate_table_positions(&tables, &[]);
+        assert_eq!(positions.len(), 1);
+        let (x, y) = positions.get("users").unwrap();
+        assert_eq!(*x, 40.0);
+        assert_eq!(*y, 40.0);
+    }
+
+    #[test]
+    fn calculate_positions_multiple_tables_no_relationships() {
+        let tables = vec![
+            make_table("users"),
+            make_table("orders"),
+            make_table("products"),
+        ];
+        let positions = calculate_table_positions(&tables, &[]);
+        assert_eq!(positions.len(), 3);
+        assert!(positions.contains_key("users"));
+        assert!(positions.contains_key("orders"));
+        assert!(positions.contains_key("products"));
+        let (x1, y1) = positions["users"];
+        assert_eq!(x1, 40.0);
+        assert_eq!(y1, 40.0);
+        let (x2, y2) = positions["orders"];
+        assert_eq!(x2, 340.0);
+        assert_eq!(y2, 40.0);
+    }
+
+    #[test]
+    fn calculate_positions_with_relationships_dfs_ordering() {
+        let tables = vec![
+            make_table("users"),
+            make_table("orders"),
+            make_table("items"),
+        ];
+        let relationships = vec![
+            make_relationship("users", "id", "orders", "user_id"),
+            make_relationship("orders", "id", "items", "order_id"),
+        ];
+        let positions = calculate_table_positions(&tables, &relationships);
+        assert_eq!(positions.len(), 3);
+        let (ux, uy) = positions["users"];
+        assert_eq!(ux, 40.0);
+        assert_eq!(uy, 40.0);
+        assert!(positions.contains_key("orders"));
+        assert!(positions.contains_key("items"));
+    }
+
+    #[test]
+    fn calculate_positions_disconnected_tables_still_get_positions() {
+        let tables = vec![make_table("users"), make_table("orphan_table")];
+        // orphan_table has no relationships, only references users
+        let relationships = vec![make_relationship("users", "id", "users", "id")];
+        let positions = calculate_table_positions(&tables, &relationships);
+        assert_eq!(positions.len(), 2);
+        assert!(positions.contains_key("users"));
+        assert!(positions.contains_key("orphan_table"));
+    }
+
+    #[test]
+    fn calculate_positions_grid_layout_many_tables() {
+        let tables: Vec<ErTable> = (0..9).map(|i| make_table(&format!("t{i}"))).collect();
+        let positions = calculate_table_positions(&tables, &[]);
+        assert_eq!(positions.len(), 9);
+        let unique_positions: std::collections::HashSet<(u64, u64)> = positions
+            .values()
+            .map(|(x, y)| (x.to_bits(), y.to_bits()))
+            .collect();
+        assert_eq!(unique_positions.len(), 9);
+    }
+}

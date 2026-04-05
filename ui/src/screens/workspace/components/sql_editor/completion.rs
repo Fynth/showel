@@ -38,7 +38,7 @@ pub struct CompletionItem {
     pub insert_text: String,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TableMeta {
     pub schema: Option<String>,
     pub name: String,
@@ -46,7 +46,7 @@ pub struct TableMeta {
     pub columns: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SchemaMetadata {
     pub tables: Vec<TableMeta>,
     pub schemas: Vec<String>,
@@ -1395,7 +1395,7 @@ mod tests {
 
     #[test]
     fn extract_token_with_dot() {
-        let (t, _s) = extract_current_token("users.na", 9);
+        let (t, _s) = extract_current_token("users.na", 8);
         assert_eq!(t, "users.na");
     }
 
@@ -1431,9 +1431,9 @@ mod tests {
     #[test]
     fn tokenize_dot_is_separate() {
         let tokens = tokenize_sql("SELECT * FROM public.users");
-        assert_eq!(tokens[3].text, "PUBLIC");
-        assert_eq!(tokens[4].text, ".");
-        assert_eq!(tokens[5].text, "USERS");
+        assert_eq!(tokens[2].text, "PUBLIC");
+        assert_eq!(tokens[3].text, ".");
+        assert_eq!(tokens[4].text, "USERS");
     }
 
     // ---- Context detection ----
@@ -1598,7 +1598,7 @@ mod tests {
         let schema = test_schema();
         let results = complete_sql("", 0, &schema);
         assert!(!results.is_empty());
-        assert!(results.iter().any(|r| r.label == "SELECT"));
+        assert!(results.iter().any(|r| r.kind == CompletionKind::Keyword));
     }
 
     #[test]
@@ -1915,6 +1915,165 @@ mod tests {
         let schema = test_schema();
         let results = complete_sql("SELECT * FROM users", 0, &schema);
         assert!(!results.is_empty());
-        assert!(results.iter().any(|r| r.label == "SELECT"));
+        assert!(results.iter().any(|r| r.kind == CompletionKind::Keyword));
+    }
+
+    // ---- Empty / no-metadata edge cases ----
+
+    #[test]
+    fn empty_metadata_returns_keywords_for_empty_sql() {
+        let schema = SchemaMetadata::default();
+        assert!(schema.tables.is_empty());
+        assert!(schema.schemas.is_empty());
+
+        let results = complete_sql("", 0, &schema);
+        assert!(!results.is_empty(), "should still get keyword completions");
+        assert!(
+            results
+                .iter()
+                .all(|r| matches!(r.kind, CompletionKind::Keyword | CompletionKind::Function)),
+            "all items should be keywords or functions when no metadata"
+        );
+    }
+
+    #[test]
+    fn empty_metadata_from_clause_returns_no_tables() {
+        let schema = SchemaMetadata::default();
+        let results = complete_sql("SELECT * FROM ", 14, &schema);
+        let has_tables = results.iter().any(|r| r.kind == CompletionKind::Table);
+        assert!(!has_tables, "no table completions when schema is empty");
+        assert!(
+            results
+                .iter()
+                .any(|r| r.label == "WHERE" || r.label == "JOIN"),
+            "keywords should still appear in FROM context"
+        );
+    }
+
+    #[test]
+    fn empty_metadata_select_clause_returns_keywords_and_functions() {
+        let schema = SchemaMetadata::default();
+        let results = complete_sql("SELECT ", 7, &schema);
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|r| r.kind == CompletionKind::Keyword));
+        assert!(results.iter().any(|r| r.kind == CompletionKind::Function));
+    }
+
+    #[test]
+    fn empty_metadata_dot_access_returns_empty() {
+        let schema = SchemaMetadata::default();
+        let results = complete_sql("SELECT foo.", 11, &schema);
+        assert!(
+            results.is_empty(),
+            "dot on unknown table with no metadata should be empty"
+        );
+    }
+
+    // ---- Token resolution from metadata ----
+
+    #[test]
+    fn qualified_schema_dot_table_dot_column() {
+        let schema = test_schema();
+        let results = complete_sql("SELECT public.users.", 19, &schema);
+        assert!(
+            results.iter().any(|r| r.label == "id"),
+            "should find 'id' column"
+        );
+        assert!(
+            results.iter().any(|r| r.label == "name"),
+            "should find 'name' column"
+        );
+        assert!(
+            results.iter().any(|r| r.label == "email"),
+            "should find 'email' column"
+        );
+    }
+
+    #[test]
+    fn qualified_schema_dot_table_partial_column() {
+        let schema = test_schema();
+        let results = complete_sql("SELECT public.users.em", 21, &schema);
+        assert!(
+            results.iter().any(|r| r.label == "email"),
+            "should filter to 'email' column with 'em' prefix"
+        );
+        assert!(
+            !results.iter().any(|r| r.label == "id"),
+            "should not include 'id' when filtering by 'em'"
+        );
+    }
+
+    #[test]
+    fn table_with_empty_columns_still_completes_no_columns() {
+        let schema = SchemaMetadata {
+            tables: vec![TableMeta {
+                schema: Some("main".into()),
+                name: "empty_table".into(),
+                qualified_name: "main.empty_table".into(),
+                columns: vec![],
+            }],
+            schemas: vec!["main".into()],
+        };
+        let results = complete_sql("SELECT empty_table.", 19, &schema);
+        assert!(
+            results.is_empty(),
+            "table with no columns should yield no column completions"
+        );
+    }
+
+    #[test]
+    fn single_char_keyword_prefix() {
+        let schema = SchemaMetadata::default();
+        let results = complete_sql("S", 1, &schema);
+        assert!(
+            results.iter().any(|r| r.label == "SELECT"),
+            "S should match SELECT"
+        );
+        assert!(
+            results.iter().any(|r| r.label == "SET"),
+            "S should match SET"
+        );
+        assert!(!results.iter().any(|r| r.label == "FROM"));
+    }
+
+    #[test]
+    fn alias_dot_column_with_prefix_filter() {
+        let schema = test_schema();
+        let sql = "SELECT u.ag FROM users u";
+        let results = complete_sql(sql, 12, &schema);
+        assert!(
+            results.iter().any(|r| r.label == "age"),
+            "u.ag should filter to 'age' column"
+        );
+        assert!(
+            !results.iter().any(|r| r.label == "id"),
+            "u.ag should not include 'id'"
+        );
+    }
+
+    #[test]
+    fn multi_table_from_columns_all_available_in_select() {
+        let schema = test_schema();
+        let results = complete_sql("SELECT  FROM users, orders", 7, &schema);
+        assert!(results.iter().any(|r| r.label == "name"), "users.name");
+        assert!(results.iter().any(|r| r.label == "amount"), "orders.amount");
+    }
+
+    #[test]
+    fn update_set_with_no_matching_table_returns_empty() {
+        let schema = SchemaMetadata {
+            tables: vec![TableMeta {
+                schema: Some("public".into()),
+                name: "products".into(),
+                qualified_name: "public.products".into(),
+                columns: vec!["id".into(), "price".into()],
+            }],
+            schemas: vec!["public".into()],
+        };
+        let results = complete_sql("UPDATE unknown_table SET ", 24, &schema);
+        assert!(
+            results.is_empty(),
+            "SET with unknown table should yield no columns"
+        );
     }
 }

@@ -1403,8 +1403,9 @@ async fn postgres_single_primary_key_column(
 mod tests {
     use super::{
         create_table, drop_table, duplicate_table, execute_query_page, is_read_only_sql,
-        mysql_locator_expression, parse_clickhouse_primary_key_expression, parse_mysql_locator,
-        preview_source_for_sql, reorder_clickhouse_primary_key_columns, truncate_table,
+        leading_sql_keyword, mysql_locator_expression, parse_clickhouse_primary_key_expression,
+        parse_mysql_locator, preview_source_for_sql, reorder_clickhouse_primary_key_columns,
+        truncate_table,
     };
     use models::{DatabaseConnection, QueryOutput, TablePreviewSource};
     use sqlx::SqlitePool;
@@ -1773,6 +1774,30 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn leading_keyword_extracts_first_sql_word() {
+        assert_eq!(leading_sql_keyword("SELECT 1"), Some("select".to_string()));
+        assert_eq!(leading_sql_keyword("insert into t values (1)"), Some("insert".to_string()));
+        assert_eq!(leading_sql_keyword("  update t set x = 1"), Some("update".to_string()));
+        assert_eq!(leading_sql_keyword(""), None);
+        assert_eq!(leading_sql_keyword("   "), None);
+    }
+
+    #[test]
+    fn is_read_only_sql_gates_dispatch_for_keyboard_shortcut_triggers() {
+        assert!(is_read_only_sql("select * from users"));
+        assert!(is_read_only_sql("explain select * from users"));
+        assert!(is_read_only_sql("describe users"));
+        assert!(is_read_only_sql("show tables"));
+        assert!(is_read_only_sql("WITH cte AS (select 1) select * from cte"));
+        assert!(is_read_only_sql("pragma table_info(users)"));
+        assert!(!is_read_only_sql("insert into users (name) values ('test')"));
+        assert!(!is_read_only_sql("update users set name = 'test'"));
+        assert!(!is_read_only_sql("delete from users"));
+        assert!(!is_read_only_sql("drop table users"));
+        assert!(!is_read_only_sql("alter table users add column email text"));
     }
 }
 

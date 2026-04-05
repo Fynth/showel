@@ -1,13 +1,13 @@
 use dioxus::prelude::*;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) struct EditorSelection {
-    pub(super) start: usize,
-    pub(super) end: usize,
+pub struct EditorSelection {
+    pub start: usize,
+    pub end: usize,
 }
 
 impl EditorSelection {
-    pub(super) fn collapsed(offset: usize) -> Self {
+    pub fn collapsed(offset: usize) -> Self {
         Self {
             start: offset,
             end: offset,
@@ -15,7 +15,7 @@ impl EditorSelection {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn clamped(self, sql: &str) -> Self {
+    pub fn clamped(self, sql: &str) -> Self {
         let len = sql.len();
         Self {
             start: clamp_to_char_boundary(sql, self.start.min(len)),
@@ -34,7 +34,7 @@ fn clamp_to_char_boundary(sql: &str, index: usize) -> usize {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn current_token_range(sql: &str, selection: EditorSelection) -> std::ops::Range<usize> {
+pub fn current_token_range(sql: &str, selection: EditorSelection) -> std::ops::Range<usize> {
     let selection = selection.clamped(sql);
     let start = selection.start.min(selection.end);
     let end = selection.start.max(selection.end);
@@ -87,7 +87,7 @@ fn is_token_boundary(ch: char) -> bool {
 }
 
 #[allow(dead_code)]
-pub(super) fn clean_token(token: &str) -> String {
+pub fn clean_token(token: &str) -> String {
     token
         .trim_matches(|ch: char| {
             ch.is_whitespace() || matches!(ch, ',' | ';' | '(' | ')' | '\n' | '\r')
@@ -96,7 +96,7 @@ pub(super) fn clean_token(token: &str) -> String {
 }
 
 #[allow(dead_code)]
-pub(super) fn normalize_identifier(value: &str) -> String {
+pub fn normalize_identifier(value: &str) -> String {
     value
         .chars()
         .filter(|ch| !matches!(ch, '"' | '\'' | '`'))
@@ -106,7 +106,7 @@ pub(super) fn normalize_identifier(value: &str) -> String {
 }
 
 #[allow(dead_code)]
-pub(super) fn apply_suggestion(
+pub fn apply_suggestion(
     sql: &str,
     selection: EditorSelection,
     replacement: &str,
@@ -119,7 +119,7 @@ pub(super) fn apply_suggestion(
     (next_sql, range.start + replacement.len())
 }
 
-pub(super) fn sync_editor_selection(
+pub fn sync_editor_selection(
     mut editor_selection: Signal<EditorSelection>,
     editor_id: &'static str,
 ) {
@@ -158,7 +158,7 @@ fn selection_query_script(editor_id: &str) -> String {
 }
 
 #[allow(dead_code)]
-pub(super) fn set_editor_selection_script(editor_id: &str, position: usize) -> String {
+pub fn set_editor_selection_script(editor_id: &str, position: usize) -> String {
     format!(
         r#"
         (() => {{

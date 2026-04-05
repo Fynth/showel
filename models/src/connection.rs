@@ -547,8 +547,8 @@ fn ssh_identity_suffix(config: Option<&SshTunnelConfig>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClickHouseFormData, ConnectionRequest, MySqlFormData, PostgresFormData, SqliteFormData,
-        SshTunnelConfig,
+        ClickHouseFormData, ConnectionRequest, MySqlFormData, PostgresFormData, SavedConnection,
+        SqliteFormData, SshTunnelConfig,
     };
 
     #[test]
@@ -665,5 +665,250 @@ mod tests {
             request.identity_key(),
             "mysql:app@db.internal:3307|database:"
         );
+    }
+
+    // ── Serialization round-trip tests ────────────────────────────────
+
+    #[test]
+    fn postgres_form_data_round_trips_with_ssh_tunnel() {
+        let data = PostgresFormData {
+            host: "db.example.com".to_string(),
+            port: 5432,
+            username: "admin".to_string(),
+            password: "secret".to_string(),
+            database: "mydb".to_string(),
+            ssh_tunnel: Some(SshTunnelConfig {
+                host: "bastion.example.com".to_string(),
+                port: 2222,
+                username: "ubuntu".to_string(),
+                private_key_path: "~/.ssh/id_ed25519".to_string(),
+            }),
+        };
+        let json = serde_json::to_string(&data).expect("serialize");
+        let parsed: PostgresFormData = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed, data);
+        assert!(parsed.ssh_tunnel.is_some());
+        let tunnel = parsed.ssh_tunnel.unwrap();
+        assert_eq!(tunnel.host, "bastion.example.com");
+        assert_eq!(tunnel.private_key_path, "~/.ssh/id_ed25519");
+    }
+
+    #[test]
+    fn postgres_form_data_round_trips_without_ssh_tunnel() {
+        let data = PostgresFormData {
+            host: "localhost".to_string(),
+            port: 5432,
+            username: "postgres".to_string(),
+            password: String::new(),
+            database: "postgres".to_string(),
+            ssh_tunnel: None,
+        };
+        let json = serde_json::to_string(&data).expect("serialize");
+        let parsed: PostgresFormData = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed, data);
+        assert!(parsed.ssh_tunnel.is_none());
+    }
+
+    #[test]
+    fn mysql_form_data_round_trips_with_ssh_tunnel() {
+        let data = MySqlFormData {
+            host: "db.example.com".to_string(),
+            port: 3306,
+            username: "root".to_string(),
+            password: "secret".to_string(),
+            database: "mydb".to_string(),
+            ssh_tunnel: Some(SshTunnelConfig {
+                host: "bastion.example.com".to_string(),
+                port: 22,
+                username: "ubuntu".to_string(),
+                private_key_path: String::new(),
+            }),
+        };
+        let json = serde_json::to_string(&data).expect("serialize");
+        let parsed: MySqlFormData = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed, data);
+    }
+
+    #[test]
+    fn clickhouse_form_data_round_trips_with_ssh_tunnel() {
+        let data = ClickHouseFormData {
+            host: "http://ch.example.com:8123".to_string(),
+            port: 8123,
+            username: "default".to_string(),
+            password: String::new(),
+            database: "analytics".to_string(),
+            ssh_tunnel: Some(SshTunnelConfig {
+                host: "bastion.example.com".to_string(),
+                port: 22,
+                username: "ops".to_string(),
+                private_key_path: "/home/ops/.ssh/id_rsa".to_string(),
+            }),
+        };
+        let json = serde_json::to_string(&data).expect("serialize");
+        let parsed: ClickHouseFormData = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed, data);
+    }
+
+    #[test]
+    fn sqlite_form_data_round_trips() {
+        let data = SqliteFormData {
+            path: "/tmp/test.db".to_string(),
+        };
+        let json = serde_json::to_string(&data).expect("serialize");
+        let parsed: SqliteFormData = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed, data);
+    }
+
+    #[test]
+    fn connection_request_round_trips_all_variants() {
+        let requests = vec![
+            ConnectionRequest::Sqlite(SqliteFormData {
+                path: "/data/app.db".to_string(),
+            }),
+            ConnectionRequest::Postgres(PostgresFormData {
+                host: "localhost".to_string(),
+                port: 5432,
+                username: "postgres".to_string(),
+                password: "pass".to_string(),
+                database: "testdb".to_string(),
+                ssh_tunnel: None,
+            }),
+            ConnectionRequest::MySql(MySqlFormData {
+                host: "db.example.com".to_string(),
+                port: 3306,
+                username: "root".to_string(),
+                password: "pass".to_string(),
+                database: "testdb".to_string(),
+                ssh_tunnel: Some(SshTunnelConfig {
+                    host: "ssh.example.com".to_string(),
+                    port: 22,
+                    username: "deploy".to_string(),
+                    private_key_path: String::new(),
+                }),
+            }),
+            ConnectionRequest::ClickHouse(ClickHouseFormData {
+                host: "http://ch.example.com".to_string(),
+                port: 8123,
+                username: "default".to_string(),
+                password: String::new(),
+                database: "default".to_string(),
+                ssh_tunnel: None,
+            }),
+        ];
+
+        for original in &requests {
+            let json = serde_json::to_string(original).expect("serialize");
+            let parsed: ConnectionRequest = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(&parsed, original);
+        }
+    }
+
+    #[test]
+    fn saved_connection_round_trips_with_request() {
+        let saved = SavedConnection {
+            name: "Production DB".to_string(),
+            request: ConnectionRequest::Postgres(PostgresFormData {
+                host: "db.prod.example.com".to_string(),
+                port: 5432,
+                username: "admin".to_string(),
+                password: "secret".to_string(),
+                database: "production".to_string(),
+                ssh_tunnel: Some(SshTunnelConfig {
+                    host: "bastion.prod.example.com".to_string(),
+                    port: 22,
+                    username: "deploy".to_string(),
+                    private_key_path: "~/.ssh/prod_key".to_string(),
+                }),
+            }),
+        };
+        let json = serde_json::to_string(&saved).expect("serialize");
+        let parsed: SavedConnection = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed.name, "Production DB");
+        assert_eq!(parsed.request, saved.request);
+    }
+
+    // ── SSH tunnel config safety tests ────────────────────────────────
+
+    #[test]
+    fn ssh_tunnel_default_is_unconfigured() {
+        let config = SshTunnelConfig::default();
+        assert!(!config.is_configured());
+        assert_eq!(config.host, "");
+        assert_eq!(config.username, "");
+        assert_eq!(config.port, 0);
+        assert_eq!(config.private_key_path, "");
+        assert_eq!(config.effective_port(), 22);
+    }
+
+    #[test]
+    fn ssh_tunnel_requires_both_host_and_username() {
+        let host_only = SshTunnelConfig {
+            host: "bastion.example.com".to_string(),
+            port: 22,
+            username: String::new(),
+            private_key_path: String::new(),
+        };
+        assert!(!host_only.is_configured());
+
+        let username_only = SshTunnelConfig {
+            host: String::new(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            private_key_path: String::new(),
+        };
+        assert!(!username_only.is_configured());
+
+        let configured = SshTunnelConfig {
+            host: "bastion.example.com".to_string(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            private_key_path: String::new(),
+        };
+        assert!(configured.is_configured());
+    }
+
+    #[test]
+    fn ssh_tunnel_ignores_whitespace_only_fields() {
+        let whitespace = SshTunnelConfig {
+            host: "   ".to_string(),
+            port: 22,
+            username: "  ".to_string(),
+            private_key_path: String::new(),
+        };
+        assert!(!whitespace.is_configured());
+    }
+
+    #[test]
+    fn ssh_tunnel_display_name_formats_correctly() {
+        let config = SshTunnelConfig {
+            host: "  bastion.example.com  ".to_string(),
+            port: 0,
+            username: "  ubuntu  ".to_string(),
+            private_key_path: String::new(),
+        };
+        assert_eq!(config.display_name(), "ubuntu@bastion.example.com:22");
+    }
+
+    // ── Missing ssh_tunnel deserializes as None ───────────────────────
+
+    #[test]
+    fn postgres_missing_ssh_tunnel_field_deserializes_as_none() {
+        let json = r#"{"host":"localhost","port":5432,"username":"pg","password":"pw","database":"db"}"#;
+        let parsed: PostgresFormData = serde_json::from_str(json).expect("deserialize");
+        assert!(parsed.ssh_tunnel.is_none());
+    }
+
+    #[test]
+    fn mysql_missing_ssh_tunnel_field_deserializes_as_none() {
+        let json = r#"{"host":"localhost","port":3306,"username":"root","password":"pw","database":"db"}"#;
+        let parsed: MySqlFormData = serde_json::from_str(json).expect("deserialize");
+        assert!(parsed.ssh_tunnel.is_none());
+    }
+
+    #[test]
+    fn clickhouse_missing_ssh_tunnel_field_deserializes_as_none() {
+        let json = r#"{"host":"localhost","port":8123,"username":"default","password":"","database":"default"}"#;
+        let parsed: ClickHouseFormData = serde_json::from_str(json).expect("deserialize");
+        assert!(parsed.ssh_tunnel.is_none());
     }
 }
