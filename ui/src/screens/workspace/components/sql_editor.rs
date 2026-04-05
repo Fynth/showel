@@ -12,7 +12,7 @@ use models::QueryTabState;
 use std::time::Duration;
 
 use self::{
-    completion::{CompletionItem, SchemaMetadata, complete_sql},
+    completion::{extract_current_token, CompletionItem, SchemaMetadata, complete_sql},
     highlight::SqlHighlightContent,
     selection::{
         EditorSelection, apply_suggestion, set_editor_selection_script, sync_editor_selection,
@@ -26,6 +26,8 @@ struct CompletionPopup {
     items: Vec<CompletionItem>,
     selected: usize,
     visible: bool,
+    cursor_position: usize,
+    partial_token: String,
 }
 
 fn build_schema_metadata(
@@ -100,6 +102,21 @@ pub fn SqlEditor(
         scroll_top()
     );
 
+    let inline_suffix = use_memo(move || {
+        let popup = completion_popup();
+        if popup.visible && !popup.items.is_empty() && !popup.partial_token.is_empty() {
+            if let Some(first) = popup.items.first() {
+                if first.label.to_lowercase().starts_with(&popup.partial_token.to_lowercase()) {
+                    let remainder = &first.label[popup.partial_token.len()..];
+                    if !remainder.is_empty() {
+                        return Some(remainder.to_string());
+                    }
+                }
+            }
+        }
+        None
+    });
+
     // Sync tab SQL when the active tab changes.
     use_effect(move || {
         let _ = active_tab_id();
@@ -149,8 +166,8 @@ pub fn SqlEditor(
                     aria_hidden: "true",
                     SqlHighlightContent {
                         sql: current_sql.clone(),
-                        inline_cursor_position: None,
-                        inline_suffix: None,
+                        inline_cursor_position: if inline_suffix().is_some() { Some(completion_popup().cursor_position) } else { None },
+                        inline_suffix: inline_suffix(),
                     }
                 }
             }
@@ -169,6 +186,7 @@ pub fn SqlEditor(
                     let cursor = editor_selection().start;
                     let meta = schema_meta();
                     let items = complete_sql(&new_sql, cursor.min(new_sql.len()), &meta);
+                    let (partial_token, _) = extract_current_token(&new_sql, cursor.min(new_sql.len()));
                     if items.is_empty() {
                         completion_popup.set(CompletionPopup::default());
                     } else {
@@ -176,6 +194,8 @@ pub fn SqlEditor(
                             items,
                             selected: 0,
                             visible: true,
+                            cursor_position: cursor.min(new_sql.len()),
+                            partial_token,
                         });
                     }
                     draft_sql.set(new_sql);
