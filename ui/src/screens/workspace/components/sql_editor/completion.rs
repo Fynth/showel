@@ -569,13 +569,26 @@ fn tokenize_sql(text: &str) -> Vec<SqlToken> {
             continue;
         }
 
+        // --- dot separator ('.' is not in BOUNDARY_CHARS so needs its own check) ---
+        if ch == '.' {
+            flush!();
+            tokens.push(SqlToken {
+                text: ".".to_string(),
+                original: ".".to_string(),
+                is_keyword: false,
+            });
+            i += 1;
+            continue;
+        }
+
         // --- boundary ---
         if is_boundary_char(ch) {
             flush!();
-            if ch == '.' {
+            // Produce a token for commas so FROM-list parsing can detect them.
+            if ch == ',' {
                 tokens.push(SqlToken {
-                    text: ".".to_string(),
-                    original: ".".to_string(),
+                    text: ",".to_string(),
+                    original: ",".to_string(),
                     is_keyword: false,
                 });
             }
@@ -814,12 +827,20 @@ fn is_clause_keyword(text: &str) -> bool {
 
 /// Read a possibly-qualified table reference starting at `*j`.
 fn read_table_ref(tokens: &[SqlToken], j: &mut usize) -> String {
-    if *j >= tokens.len() || tokens[*j].is_keyword || tokens[*j].text == "." {
+    if *j >= tokens.len() || tokens[*j].text == "." {
         return String::new();
+    }
+    // Allow a keyword as the first part of a qualified name when followed by
+    // a dot (e.g. `public.users` where PUBLIC is in the keyword set).
+    if tokens[*j].is_keyword {
+        let is_qualified = *j + 1 < tokens.len() && tokens[*j + 1].text == ".";
+        if !is_qualified {
+            return String::new();
+        }
     }
     let mut parts = vec![tokens[*j].original.clone()];
     *j += 1;
-    while *j + 1 < tokens.len() && tokens[*j].text == "." && !tokens[*j + 1].is_keyword {
+    while *j + 1 < tokens.len() && tokens[*j].text == "." {
         *j += 1; // dot
         parts.push(tokens[*j].original.clone());
         *j += 1;
@@ -1185,10 +1206,26 @@ fn build_candidates(
 // Filter and rank
 // ---------------------------------------------------------------------------
 
+/// Priority for completion kinds: columns/aliases first, then tables/views,
+/// then functions, then keywords.  Ensures context-relevant suggestions
+/// survive the 50-item truncation when no prefix filter is active.
+fn kind_priority(kind: &CompletionKind) -> u8 {
+    match kind {
+        CompletionKind::Column | CompletionKind::Alias => 0,
+        CompletionKind::Table | CompletionKind::View | CompletionKind::Schema => 1,
+        CompletionKind::Function => 2,
+        CompletionKind::Keyword => 3,
+    }
+}
+
 fn filter_and_rank(items: Vec<CompletionItem>, prefix: &str) -> Vec<CompletionItem> {
     if prefix.is_empty() {
         let mut sorted = items;
-        sorted.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+        sorted.sort_by(|a, b| {
+            kind_priority(&a.kind)
+                .cmp(&kind_priority(&b.kind))
+                .then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase()))
+        });
         sorted.dedup_by(|a, b| a.label.eq_ignore_ascii_case(&b.label));
         sorted.truncate(50);
         return sorted;
@@ -1579,7 +1616,7 @@ mod tests {
     #[test]
     fn dot_partial_column() {
         let schema = test_schema();
-        let results = complete_sql("SELECT users.na FROM users", 16, &schema);
+        let results = complete_sql("SELECT users.na FROM users", 14, &schema);
         assert!(results.iter().any(|r| r.label == "name"));
         assert!(!results.iter().any(|r| r.label == "id"));
     }
@@ -1879,7 +1916,8 @@ mod tests {
     #[test]
     fn qualified_table_in_from() {
         let schema = test_schema();
-        let results = complete_sql("SELECT * FROM public.users WHERE ", 31, &schema);
+        let sql = "SELECT * FROM public.users WHERE ";
+        let results = complete_sql(sql, sql.len(), &schema);
         assert!(
             results
                 .iter()
@@ -1905,7 +1943,7 @@ mod tests {
     #[test]
     fn select_with_table_prefix_filter() {
         let schema = test_schema();
-        let results = complete_sql("SELECT na FROM users", 10, &schema);
+        let results = complete_sql("SELECT na FROM users", 9, &schema);
         assert!(results.iter().any(|r| r.label == "name"));
         assert!(!results.iter().any(|r| r.label == "id"));
     }
@@ -1974,7 +2012,8 @@ mod tests {
     #[test]
     fn qualified_schema_dot_table_dot_column() {
         let schema = test_schema();
-        let results = complete_sql("SELECT public.users.", 19, &schema);
+        let sql = "SELECT public.users.";
+        let results = complete_sql(sql, sql.len(), &schema);
         assert!(
             results.iter().any(|r| r.label == "id"),
             "should find 'id' column"
@@ -2040,7 +2079,7 @@ mod tests {
     fn alias_dot_column_with_prefix_filter() {
         let schema = test_schema();
         let sql = "SELECT u.ag FROM users u";
-        let results = complete_sql(sql, 12, &schema);
+        let results = complete_sql(sql, 10, &schema);
         assert!(
             results.iter().any(|r| r.label == "age"),
             "u.ag should filter to 'age' column"
