@@ -32,13 +32,6 @@ pub struct WorkspaceAcpContext {
     pub connection_label: String,
 }
 
-#[allow(dead_code)]
-impl WorkspaceAcpContext {
-    pub fn connection_label_clone(&self) -> String {
-        self.connection_label.clone()
-    }
-}
-
 pub fn provide_workspace_tab_context(
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
@@ -67,19 +60,4 @@ pub fn provide_workspace_query_context(
 
 pub fn provide_workspace_acp_context(context: WorkspaceAcpContext) {
     provide_context(context);
-}
-
-#[allow(dead_code)]
-pub fn use_workspace_tab_context() -> WorkspaceTabContext {
-    use_context::<WorkspaceTabContext>()
-}
-
-#[allow(dead_code)]
-pub fn use_workspace_query_context() -> WorkspaceQueryContext {
-    use_context::<WorkspaceQueryContext>()
-}
-
-#[allow(dead_code)]
-pub fn use_workspace_acp_context() -> WorkspaceAcpContext {
-    use_context::<WorkspaceAcpContext>()
 }

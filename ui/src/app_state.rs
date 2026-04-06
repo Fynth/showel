@@ -3,6 +3,28 @@ use models::{
     AppState, AppThemePreference, AppUiSettings, ConnectionRequest, ConnectionSession,
     DatabaseConnection, SqlFormatSettings,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::RwLock;
+
+// Explorer cache: session_id -> sections (valid for 5 minutes)
+const EXPLORER_CACHE_TTL: Duration = Duration::from_secs(300);
+
+static EXPLORER_CACHE: std::sync::LazyLock<Arc<RwLock<HashMap<u64, ExplorerCacheEntry>>>> =
+    std::sync::LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+#[derive(Clone, Debug)]
+pub struct ExplorerCacheEntry {
+    pub sections: Vec<crate::screens::workspace::ExplorerConnectionSection>,
+    pub timestamp: std::time::Instant,
+}
+
+impl ExplorerCacheEntry {
+    fn is_expired(&self) -> bool {
+        self.timestamp.elapsed() > EXPLORER_CACHE_TTL
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppTooltip {
@@ -80,21 +102,6 @@ pub fn dismiss_toast(id: u64) {
 
 pub fn toast_error(message: impl Into<String>) {
     show_toast(message, ToastKind::Error);
-}
-
-#[allow(dead_code)]
-pub fn toast_info(message: impl Into<String>) {
-    show_toast(message, ToastKind::Info);
-}
-
-#[allow(dead_code)]
-pub fn toast_success(message: impl Into<String>) {
-    show_toast(message, ToastKind::Success);
-}
-
-#[allow(dead_code)]
-pub fn toast_warning(message: impl Into<String>) {
-    show_toast(message, ToastKind::Warning);
 }
 
 pub fn open_connection_screen() {
@@ -271,4 +278,32 @@ fn persist_session_state() {
             eprintln!("Failed to persist session state: {}", err);
         }
     });
+}
+
+// Explorer cache functions
+pub async fn get_cached_explorer(
+    session_id: u64,
+) -> Option<Vec<crate::screens::workspace::ExplorerConnectionSection>> {
+    let cache = EXPLORER_CACHE.read().await;
+    cache.get(&session_id).and_then(|entry| {
+        if entry.is_expired() {
+            None
+        } else {
+            Some(entry.sections.clone())
+        }
+    })
+}
+
+pub async fn cache_explorer(
+    session_id: u64,
+    sections: Vec<crate::screens::workspace::ExplorerConnectionSection>,
+) {
+    let mut cache = EXPLORER_CACHE.write().await;
+    cache.insert(
+        session_id,
+        ExplorerCacheEntry {
+            sections,
+            timestamp: std::time::Instant::now(),
+        },
+    );
 }

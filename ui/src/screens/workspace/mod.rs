@@ -2,7 +2,7 @@ mod actions;
 mod chat;
 mod components;
 mod context;
-mod helpers;
+pub mod helpers;
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,11 +21,10 @@ use self::{
     actions::{new_query_tab, update_active_tab_sql},
     chat::{create_chat_thread, delete_chat_thread, select_chat_thread},
     components::{
-        AcpAgentPanel, ActionIcon, AgentSqlExecutionMode, ExplorerConnectionSection, IconButton,
-        QueryHistoryPanel, SavedQueriesPanel, SessionRail, SidebarConnectionTree, TabsManager,
-        apply_acp_events, default_acp_panel_state, ensure_opencode_connected,
-        execute_agent_sql_request, extract_sql_candidate, preferred_sql_target_tab_id,
-        replace_messages,
+        AcpAgentPanel, ActionIcon, AgentSqlExecutionMode, IconButton, QueryHistoryPanel,
+        SavedQueriesPanel, SessionRail, SidebarConnectionTree, TabsManager, apply_acp_events,
+        default_acp_panel_state, ensure_opencode_connected, execute_agent_sql_request,
+        extract_sql_candidate, preferred_sql_target_tab_id, replace_messages,
     },
     helpers::{
         DockDropTarget, INSPECTOR_MAX_WIDTH, INSPECTOR_MIN_WIDTH, SIDEBAR_MAX_WIDTH,
@@ -35,6 +34,9 @@ use self::{
         upsert_chat_thread_summary, visible_tool_panels, workspace_resize_script,
     },
 };
+
+// Re-export for app_state
+pub use crate::screens::workspace::components::ExplorerConnectionSection;
 
 #[component]
 fn WorkspaceDropSlot(
@@ -821,14 +823,53 @@ pub fn Workspace() -> Element {
     let inspector_resize_active = use_signal(|| false);
     let mut dragging_panel = use_signal(|| None::<WorkspaceToolPanel>);
     let mut drop_target = use_signal(|| None::<DockDropTarget>);
-    let persisted_history =
-        use_resource(
-            move || async move { storage::load_query_history().await.unwrap_or_default() },
-        );
-    let persisted_saved_queries =
-        use_resource(
-            move || async move { storage::load_saved_queries().await.unwrap_or_default() },
-        );
+
+    // Оптимизация: загружаем историю и saved queries один раз с кэшированием
+    static HISTORY_CACHE: std::sync::LazyLock<
+        std::sync::Mutex<Option<Vec<models::QueryHistoryItem>>>,
+    > = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+    static SAVED_QUERIES_CACHE: std::sync::LazyLock<
+        std::sync::Mutex<Option<Vec<models::SavedQuery>>>,
+    > = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+    let persisted_history = use_resource(move || async move {
+        // Проверяем кэш сначала
+        let cached = {
+            let cache = HISTORY_CACHE.lock().unwrap();
+            cache.clone()
+        };
+        if let Some(data) = cached {
+            return data;
+        }
+
+        // Загружаем и кэшируем
+        let data = storage::load_query_history().await.unwrap_or_default();
+        {
+            let mut cache = HISTORY_CACHE.lock().unwrap();
+            *cache = Some(data.clone());
+        }
+        data
+    });
+
+    let persisted_saved_queries = use_resource(move || async move {
+        // Проверяем кэш сначала
+        let cached = {
+            let cache = SAVED_QUERIES_CACHE.lock().unwrap();
+            cache.clone()
+        };
+        if let Some(data) = cached {
+            return data;
+        }
+
+        // Загружаем и кэшируем
+        let data = storage::load_saved_queries().await.unwrap_or_default();
+        {
+            let mut cache = SAVED_QUERIES_CACHE.lock().unwrap();
+            *cache = Some(data.clone());
+        }
+        data
+    });
     let chat_bootstrap_connection_label = connection_label.clone();
     let chat_persist_connection_label = connection_label.clone();
 

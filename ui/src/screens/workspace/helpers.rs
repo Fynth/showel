@@ -119,15 +119,33 @@ pub async fn load_explorer_section(
         models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
     };
 
-    match explorer::load_connection_tree(session.connection.clone()).await {
-        Ok(nodes) => ExplorerConnectionSection {
-            session_id: session.id,
-            name: connection_target_label(&session.request),
-            kind_label,
-            status: "Ready".to_string(),
+    // Проверяем кэш сначала
+    if let Some(cached) = crate::app_state::get_cached_explorer(session.id).await
+        && let Some(section) = cached.into_iter().next()
+    {
+        return ExplorerConnectionSection {
             is_active: Some(session.id) == active_session_id,
-            nodes,
-        },
+            ..section
+        };
+    }
+
+    // Загружаем из БД
+    match explorer::load_connection_tree(session.connection.clone()).await {
+        Ok(nodes) => {
+            let section = ExplorerConnectionSection {
+                session_id: session.id,
+                name: connection_target_label(&session.request),
+                kind_label: kind_label.clone(),
+                status: "Ready".to_string(),
+                is_active: Some(session.id) == active_session_id,
+                nodes,
+            };
+
+            // Кэшируем результат
+            crate::app_state::cache_explorer(session.id, vec![section.clone()]).await;
+
+            section
+        }
         Err(err) => ExplorerConnectionSection {
             session_id: session.id,
             name: connection_target_label(&session.request),

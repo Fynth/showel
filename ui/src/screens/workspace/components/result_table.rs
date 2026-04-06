@@ -52,10 +52,11 @@ pub fn ResultTable(
     let mut filter_panel_open = use_signal(|| false);
     let mut selected_row_index = use_signal(|| None::<usize>);
     let mut selected_row_sync_key = use_signal(String::new);
-    let mut show_row_details = use_signal(|| true);
+    let mut show_row_details = use_signal(|| false);
     let mut row_details_view = use_signal(|| RowDetailsView::Fields);
     let mut editing_row_values = use_signal(Vec::<(usize, String)>::new);
     let mut editing_row_ref = use_signal(|| None::<EditableRowRef>);
+    let mut display_rows_cache = use_signal(Vec::<DisplayRow>::new);
 
     let current_editing = editing_cell();
     let active_tab = tabs
@@ -103,6 +104,16 @@ pub fn ResultTable(
         }
     });
 
+    // Memoize display rows computation
+    let result_for_effect = result.clone();
+    let pending_changes_for_effect = pending_changes.clone();
+    use_effect(move || {
+        if let Some(QueryOutput::Table(page)) = result_for_effect.as_ref() {
+            let rows = materialize_display_rows(page, &pending_changes_for_effect);
+            display_rows_cache.set(rows);
+        }
+    });
+
     rsx! {
         match result {
             Some(QueryOutput::AffectedRows(rows)) => rsx! {
@@ -112,7 +123,34 @@ pub fn ResultTable(
                 }
             },
             Some(QueryOutput::Table(page)) => {
-                let display_rows = materialize_display_rows(&page, &pending_changes);
+                // Проверяем, идёт ли загрузка данных
+                let is_loading = active_tab
+                    .as_ref()
+                    .map(|tab| {
+                        tab.status.starts_with("Loading")
+                            || tab.status.starts_with("Running")
+                            || tab.status.starts_with("Preview")
+                    })
+                    .unwrap_or(false);
+
+                if is_loading && page.columns.is_empty() && page.rows.is_empty() {
+                    // Показываем skeleton пока данные загружаются
+                    return rsx! {
+                        div {
+                            class: "results",
+                            div { class: "results__skeleton",
+                                div { class: "skeleton skeleton-bar" }
+                                div { class: "skeleton skeleton-table-header" }
+                                for _ in 0..6 {
+                                    div { class: "skeleton skeleton-row" }
+                                }
+                                div { class: "results__skeleton-text", "Загрузка данных..." }
+                            }
+                        }
+                    };
+                }
+
+                let display_rows = display_rows_cache();
                 let draft_rows = pending_changes.inserted_rows.len();
                 let selected_row = selected_row_index().and_then(|index| {
                     display_rows

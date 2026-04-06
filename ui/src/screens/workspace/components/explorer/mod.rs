@@ -9,7 +9,7 @@ use models::{DatabaseKind, ExplorerNode, ExplorerNodeKind, QueryTabState};
 
 use create_table_modal::{CreateTableModal, CreateTableTarget};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExplorerConnectionSection {
     pub session_id: u64,
     pub name: String,
