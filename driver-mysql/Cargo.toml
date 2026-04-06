@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 database.workspace = true
-sqlx = { version = "0.8.6", default-features = false, features = ["mysql", "runtime-tokio-rustls"] }
+sqlx = { workspace = true, features = ["mysql"] }

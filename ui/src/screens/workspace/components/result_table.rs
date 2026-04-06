@@ -107,12 +107,20 @@ pub fn ResultTable(
         }
     });
 
-    // Memoize display rows computation
-    let result_for_effect = result.clone();
-    let pending_changes_for_effect = pending_changes.clone();
     use_effect(move || {
-        if let Some(QueryOutput::Table(page)) = result_for_effect.as_ref() {
-            let rows = materialize_display_rows(page, &pending_changes_for_effect);
+        let tab = tabs
+            .read()
+            .iter()
+            .find(|tab| tab.id == active_tab_id())
+            .cloned();
+        let result = tab.as_ref().and_then(|t| t.result.clone());
+        let pending = tab
+            .as_ref()
+            .map(|t| t.pending_table_changes.clone())
+            .unwrap_or_default();
+
+        if let Some(QueryOutput::Table(page)) = result.as_ref() {
+            let rows = materialize_display_rows(page, &pending);
             display_rows_cache.set(rows);
         }
     });
@@ -614,7 +622,6 @@ pub fn ResultTable(
                                         } else {
                                             "results__details"
                                         },
-                                        style: format!("width: var(--results-details-width, 360px);"),
                                         div {
                                             class: "results__details-header",
                                             div {
@@ -712,70 +719,70 @@ pub fn ResultTable(
                                                 }
                                             }
                                         }
-                                    }
-                                    div {
-                                        class: if details_resize_active() {
-                                            "results__details-resize results__details-resize--active"
-                                        } else {
-                                            "results__details-resize"
-                                        },
-                                        onmousedown: move |event| {
-                                            if event.trigger_button() != Some(MouseButton::Primary) {
-                                                return;
-                                            }
-                                            event.prevent_default();
-                                            event.stop_propagation();
-                                            details_resize_active.set(true);
-                                            let start_x = event.client_coordinates().x;
-                                            let start_width = details_width();
-                                            spawn(async move {
-                                                let result = document::eval(&format!(
-                                                    r#"
-                                                    (() => {{
-                                                        const startX = {start_x};
-                                                        const startWidth = {start_width};
-                                                        const minWidth = 280;
-                                                        const maxWidth = 640;
-                                                        let finished = false;
-                                                        let lastWidth = startWidth;
-
-                                                        const clampWidth = (clientX) => {{
-                                                            const delta = startX - clientX;
-                                                            return Math.min(maxWidth, Math.max(minWidth, startWidth - delta));
-                                                        }};
-
-                                                        return new Promise((resolve) => {{
-                                                            const finish = (clientX) => {{
-                                                                if (finished) return;
-                                                                finished = true;
-                                                                const width = clientX == null ? lastWidth : clampWidth(clientX);
-                                                                resolve(width);
-                                                            }};
-
-                                                            const onMove = (event) => {{
-                                                                lastWidth = clampWidth(event.clientX);
-                                                            }};
-
-                                                            const onUp = (event) => finish(event.clientX);
-                                                            const onBlur = () => finish(startX);
-
-                                                            window.addEventListener("mousemove", onMove, {{ passive: true }});
-                                                            window.addEventListener("mouseup", onUp);
-                                                            window.addEventListener("blur", onBlur);
-                                                        }});
-                                                    }})()
-                                                    "#
-                                                ))
-                                                .join::<f64>()
-                                                .await;
-
-                                                match result {
-                                                    Ok(width) => details_width.set(width),
-                                                    Err(err) => eprintln!("Failed to resize details: {err:?}"),
+                                        div {
+                                            class: if details_resize_active() {
+                                                "results__details-resize results__details-resize--active"
+                                            } else {
+                                                "results__details-resize"
+                                            },
+                                            onmousedown: move |event| {
+                                                if event.trigger_button() != Some(MouseButton::Primary) {
+                                                    return;
                                                 }
-                                                details_resize_active.set(false);
-                                            });
-                                        },
+                                                event.prevent_default();
+                                                event.stop_propagation();
+                                                details_resize_active.set(true);
+                                                let start_x = event.client_coordinates().x;
+                                                let start_width = details_width();
+                                                spawn(async move {
+                                                    let result = document::eval(&format!(
+                                                        r#"
+                                                        (() => {{
+                                                            const startX = {start_x};
+                                                            const startWidth = {start_width};
+                                                            const minWidth = 280;
+                                                            const maxWidth = 1200;
+                                                            let finished = false;
+                                                            let lastWidth = startWidth;
+
+                                                            const clampWidth = (clientX) => {{
+                                                                const delta = startX - clientX;
+                                                                return Math.min(maxWidth, Math.max(minWidth, startWidth - delta));
+                                                            }};
+
+                                                            return new Promise((resolve) => {{
+                                                                const finish = (clientX) => {{
+                                                                    if (finished) return;
+                                                                    finished = true;
+                                                                    const width = clientX == null ? lastWidth : clampWidth(clientX);
+                                                                    resolve(width);
+                                                                }};
+
+                                                                const onMove = (event) => {{
+                                                                    lastWidth = clampWidth(event.clientX);
+                                                                }};
+
+                                                                const onUp = (event) => finish(event.clientX);
+                                                                const onBlur = () => finish(startX);
+
+                                                                window.addEventListener("mousemove", onMove, {{ passive: true }});
+                                                                window.addEventListener("mouseup", onUp);
+                                                                window.addEventListener("blur", onBlur);
+                                                            }});
+                                                        }})()
+                                                        "#
+                                                    ))
+                                                    .join::<f64>()
+                                                    .await;
+
+                                                    match result {
+                                                        Ok(width) => details_width.set(width),
+                                                        Err(err) => eprintln!("Failed to resize: {err:?}"),
+                                                    }
+                                                    details_resize_active.set(false);
+                                                });
+                                            },
+                                        }
                                     }
                                 }
                             }

@@ -11,6 +11,38 @@ pub enum DatabaseKind {
     ClickHouse,
 }
 
+impl DatabaseKind {
+    /// Returns the human-facing display name for this database kind.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            DatabaseKind::Sqlite => "SQLite",
+            DatabaseKind::Postgres => "PostgreSQL",
+            DatabaseKind::MySql => "MySQL",
+            DatabaseKind::ClickHouse => "ClickHouse",
+        }
+    }
+
+    /// Returns the default TCP port for this database kind, or `None` for file-based databases.
+    pub fn default_port(&self) -> Option<u16> {
+        match self {
+            DatabaseKind::Sqlite => None,
+            DatabaseKind::Postgres => Some(5432),
+            DatabaseKind::MySql => Some(3306),
+            DatabaseKind::ClickHouse => Some(8123),
+        }
+    }
+
+    /// Returns `true` if this database kind supports SSH tunnel connections.
+    pub fn supports_ssh_tunnel(&self) -> bool {
+        !matches!(self, DatabaseKind::Sqlite)
+    }
+
+    /// Returns `true` if this database kind supports row-level editing.
+    pub fn supports_row_editing(&self) -> bool {
+        !matches!(self, DatabaseKind::ClickHouse)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SshTunnelConfig {
     pub host: String,
@@ -45,6 +77,43 @@ pub enum DatabaseConnection {
     Postgres(sqlx::PgPool),
     MySql(sqlx::MySqlPool),
     ClickHouse(ClickHouseFormData),
+}
+
+impl DatabaseConnection {
+    /// Returns the [`DatabaseKind`] for this connection without inspecting the pool.
+    pub fn kind(&self) -> DatabaseKind {
+        match self {
+            DatabaseConnection::Sqlite(_) => DatabaseKind::Sqlite,
+            DatabaseConnection::Postgres(_) => DatabaseKind::Postgres,
+            DatabaseConnection::MySql(_) => DatabaseKind::MySql,
+            DatabaseConnection::ClickHouse(_) => DatabaseKind::ClickHouse,
+        }
+    }
+
+    /// Returns `true` if this is a SQLite connection.
+    pub fn is_sqlite(&self) -> bool {
+        matches!(self, DatabaseConnection::Sqlite(_))
+    }
+
+    /// Returns `true` if this is a PostgreSQL connection.
+    pub fn is_postgres(&self) -> bool {
+        matches!(self, DatabaseConnection::Postgres(_))
+    }
+
+    /// Returns `true` if this is a MySQL connection.
+    pub fn is_mysql(&self) -> bool {
+        matches!(self, DatabaseConnection::MySql(_))
+    }
+
+    /// Returns `true` if this is a ClickHouse connection.
+    pub fn is_clickhouse(&self) -> bool {
+        matches!(self, DatabaseConnection::ClickHouse(_))
+    }
+
+    /// Returns the human-facing name of the database kind (e.g. "SQLite", "PostgreSQL").
+    pub fn kind_name(&self) -> &'static str {
+        self.kind().display_name()
+    }
 }
 
 #[derive(Debug)]
@@ -127,6 +196,28 @@ impl fmt::Display for DatabaseError {
 }
 
 impl Error for DatabaseError {}
+
+impl DatabaseError {
+    /// Returns the [`DatabaseKind`] that produced this error, or `None` for
+    /// tunnel / unsupported-driver errors that are not tied to a specific backend.
+    pub fn kind(&self) -> Option<DatabaseKind> {
+        match self {
+            DatabaseError::Sqlite(_) => Some(DatabaseKind::Sqlite),
+            DatabaseError::Postgres(_) => Some(DatabaseKind::Postgres),
+            DatabaseError::MySql(_) => Some(DatabaseKind::MySql),
+            DatabaseError::ClickHouse(_) => Some(DatabaseKind::ClickHouse),
+            DatabaseError::Tunnel(_) | DatabaseError::UnsupportedDriver(_) => None,
+        }
+    }
+
+    /// Returns a descriptive string including the database-kind prefix.
+    ///
+    /// This delegates to the [`fmt::Display`] implementation, which already
+    /// includes prefixes like `"SQLite error: …"` or `"SSH tunnel error: …"`.
+    pub fn display_string(&self) -> String {
+        format!("{self}")
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConnectionRequest {

@@ -11,4 +11,4 @@ driver-mysql.workspace = true
 driver-postgres.workspace = true
 driver-sqlite.workspace = true
 models.workspace = true
-reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls"] }
+reqwest.workspace = true

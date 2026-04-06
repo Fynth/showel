@@ -1,0 +1,367 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+use dioxus::prelude::*;
+use models::{AcpPanelState, ChatThreadSummary, QueryTabState};
+
+use super::super::actions::update_active_tab_sql;
+use super::super::components::{
+    AgentSqlExecutionMode, apply_acp_events, default_acp_panel_state, ensure_opencode_connected,
+    execute_agent_sql_request, extract_sql_candidate, preferred_sql_target_tab_id,
+    replace_messages,
+};
+use super::super::helpers::{
+    derive_chat_thread_title, launch_uses_opencode, reset_panel_for_thread,
+    upsert_chat_thread_summary,
+};
+use crate::app_state::{APP_STATE, toast_error};
+
+pub struct AcpStateInputs {
+    pub ai_features_enabled: Signal<bool>,
+    pub show_agent_panel: Signal<bool>,
+    pub show_sql_editor: Signal<bool>,
+    pub chat_threads: Signal<Vec<ChatThreadSummary>>,
+    pub active_chat_thread_id: Signal<Option<i64>>,
+    pub chat_revision: Signal<u64>,
+    pub chat_threads_loaded: Signal<bool>,
+    pub tabs: Signal<Vec<QueryTabState>>,
+    pub active_tab_id: Signal<u64>,
+    pub connection_label: String,
+}
+
+#[allow(dead_code)]
+pub struct AcpState {
+    pub acp_panel_state: Signal<AcpPanelState>,
+    pub allow_agent_db_read: Signal<bool>,
+    pub allow_agent_read_sql_run: Signal<bool>,
+    pub allow_agent_write_sql_run: Signal<bool>,
+    pub allow_agent_tool_run: Signal<bool>,
+    pub handled_agent_sql_message_id: Signal<u64>,
+    pub opencode_autostart_attempted: Signal<bool>,
+    pub warmed_schema_session_id: Signal<u64>,
+    pub ai_disable_applied: Signal<bool>,
+}
+
+pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
+    // ── Own signals ────────────────────────────────────────────────
+    let mut acp_panel_state = use_signal(default_acp_panel_state);
+    let allow_agent_db_read = use_signal(|| true);
+    let allow_agent_read_sql_run = use_signal(|| true);
+    let allow_agent_write_sql_run = use_signal(|| false);
+    let allow_agent_tool_run = use_signal(|| false);
+    let mut handled_agent_sql_message_id = use_signal(|| 0_u64);
+    let mut opencode_autostart_attempted = use_signal(|| false);
+    let mut warmed_schema_session_id = use_signal(|| 0_u64);
+    let mut ai_disable_applied = use_signal(|| false);
+
+    // ── External signals (from other hooks / workspace) ────────────
+    let ai_features_enabled = inputs.ai_features_enabled;
+    let show_agent_panel = inputs.show_agent_panel;
+    let mut show_sql_editor = inputs.show_sql_editor;
+    let mut chat_threads = inputs.chat_threads;
+    let active_chat_thread_id = inputs.active_chat_thread_id;
+    let mut chat_revision = inputs.chat_revision;
+    let chat_threads_loaded = inputs.chat_threads_loaded;
+    let tabs = inputs.tabs;
+    let mut active_tab_id = inputs.active_tab_id;
+    let connection_label = inputs.connection_label;
+
+    // Clone for the persist-chat effect closure.
+    let persist_connection_label = connection_label.clone();
+
+    // ── Effect: AI features disable ────────────────────────────────
+    use_effect(move || {
+        if ai_features_enabled() {
+            if ai_disable_applied() {
+                ai_disable_applied.set(false);
+                opencode_autostart_attempted.set(false);
+            }
+            return;
+        }
+
+        if ai_disable_applied() {
+            return;
+        }
+
+        ai_disable_applied.set(true);
+        opencode_autostart_attempted.set(false);
+        let _ = acp::disconnect_acp_agent();
+        acp_panel_state.with_mut(|state| {
+            let launch = state.launch.clone();
+            let ollama = state.ollama.clone();
+            let existing_messages = state.messages.clone();
+            *state = AcpPanelState::new(launch, ollama);
+            replace_messages(state, existing_messages);
+            state.status = "AI features are disabled.".to_string();
+        });
+    });
+
+    // ── Effect: load chat messages on thread switch ────────────────
+    use_effect(move || {
+        if !ai_features_enabled() {
+            return;
+        }
+        let Some(thread_id) = active_chat_thread_id() else {
+            return;
+        };
+
+        spawn(async move {
+            let thread_title = chat_threads
+                .read()
+                .iter()
+                .find(|thread| thread.id == thread_id)
+                .map(|thread| thread.title.clone())
+                .unwrap_or_else(|| "New chat".to_string());
+            let messages = match storage::load_chat_thread_messages(thread_id).await {
+                Ok(messages) => messages,
+                Err(err) => {
+                    toast_error(format!("Failed to load chat thread: {err}"));
+                    Vec::new()
+                }
+            };
+            let last_message_id = messages.iter().map(|message| message.id).max().unwrap_or(0);
+
+            let _ = acp::disconnect_acp_agent();
+            handled_agent_sql_message_id.set(last_message_id);
+            opencode_autostart_attempted.set(false);
+            acp_panel_state
+                .with_mut(|state| reset_panel_for_thread(state, &thread_title, messages));
+        });
+    });
+
+    // ── Effect: auto-connect opencode ──────────────────────────────
+    use_effect(move || {
+        if !ai_features_enabled() {
+            return;
+        }
+        if !chat_threads_loaded() || active_chat_thread_id().is_none() {
+            return;
+        }
+        if opencode_autostart_attempted() {
+            return;
+        }
+
+        let state = acp_panel_state();
+        if state.connected || state.busy || !launch_uses_opencode(&state) {
+            return;
+        }
+
+        opencode_autostart_attempted.set(true);
+        spawn(async move {
+            let _ = ensure_opencode_connected(acp_panel_state, chat_revision).await;
+        });
+    });
+
+    // ── Effect: warm schema context for ACP ────────────────────────
+    use_effect(move || {
+        if !ai_features_enabled() || !allow_agent_db_read() {
+            return;
+        }
+
+        let active_session = { APP_STATE.read().active_session().cloned() };
+        let Some(session) = active_session else {
+            return;
+        };
+
+        if warmed_schema_session_id() == session.id {
+            return;
+        }
+
+        warmed_schema_session_id.set(session.id);
+        spawn(async move {
+            let _ = acp::warm_acp_database_schema_context(
+                session.connection.clone(),
+                session.name.clone(),
+            )
+            .await;
+        });
+    });
+
+    // ── Effect: persist chat on revision change ────────────────────
+    use_effect(move || {
+        let revision = chat_revision();
+        if revision == 0 {
+            return;
+        }
+
+        let connection_name = persist_connection_label.clone();
+        spawn(async move {
+            let Some(thread_id) = active_chat_thread_id() else {
+                return;
+            };
+
+            let messages = acp_panel_state().messages.clone();
+            let current_title = chat_threads
+                .read()
+                .iter()
+                .find(|thread| thread.id == thread_id)
+                .map(|thread| thread.title.clone());
+            let next_title =
+                derive_chat_thread_title(current_title.as_deref(), &messages, &connection_name);
+
+            match storage::save_chat_thread_snapshot(
+                thread_id,
+                next_title,
+                connection_name.clone(),
+                messages,
+            )
+            .await
+            {
+                Ok(summary) => {
+                    chat_threads.with_mut(|threads| upsert_chat_thread_summary(threads, summary));
+                }
+                Err(err) => {
+                    toast_error(format!("Failed to persist chat thread: {err}"));
+                }
+            }
+        });
+    });
+
+    // ── Effect: ACP polling loop ───────────────────────────────────
+    use_effect(move || {
+        static STOP_FLAG: AtomicBool = AtomicBool::new(false);
+        STOP_FLAG.store(false, Ordering::Relaxed);
+        let _ = spawn(async move {
+            loop {
+                if STOP_FLAG.load(Ordering::Relaxed) {
+                    break;
+                }
+                let ai_active = ai_features_enabled();
+                let panel_visible = show_agent_panel();
+                let poll_delay = if ai_active && acp_panel_state().connected {
+                    if panel_visible {
+                        Duration::from_millis(120)
+                    } else {
+                        Duration::from_millis(180)
+                    }
+                } else {
+                    Duration::from_millis(400)
+                };
+
+                if !ai_active {
+                    let _ = acp::drain_acp_events();
+                    tokio::time::sleep(poll_delay).await;
+                    continue;
+                }
+
+                if STOP_FLAG.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                let events = acp::drain_acp_events();
+                if !events.is_empty() {
+                    acp_panel_state.with_mut(|state| apply_acp_events(state, events));
+                    chat_revision += 1;
+
+                    let pending_hidden_agent_sql = {
+                        let panel_state = acp_panel_state();
+                        extract_sql_candidate(&panel_state.hidden_agent_response)
+                            .map(|sql| (sql, panel_state.pending_sql_insert))
+                    };
+                    let pending_agent_sql = if pending_hidden_agent_sql.is_none() {
+                        let panel_state = acp_panel_state();
+                        let handled_message_id = handled_agent_sql_message_id();
+                        panel_state
+                            .messages
+                            .iter()
+                            .filter(|message| message.id > handled_message_id)
+                            .find_map(|message| match message.kind {
+                                models::AcpMessageKind::Agent => {
+                                    extract_sql_candidate(&message.text).map(|sql| {
+                                        (message.id, sql, panel_state.pending_sql_insert)
+                                    })
+                                }
+                                _ => None,
+                            })
+                    } else {
+                        None
+                    };
+
+                    if let Some((sql, pending_sql_insert)) = pending_hidden_agent_sql {
+                        acp_panel_state.with_mut(|state| state.hidden_agent_response.clear());
+
+                        if query::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
+                            execute_agent_sql_request(
+                                acp_panel_state,
+                                tabs,
+                                active_tab_id,
+                                show_sql_editor,
+                                chat_revision,
+                                sql,
+                                AgentSqlExecutionMode::AutoReadOnly,
+                                false,
+                            );
+                        } else if pending_sql_insert
+                            && let Some(target_tab_id) =
+                                preferred_sql_target_tab_id(tabs, active_tab_id())
+                        {
+                            show_sql_editor.set(true);
+                            active_tab_id.set(target_tab_id);
+                            update_active_tab_sql(
+                                tabs,
+                                target_tab_id,
+                                sql,
+                                "SQL generated by ACP agent".to_string(),
+                            );
+                            acp_panel_state.with_mut(|state| {
+                                state.pending_sql_insert = false;
+                                state.status =
+                                    "Inserted generated SQL into the active editor.".to_string();
+                            });
+                        }
+                    } else if let Some((message_id, sql, pending_sql_insert)) = pending_agent_sql {
+                        handled_agent_sql_message_id.set(message_id);
+
+                        if query::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
+                            execute_agent_sql_request(
+                                acp_panel_state,
+                                tabs,
+                                active_tab_id,
+                                show_sql_editor,
+                                chat_revision,
+                                sql,
+                                AgentSqlExecutionMode::AutoReadOnly,
+                                true,
+                            );
+                        } else if pending_sql_insert
+                            && let Some(target_tab_id) =
+                                preferred_sql_target_tab_id(tabs, active_tab_id())
+                        {
+                            show_sql_editor.set(true);
+                            active_tab_id.set(target_tab_id);
+                            update_active_tab_sql(
+                                tabs,
+                                target_tab_id,
+                                sql,
+                                "SQL generated by ACP agent".to_string(),
+                            );
+                            acp_panel_state.with_mut(|state| {
+                                state.pending_sql_insert = false;
+                                state.status =
+                                    "Inserted generated SQL into the active editor.".to_string();
+                            });
+                        }
+                    } else if !acp_panel_state().suppress_transcript
+                        && !acp_panel_state().hidden_agent_response.is_empty()
+                    {
+                        acp_panel_state.with_mut(|state| state.hidden_agent_response.clear());
+                    }
+                }
+
+                tokio::time::sleep(poll_delay).await;
+            }
+        });
+    });
+
+    AcpState {
+        acp_panel_state,
+        allow_agent_db_read,
+        allow_agent_read_sql_run,
+        allow_agent_write_sql_run,
+        allow_agent_tool_run,
+        handled_agent_sql_message_id,
+        opencode_autostart_attempted,
+        warmed_schema_session_id,
+        ai_disable_applied,
+    }
+}

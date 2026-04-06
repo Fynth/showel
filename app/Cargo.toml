@@ -8,7 +8,7 @@ build = "build.rs"
 acp.workspace = true
 dioxus.workspace = true
 ui.workspace = true
-rfd = "0.17.2"
+rfd.workspace = true
 
 [build-dependencies]
 grass = "0.13.4"

@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = "1.50.0"
+tokio.workspace = true
 models.workspace = true

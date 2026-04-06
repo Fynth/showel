@@ -3,14 +3,9 @@ mod chat;
 mod components;
 mod context;
 pub mod helpers;
+mod hooks;
 
-use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-
-use crate::app_state::{
-    APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen, toast_error,
-};
+use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen};
 use dioxus::{html::input_data::MouseButton, prelude::*};
 use models::{
     AcpPanelState, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery,
@@ -18,20 +13,19 @@ use models::{
 };
 
 use self::{
-    actions::{new_query_tab, update_active_tab_sql},
     chat::{create_chat_thread, delete_chat_thread, select_chat_thread},
     components::{
-        AcpAgentPanel, ActionIcon, AgentSqlExecutionMode, IconButton, QueryHistoryPanel,
-        SavedQueriesPanel, SessionRail, SidebarConnectionTree, TabsManager, apply_acp_events,
-        default_acp_panel_state, ensure_opencode_connected, execute_agent_sql_request,
-        extract_sql_candidate, preferred_sql_target_tab_id, replace_messages,
+        AcpAgentPanel, ActionIcon, IconButton, QueryHistoryPanel, SavedQueriesPanel, SessionRail,
+        SidebarConnectionTree, TabsManager,
     },
     helpers::{
         DockDropTarget, INSPECTOR_MAX_WIDTH, INSPECTOR_MIN_WIDTH, SIDEBAR_MAX_WIDTH,
-        SIDEBAR_MIN_WIDTH, WORKSPACE_ROOT_ID, apply_tool_panel_drop, derive_chat_thread_title,
-        launch_uses_opencode, load_explorer_section, reset_panel_for_thread,
-        should_render_explorer_status, tool_panel_class, unloaded_explorer_section,
-        upsert_chat_thread_summary, visible_tool_panels, workspace_resize_script,
+        SIDEBAR_MIN_WIDTH, WORKSPACE_ROOT_ID, apply_tool_panel_drop, should_render_explorer_status,
+        tool_panel_class, visible_tool_panels, workspace_resize_script,
+    },
+    hooks::{
+        AcpState, AcpStateInputs, ChatState, ExplorerState, QueryTabsState, use_acp_state,
+        use_chat_state, use_explorer_state, use_query_tabs,
     },
 };
 
@@ -787,36 +781,15 @@ pub fn Workspace() -> Element {
         .unwrap_or_else(|| "No connection".to_string());
     let show_history = APP_SHOW_HISTORY();
 
-    let mut tree_status = use_signal(|| "Loading explorer...".to_string());
-    let mut tree_sections = use_signal(Vec::<ExplorerConnectionSection>::new);
-    let tree_reload = use_signal(|| 0_u64);
-    let mut next_tab_id = use_signal(|| 1_u64);
-    let mut next_history_id = use_signal(|| 1_u64);
-    let mut next_saved_query_id = use_signal(|| 1_u64);
-    let mut active_tab_id = use_signal(|| 0_u64);
-    let mut tabs = use_signal(Vec::<QueryTabState>::new);
-    let mut history = use_signal(Vec::<QueryHistoryItem>::new);
-    let mut saved_queries = use_signal(Vec::<SavedQuery>::new);
+    // ── Panel visibility signals (owned by Workspace) ──────────────
     let mut show_saved_queries = use_signal(|| APP_UI_SETTINGS().show_saved_queries);
     let mut show_connections = use_signal(|| APP_UI_SETTINGS().show_connections);
     let mut show_explorer = use_signal(|| APP_UI_SETTINGS().show_explorer);
     let mut show_sql_editor = use_signal(|| APP_UI_SETTINGS().show_sql_editor);
     let mut ai_features_enabled = use_signal(|| APP_UI_SETTINGS().ai_features_enabled);
     let mut show_agent_panel = use_signal(|| APP_UI_SETTINGS().show_agent_panel);
-    let allow_agent_db_read = use_signal(|| true);
-    let allow_agent_read_sql_run = use_signal(|| true);
-    let allow_agent_write_sql_run = use_signal(|| false);
-    let allow_agent_tool_run = use_signal(|| false);
-    let mut acp_panel_state = use_signal(default_acp_panel_state);
-    let mut chat_threads = use_signal(Vec::<ChatThreadSummary>::new);
-    let mut active_chat_thread_id = use_signal(|| None::<i64>);
-    let mut chat_revision = use_signal(|| 0_u64);
-    let mut handled_agent_sql_message_id = use_signal(|| 0_u64);
-    let mut ai_disable_applied = use_signal(|| false);
-    let mut chat_threads_loaded = use_signal(|| false);
-    let mut chat_bootstrap_inflight = use_signal(|| false);
-    let mut opencode_autostart_attempted = use_signal(|| false);
-    let mut warmed_schema_session_id = use_signal(|| 0_u64);
+
+    // ── Layout signals (owned by Workspace) ────────────────────────
     let sidebar_width = use_signal(|| 320.0);
     let sidebar_resize_active = use_signal(|| false);
     let inspector_width = use_signal(|| 360.0);
@@ -824,54 +797,50 @@ pub fn Workspace() -> Element {
     let mut dragging_panel = use_signal(|| None::<WorkspaceToolPanel>);
     let mut drop_target = use_signal(|| None::<DockDropTarget>);
 
-    // Оптимизация: загружаем историю и saved queries один раз с кэшированием
-    static HISTORY_CACHE: std::sync::LazyLock<
-        std::sync::Mutex<Option<Vec<models::QueryHistoryItem>>>,
-    > = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+    // ── Custom hooks ───────────────────────────────────────────────
+    let ExplorerState {
+        tree_status,
+        tree_sections,
+        tree_reload,
+    } = use_explorer_state(show_explorer);
 
-    static SAVED_QUERIES_CACHE: std::sync::LazyLock<
-        std::sync::Mutex<Option<Vec<models::SavedQuery>>>,
-    > = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+    let QueryTabsState {
+        tabs,
+        active_tab_id,
+        next_tab_id,
+    } = use_query_tabs();
 
-    let persisted_history = use_resource(move || async move {
-        // Проверяем кэш сначала
-        let cached = {
-            let cache = HISTORY_CACHE.lock().unwrap();
-            cache.clone()
-        };
-        if let Some(data) = cached {
-            return data;
-        }
+    let ChatState {
+        chat_threads,
+        active_chat_thread_id,
+        chat_revision,
+        chat_threads_loaded,
+        history,
+        next_history_id,
+        saved_queries,
+        next_saved_query_id,
+        ..
+    } = use_chat_state(ai_features_enabled, connection_label.clone());
 
-        // Загружаем и кэшируем
-        let data = storage::load_query_history().await.unwrap_or_default();
-        {
-            let mut cache = HISTORY_CACHE.lock().unwrap();
-            *cache = Some(data.clone());
-        }
-        data
+    let AcpState {
+        acp_panel_state,
+        allow_agent_db_read,
+        allow_agent_read_sql_run,
+        allow_agent_write_sql_run,
+        allow_agent_tool_run,
+        ..
+    } = use_acp_state(AcpStateInputs {
+        ai_features_enabled,
+        show_agent_panel,
+        show_sql_editor,
+        chat_threads,
+        active_chat_thread_id,
+        chat_revision,
+        chat_threads_loaded,
+        tabs,
+        active_tab_id,
+        connection_label: connection_label.clone(),
     });
-
-    let persisted_saved_queries = use_resource(move || async move {
-        // Проверяем кэш сначала
-        let cached = {
-            let cache = SAVED_QUERIES_CACHE.lock().unwrap();
-            cache.clone()
-        };
-        if let Some(data) = cached {
-            return data;
-        }
-
-        // Загружаем и кэшируем
-        let data = storage::load_saved_queries().await.unwrap_or_default();
-        {
-            let mut cache = SAVED_QUERIES_CACHE.lock().unwrap();
-            *cache = Some(data.clone());
-        }
-        data
-    });
-    let chat_bootstrap_connection_label = connection_label.clone();
-    let chat_persist_connection_label = connection_label.clone();
 
     context::provide_workspace_tab_context(tabs, active_tab_id, next_tab_id);
     context::provide_workspace_query_context(
@@ -892,207 +861,7 @@ pub fn Workspace() -> Element {
         connection_label: connection_label.clone(),
     });
 
-    use_effect(move || {
-        let reload_tick = tree_reload();
-        let explorer_visible = show_explorer();
-        let (sessions, active_session_id) = {
-            let app_state = APP_STATE.read();
-            (app_state.sessions.clone(), app_state.active_session_id)
-        };
-
-        spawn(async move {
-            let _ = reload_tick;
-            if sessions.is_empty() {
-                tree_sections.set(Vec::new());
-                tree_status.set("Select or create a connection".to_string());
-                return;
-            }
-
-            if !explorer_visible {
-                tree_sections.set(
-                    sessions
-                        .iter()
-                        .map(|session| {
-                            unloaded_explorer_section(session, active_session_id, "Explorer hidden")
-                        })
-                        .collect(),
-                );
-                tree_status.set("Explorer hidden".to_string());
-                return;
-            }
-
-            let active_index = sessions
-                .iter()
-                .position(|session| Some(session.id) == active_session_id)
-                .unwrap_or(0);
-            let mut sections = sessions
-                .iter()
-                .map(|session| {
-                    unloaded_explorer_section(
-                        session,
-                        active_session_id,
-                        "Activate this connection to load explorer",
-                    )
-                })
-                .collect::<Vec<_>>();
-
-            tree_status.set("Loading explorer...".to_string());
-            let active_section = load_explorer_section(
-                sessions[active_index].clone(),
-                active_session_id.or(Some(sessions[active_index].id)),
-            )
-            .await;
-            let active_failed = active_section.status.starts_with("Error:");
-            sections[active_index] = active_section;
-
-            tree_sections.set(sections);
-            if active_failed {
-                tree_status.set("Explorer failed for the active connection".to_string());
-            } else {
-                tree_status.set("Explorer ready for the active connection".to_string());
-            }
-        });
-    });
-
-    use_effect(move || {
-        let (session_ids, active_session_id) = {
-            let app_state = APP_STATE.read();
-            (
-                app_state
-                    .sessions
-                    .iter()
-                    .map(|session| session.id)
-                    .collect::<HashSet<_>>(),
-                app_state.active_session_id,
-            )
-        };
-
-        tabs.with_mut(|all_tabs| all_tabs.retain(|tab| session_ids.contains(&tab.session_id)));
-
-        if let Some(session_id) = active_session_id {
-            let current_active_matches = tabs
-                .read()
-                .iter()
-                .any(|tab| tab.id == active_tab_id() && tab.session_id == session_id);
-
-            if current_active_matches {
-                return;
-            }
-
-            if let Some(existing_tab_id) = tabs
-                .read()
-                .iter()
-                .find(|tab| tab.session_id == session_id)
-                .map(|tab| tab.id)
-            {
-                active_tab_id.set(existing_tab_id);
-                return;
-            }
-
-            let tab_id = next_tab_id();
-            next_tab_id += 1;
-            tabs.with_mut(|all_tabs| {
-                all_tabs.push(new_query_tab(
-                    tab_id,
-                    session_id,
-                    format!("Query {tab_id}"),
-                    "select 1 as id;".to_string(),
-                ));
-            });
-            active_tab_id.set(tab_id);
-        } else {
-            active_tab_id.set(0);
-        }
-    });
-
-    use_effect(move || {
-        if let Some(items) = persisted_history() {
-            let next_id = items.iter().map(|item| item.id).max().unwrap_or(0) + 1;
-            history.set(items);
-            next_history_id.set(next_id);
-        }
-    });
-
-    use_effect(move || {
-        if let Some(items) = persisted_saved_queries() {
-            let next_id = items.iter().map(|item| item.id).max().unwrap_or(0) + 1;
-            saved_queries.set(items);
-            next_saved_query_id.set(next_id);
-        }
-    });
-
-    use_effect(move || {
-        if !ai_features_enabled() {
-            return;
-        }
-        if chat_threads_loaded() {
-            return;
-        }
-        if chat_bootstrap_inflight() {
-            return;
-        }
-
-        chat_bootstrap_inflight.set(true);
-        let default_connection = chat_bootstrap_connection_label.clone();
-        spawn(async move {
-            let items = storage::load_chat_threads().await.unwrap_or_default();
-            if items.is_empty() {
-                match storage::create_chat_thread(default_connection, Some("New chat".to_string()))
-                    .await
-                {
-                    Ok(thread) => {
-                        chat_threads.set(vec![thread.clone()]);
-                        active_chat_thread_id.set(Some(thread.id));
-                    }
-                    Err(err) => {
-                        toast_error(format!("Failed to create default chat thread: {err}"));
-                    }
-                }
-            } else {
-                let next_active_thread_id = active_chat_thread_id()
-                    .filter(|thread_id| items.iter().any(|thread| thread.id == *thread_id))
-                    .or_else(|| items.first().map(|thread| thread.id));
-                chat_threads.set(items);
-                active_chat_thread_id.set(next_active_thread_id);
-            }
-
-            chat_threads_loaded.set(true);
-            chat_bootstrap_inflight.set(false);
-        });
-    });
-
-    use_effect(move || {
-        if !ai_features_enabled() {
-            return;
-        }
-        let Some(thread_id) = active_chat_thread_id() else {
-            return;
-        };
-
-        spawn(async move {
-            let thread_title = chat_threads
-                .read()
-                .iter()
-                .find(|thread| thread.id == thread_id)
-                .map(|thread| thread.title.clone())
-                .unwrap_or_else(|| "New chat".to_string());
-            let messages = match storage::load_chat_thread_messages(thread_id).await {
-                Ok(messages) => messages,
-                Err(err) => {
-                    toast_error(format!("Failed to load chat thread: {err}"));
-                    Vec::new()
-                }
-            };
-            let last_message_id = messages.iter().map(|message| message.id).max().unwrap_or(0);
-
-            let _ = acp::disconnect_acp_agent();
-            handled_agent_sql_message_id.set(last_message_id);
-            opencode_autostart_attempted.set(false);
-            acp_panel_state
-                .with_mut(|state| reset_panel_for_thread(state, &thread_title, messages));
-        });
-    });
-
+    // ── Effect: sync panel visibility from UI settings ─────────────
     use_effect(move || {
         let settings = APP_UI_SETTINGS();
         show_saved_queries.set(settings.show_saved_queries);
@@ -1104,32 +873,7 @@ pub fn Workspace() -> Element {
         *APP_SHOW_HISTORY.write() = settings.show_history;
     });
 
-    use_effect(move || {
-        if ai_features_enabled() {
-            if ai_disable_applied() {
-                ai_disable_applied.set(false);
-                opencode_autostart_attempted.set(false);
-            }
-            return;
-        }
-
-        if ai_disable_applied() {
-            return;
-        }
-
-        ai_disable_applied.set(true);
-        opencode_autostart_attempted.set(false);
-        let _ = acp::disconnect_acp_agent();
-        acp_panel_state.with_mut(|state| {
-            let launch = state.launch.clone();
-            let ollama = state.ollama.clone();
-            let existing_messages = state.messages.clone();
-            *state = AcpPanelState::new(launch, ollama);
-            replace_messages(state, existing_messages);
-            state.status = "AI features are disabled.".to_string();
-        });
-    });
-
+    // ── Effect: normalize panel layout ─────────────────────────────
     use_effect(move || {
         let normalized = APP_UI_SETTINGS().tool_panel_layout.normalized();
         if APP_UI_SETTINGS().tool_panel_layout != normalized {
@@ -1137,226 +881,6 @@ pub fn Workspace() -> Element {
                 settings.tool_panel_layout = normalized;
             });
         }
-    });
-
-    use_effect(move || {
-        if !ai_features_enabled() {
-            return;
-        }
-        if !chat_threads_loaded() || active_chat_thread_id().is_none() {
-            return;
-        }
-        if opencode_autostart_attempted() {
-            return;
-        }
-
-        let state = acp_panel_state();
-        if state.connected || state.busy || !launch_uses_opencode(&state) {
-            return;
-        }
-
-        opencode_autostart_attempted.set(true);
-        spawn(async move {
-            let _ = ensure_opencode_connected(acp_panel_state, chat_revision).await;
-        });
-    });
-
-    use_effect(move || {
-        if !ai_features_enabled() || !allow_agent_db_read() {
-            return;
-        }
-
-        let active_session = { APP_STATE.read().active_session().cloned() };
-        let Some(session) = active_session else {
-            return;
-        };
-
-        if warmed_schema_session_id() == session.id {
-            return;
-        }
-
-        warmed_schema_session_id.set(session.id);
-        spawn(async move {
-            let _ = acp::warm_acp_database_schema_context(
-                session.connection.clone(),
-                session.name.clone(),
-            )
-            .await;
-        });
-    });
-
-    use_effect(move || {
-        let revision = chat_revision();
-        if revision == 0 {
-            return;
-        }
-
-        let connection_name = chat_persist_connection_label.clone();
-        spawn(async move {
-            let Some(thread_id) = active_chat_thread_id() else {
-                return;
-            };
-
-            let messages = acp_panel_state().messages.clone();
-            let current_title = chat_threads
-                .read()
-                .iter()
-                .find(|thread| thread.id == thread_id)
-                .map(|thread| thread.title.clone());
-            let next_title =
-                derive_chat_thread_title(current_title.as_deref(), &messages, &connection_name);
-
-            match storage::save_chat_thread_snapshot(
-                thread_id,
-                next_title,
-                connection_name.clone(),
-                messages,
-            )
-            .await
-            {
-                Ok(summary) => {
-                    chat_threads.with_mut(|threads| upsert_chat_thread_summary(threads, summary));
-                }
-                Err(err) => {
-                    toast_error(format!("Failed to persist chat thread: {err}"));
-                }
-            }
-        });
-    });
-
-    use_effect(move || {
-        static STOP_FLAG: AtomicBool = AtomicBool::new(false);
-        STOP_FLAG.store(false, Ordering::Relaxed);
-        let _ = spawn(async move {
-            loop {
-                if STOP_FLAG.load(Ordering::Relaxed) {
-                    break;
-                }
-                let ai_active = ai_features_enabled();
-                let panel_visible = show_agent_panel();
-                let poll_delay = if ai_active && acp_panel_state().connected {
-                    if panel_visible {
-                        Duration::from_millis(120)
-                    } else {
-                        Duration::from_millis(180)
-                    }
-                } else {
-                    Duration::from_millis(400)
-                };
-
-                if !ai_active {
-                    let _ = acp::drain_acp_events();
-                    tokio::time::sleep(poll_delay).await;
-                    continue;
-                }
-
-                if STOP_FLAG.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                let events = acp::drain_acp_events();
-                if !events.is_empty() {
-                    acp_panel_state.with_mut(|state| apply_acp_events(state, events));
-                    chat_revision += 1;
-
-                    let pending_hidden_agent_sql = {
-                        let panel_state = acp_panel_state();
-                        extract_sql_candidate(&panel_state.hidden_agent_response)
-                            .map(|sql| (sql, panel_state.pending_sql_insert))
-                    };
-                    let pending_agent_sql = if pending_hidden_agent_sql.is_none() {
-                        let panel_state = acp_panel_state();
-                        let handled_message_id = handled_agent_sql_message_id();
-                        panel_state
-                            .messages
-                            .iter()
-                            .filter(|message| message.id > handled_message_id)
-                            .find_map(|message| match message.kind {
-                                models::AcpMessageKind::Agent => {
-                                    extract_sql_candidate(&message.text).map(|sql| {
-                                        (message.id, sql, panel_state.pending_sql_insert)
-                                    })
-                                }
-                                _ => None,
-                            })
-                    } else {
-                        None
-                    };
-
-                    if let Some((sql, pending_sql_insert)) = pending_hidden_agent_sql {
-                        acp_panel_state.with_mut(|state| state.hidden_agent_response.clear());
-
-                        if query::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
-                            execute_agent_sql_request(
-                                acp_panel_state,
-                                tabs,
-                                active_tab_id,
-                                show_sql_editor,
-                                chat_revision,
-                                sql,
-                                AgentSqlExecutionMode::AutoReadOnly,
-                                false,
-                            );
-                        } else if pending_sql_insert
-                            && let Some(target_tab_id) =
-                                preferred_sql_target_tab_id(tabs, active_tab_id())
-                        {
-                            show_sql_editor.set(true);
-                            active_tab_id.set(target_tab_id);
-                            update_active_tab_sql(
-                                tabs,
-                                target_tab_id,
-                                sql,
-                                "SQL generated by ACP agent".to_string(),
-                            );
-                            acp_panel_state.with_mut(|state| {
-                                state.pending_sql_insert = false;
-                                state.status =
-                                    "Inserted generated SQL into the active editor.".to_string();
-                            });
-                        }
-                    } else if let Some((message_id, sql, pending_sql_insert)) = pending_agent_sql {
-                        handled_agent_sql_message_id.set(message_id);
-
-                        if query::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
-                            execute_agent_sql_request(
-                                acp_panel_state,
-                                tabs,
-                                active_tab_id,
-                                show_sql_editor,
-                                chat_revision,
-                                sql,
-                                AgentSqlExecutionMode::AutoReadOnly,
-                                true,
-                            );
-                        } else if pending_sql_insert
-                            && let Some(target_tab_id) =
-                                preferred_sql_target_tab_id(tabs, active_tab_id())
-                        {
-                            show_sql_editor.set(true);
-                            active_tab_id.set(target_tab_id);
-                            update_active_tab_sql(
-                                tabs,
-                                target_tab_id,
-                                sql,
-                                "SQL generated by ACP agent".to_string(),
-                            );
-                            acp_panel_state.with_mut(|state| {
-                                state.pending_sql_insert = false;
-                                state.status =
-                                    "Inserted generated SQL into the active editor.".to_string();
-                            });
-                        }
-                    } else if !acp_panel_state().suppress_transcript
-                        && !acp_panel_state().hidden_agent_response.is_empty()
-                    {
-                        acp_panel_state.with_mut(|state| state.hidden_agent_response.clear());
-                    }
-                }
-
-                tokio::time::sleep(poll_delay).await;
-            }
-        });
     });
 
     let tool_panel_layout = APP_UI_SETTINGS().tool_panel_layout.normalized();

@@ -15,17 +15,17 @@ connection.workspace = true
 database.workspace = true
 driver-clickhouse.workspace = true
 explorer.workspace = true
-futures-util = "0.3.31"
+futures-util.workspace = true
 models.workspace = true
 ndarray = { version = "0.16", optional = true }
 query.workspace = true
-reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "stream"] }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 shlex = "1.3.0"
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "sqlite"] }
+sqlx = { workspace = true, features = ["postgres", "mysql", "sqlite"] }
 storage.workspace = true
-tokio = { version = "1.44.1", features = ["fs", "io-std", "process", "rt", "rt-multi-thread", "sync", "time"] }
+tokio.workspace = true
 tokio-util = { version = "0.7", features = ["compat"] }
 tokenizers = { version = "0.21", optional = true }
 ort = { version = "2.0.0-rc.9", features = ["half", "ndarray"], optional = true }
