@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::screens::workspace::actions::{
     append_next_tab_page, apply_active_tab_filter, clear_active_tab_filter, load_tab_page,
     refresh_tab_result, rows_toolbar_summary, set_active_tab_status, tab_connection_or_error,
@@ -62,6 +64,8 @@ pub fn ResultTable(
     let mut details_resize_active = use_signal(|| false);
     let mut resize_start_x = use_signal(|| 0.0_f64);
     let mut resize_start_width = use_signal(|| 0.0_f64);
+    let mut scroll_offset = use_signal(|| 0.0_f64);
+    let mut viewport_height = use_signal(|| 600.0_f64);
 
     let current_editing = editing_cell();
     let active_tab = tabs
@@ -164,6 +168,21 @@ pub fn ResultTable(
                 }
 
                 let display_rows = display_rows_cache();
+                let virtual_row_height: f64 = 28.0;
+                let virtual_buffer: usize = 10;
+                let virtual_first = ((scroll_offset() / virtual_row_height) as usize).saturating_sub(virtual_buffer);
+                let virtual_last = {
+                    let raw = (((scroll_offset() + viewport_height()) / virtual_row_height + 1.0) as usize).saturating_add(virtual_buffer);
+                    raw.min(display_rows.len())
+                };
+                let virtual_top_height = virtual_first as f64 * virtual_row_height;
+                let virtual_bottom_height = (display_rows.len().saturating_sub(virtual_last)) as f64 * virtual_row_height;
+                // Pre-compute O(1) lookup set for cell_class (avoids linear scan per visible cell).
+                let updated_cells_set: HashSet<(String, String)> = pending_changes
+                    .updated_cells
+                    .iter()
+                    .map(|c| (c.locator.clone(), c.column_name.clone()))
+                    .collect();
                 let draft_rows = pending_changes.inserted_rows.len();
                 let selected_row = selected_row_index().and_then(|index| {
                     display_rows
@@ -455,6 +474,8 @@ pub fn ResultTable(
                                         class: "results__table-wrap",
                                         onscroll: move |event| {
                                             let scroll_state = event.data();
+                                            scroll_offset.set(scroll_state.scroll_top());
+                                            viewport_height.set(scroll_state.client_height() as f64);
                                             let remaining_scroll = scroll_state.scroll_height() as f64
                                                 - (scroll_state.scroll_top()
                                                     + scroll_state.client_height() as f64);
@@ -508,62 +529,85 @@ pub fn ResultTable(
                                                 }
                                             }
                                             tbody {
-                                                for (row_index, row) in display_rows.iter().cloned().enumerate() {
+                                                if virtual_first > 0 {
                                                     tr {
-                                                        class: row_class(selected_row_index() == Some(row_index), &row),
-                                                        key: "{display_row_key(&row)}",
-                                                        onclick: {
-                                                            let rows = display_rows.clone();
-                                                            move |_| {
-                                                                selected_row_index.set(Some(row_index));
+                                                        key: "spacer-top-{virtual_first}",
+                                                        td {
+                                                            colspan: "{page.columns.len()}",
+                                                            style: "height: {virtual_top_height}px; padding: 0; border: none;",
+                                                            div { style: "height: {virtual_top_height}px;" }
+                                                        }
+                                                    }
+                                                }
+
+                                                for visible_idx in virtual_first..virtual_last {
+                                                    if let Some(row) = display_rows.get(visible_idx) {
+                                                        tr {
+                                                            class: row_class(selected_row_index() == Some(visible_idx), row),
+                                                            key: "{display_row_key(row)}",
+                                                            onclick: move |_| {
+                                                                selected_row_index.set(Some(visible_idx));
                                                                 show_row_details.set(true);
-                                                                if let Some(row) = rows.get(row_index).cloned() {
-                                                                    let values: Vec<(usize, String)> = row.values.iter()
+                                                                let rows = display_rows_cache.read();
+                                                                if let Some(r) = rows.get(visible_idx) {
+                                                                    let values: Vec<(usize, String)> = r.values.iter()
                                                                         .enumerate()
-                                                                        .map(|(i, v): (usize, &String)| (i, v.clone()))
+                                                                        .map(|(i, v)| (i, v.clone()))
                                                                         .collect();
                                                                     editing_row_values.set(values);
-                                                                    editing_row_ref.set(Some(row.row_ref.clone()));
+                                                                    editing_row_ref.set(Some(r.row_ref.clone()));
                                                                 }
-                                                            }
-                                                        },
-                                                        for (col_index, cell) in row.values.iter().cloned().enumerate() {
-                                                            td {
-                                                                class: cell_class(
-                                                                    page.editable.is_some(),
-                                                                    &row,
-                                                                    page.columns.get(col_index),
-                                                                    &pending_changes,
-                                                                ),
-                                                                ondoubleclick: {
-                                                                    let cell_value = cell.clone();
-                                                                    let editable = page.editable.is_some();
-                                                                    let row_ref = row.row_ref.clone();
-                                                                    move |_| {
-                                                                        if editable {
-                                                                            editing_cell.set(Some(EditingCell {
-                                                                                row_ref: row_ref.clone(),
-                                                                                col_index,
-                                                                                value: cell_value.clone(),
-                                                                            }));
+                                                            },
+                                                            for (col_index, cell) in row.values.iter().enumerate() {
+                                                                td {
+                                                                    class: cell_class(
+                                                                        page.editable.is_some(),
+                                                                        row,
+                                                                        page.columns.get(col_index),
+                                                                        &updated_cells_set,
+                                                                    ),
+                                                                    ondoubleclick: {
+                                                                        let cell_value = cell.clone();
+                                                                        let editable = page.editable.is_some();
+                                                                        let row_ref = row.row_ref.clone();
+                                                                        move |_| {
+                                                                            if editable {
+                                                                                editing_cell.set(Some(EditingCell {
+                                                                                    row_ref: row_ref.clone(),
+                                                                                    col_index,
+                                                                                    value: cell_value.clone(),
+                                                                                }));
+                                                                            }
                                                                         }
-                                                                    }
-                                                                },
-                                                                if let Some(current_edit) = current_editing.clone() {
-                                                                    if current_edit.row_ref == row.row_ref && current_edit.col_index == col_index {
-                                                                        input {
-                                                                            class: "results__cell-input",
-                                                                            value: "{current_edit.value}",
-                                                                            oninput: move |event| {
-                                                                                let value = event.value();
-                                                                                editing_cell.with_mut(|editing| {
-                                                                                    if let Some(editing) = editing.as_mut() {
-                                                                                        editing.value = value;
+                                                                    },
+                                                                    if let Some(current_edit) = current_editing.clone() {
+                                                                        if current_edit.row_ref == row.row_ref && current_edit.col_index == col_index {
+                                                                            input {
+                                                                                class: "results__cell-input",
+                                                                                value: "{current_edit.value}",
+                                                                                oninput: move |event| {
+                                                                                    let value = event.value();
+                                                                                    editing_cell.with_mut(|editing| {
+                                                                                        if let Some(editing) = editing.as_mut() {
+                                                                                            editing.value = value;
+                                                                                        }
+                                                                                    });
+                                                                                },
+                                                                                onkeydown: move |event| {
+                                                                                    if event.key() == Key::Enter {
+                                                                                        if let Some(editing) = editing_cell() {
+                                                                                            commit_cell_edit(
+                                                                                                editing_cell,
+                                                                                                tabs,
+                                                                                                active_tab_id,
+                                                                                                editing,
+                                                                                            );
+                                                                                        }
+                                                                                    } else if event.key() == Key::Escape {
+                                                                                        editing_cell.set(None);
                                                                                     }
-                                                                                });
-                                                                            },
-                                                                            onkeydown: move |event| {
-                                                                                if event.key() == Key::Enter {
+                                                                                },
+                                                                                onblur: move |_| {
                                                                                     if let Some(editing) = editing_cell() {
                                                                                         commit_cell_edit(
                                                                                             editing_cell,
@@ -572,19 +616,13 @@ pub fn ResultTable(
                                                                                             editing,
                                                                                         );
                                                                                     }
-                                                                                } else if event.key() == Key::Escape {
-                                                                                    editing_cell.set(None);
                                                                                 }
-                                                                            },
-                                                                            onblur: move |_| {
-                                                                                if let Some(editing) = editing_cell() {
-                                                                                    commit_cell_edit(
-                                                                                        editing_cell,
-                                                                                        tabs,
-                                                                                        active_tab_id,
-                                                                                        editing,
-                                                                                    );
-                                                                                }
+                                                                            }
+                                                                        } else {
+                                                                            div {
+                                                                                class: "results__cell-content",
+                                                                                title: "{cell}",
+                                                                                "{cell}"
                                                                             }
                                                                         }
                                                                     } else {
@@ -594,15 +632,20 @@ pub fn ResultTable(
                                                                             "{cell}"
                                                                         }
                                                                     }
-                                                                } else {
-                                                                    div {
-                                                                        class: "results__cell-content",
-                                                                        title: "{cell}",
-                                                                        "{cell}"
                                                                     }
                                                                 }
-                                                                }
                                                             }
+                                                        }
+                                                    }
+                                                }
+
+                                                if virtual_bottom_height > 0.0 {
+                                                    tr {
+                                                        key: "spacer-bottom-{virtual_last}",
+                                                        td {
+                                                            colspan: "{page.columns.len()}",
+                                                            style: "height: {virtual_bottom_height}px; padding: 0; border: none;",
+                                                            div { style: "height: {virtual_bottom_height}px;" }
                                                         }
                                                     }
                                                 }
@@ -1021,6 +1064,23 @@ fn materialize_display_rows(
         })
         .collect::<Vec<_>>();
 
+    // Build O(1) lookup structures instead of linear scans per row/cell.
+    let deleted_set: HashSet<&str> = pending_changes
+        .deleted_rows
+        .iter()
+        .map(|d| d.locator.as_str())
+        .collect();
+    let updated_map: HashMap<(&str, &str), &str> = pending_changes
+        .updated_cells
+        .iter()
+        .map(|c| {
+            (
+                (c.locator.as_str(), c.column_name.as_str()),
+                c.value.as_str(),
+            )
+        })
+        .collect();
+
     if let Some(editable) = page.editable.as_ref() {
         rows.extend(page.rows.iter().enumerate().filter_map(|(row_index, row)| {
             let locator = editable
@@ -1028,11 +1088,7 @@ fn materialize_display_rows(
                 .get(row_index)
                 .cloned()
                 .unwrap_or_default();
-            if pending_changes
-                .deleted_rows
-                .iter()
-                .any(|d| d.locator == locator)
-            {
+            if deleted_set.contains(locator.as_str()) {
                 return None;
             }
             Some(DisplayRow {
@@ -1042,8 +1098,8 @@ fn materialize_display_rows(
                     .iter()
                     .enumerate()
                     .map(|(col_index, column_name)| {
-                        existing_cell_value(
-                            pending_changes,
+                        existing_cell_value_fast(
+                            &updated_map,
                             editable,
                             row_index,
                             col_index,
@@ -1069,8 +1125,10 @@ fn materialize_display_rows(
     rows
 }
 
-fn existing_cell_value(
-    pending_changes: &PendingTableChanges,
+/// O(1) replacement for the old `existing_cell_value` linear scan.
+/// Uses a pre-built HashMap keyed by (locator, column_name).
+fn existing_cell_value_fast(
+    updated_map: &HashMap<(&str, &str), &str>,
     editable: &EditableTableContext,
     row_index: usize,
     col_index: usize,
@@ -1082,11 +1140,9 @@ fn existing_cell_value(
         return base_value;
     };
 
-    pending_changes
-        .updated_cells
-        .iter()
-        .find(|change| change.locator == *locator && change.column_name == column_name)
-        .map(|change| change.value.clone())
+    updated_map
+        .get(&(locator.as_str(), column_name))
+        .map(|v| v.to_string())
         .unwrap_or(base_value)
 }
 
@@ -1118,18 +1174,16 @@ fn row_class(is_selected: bool, row: &DisplayRow) -> &'static str {
     }
 }
 
+/// O(1) cell-class lookup using a pre-built HashSet of (locator, column_name).
 fn cell_class(
     editable: bool,
     row: &DisplayRow,
     column_name: Option<&String>,
-    pending_changes: &PendingTableChanges,
+    updated_cells_set: &HashSet<(String, String)>,
 ) -> &'static str {
     let mut is_pending = matches!(row.row_ref, EditableRowRef::PendingInsert(_));
     if let (EditableRowRef::Existing(locator), Some(column_name)) = (&row.row_ref, column_name) {
-        is_pending = pending_changes
-            .updated_cells
-            .iter()
-            .any(|change| change.locator == *locator && change.column_name == *column_name);
+        is_pending = updated_cells_set.contains(&(locator.clone(), column_name.clone()));
     }
 
     match (editable, is_pending) {

@@ -503,10 +503,24 @@ pub fn run_table_preview_for_tab(
     });
 }
 
+/// Maximum number of rows that can accumulate via infinite-scroll append.
+/// Beyond this cap the user must use explicit pagination (Previous/Next) instead.
+const MAX_ACCUMULATED_ROWS: usize = 10_000;
+
 fn append_query_page(existing_page: &mut models::QueryPage, next_page: models::QueryPage) {
     existing_page.rows.extend(next_page.rows);
     existing_page.has_next = next_page.has_next;
     existing_page.has_previous = existing_page.has_previous || next_page.has_previous;
+
+    // Cap accumulated rows to prevent unbounded memory growth and DOM freeze.
+    if existing_page.rows.len() > MAX_ACCUMULATED_ROWS {
+        let excess = existing_page.rows.len() - MAX_ACCUMULATED_ROWS;
+        existing_page.rows.drain(..excess);
+        existing_page.offset += excess as u64;
+        if let Some(editable) = existing_page.editable.as_mut() {
+            editable.row_locators.drain(..excess);
+        }
+    }
 
     match (existing_page.editable.as_mut(), next_page.editable) {
         (Some(existing_editable), Some(next_editable)) => {
