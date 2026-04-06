@@ -60,6 +60,8 @@ pub fn ResultTable(
     let mut display_rows_cache = use_signal(Vec::<DisplayRow>::new);
     let mut details_width = use_signal(|| 360.0);
     let mut details_resize_active = use_signal(|| false);
+    let mut resize_start_x = use_signal(|| 0.0_f64);
+    let mut resize_start_width = use_signal(|| 0.0_f64);
 
     let current_editing = editing_cell();
     let active_tab = tabs
@@ -731,57 +733,23 @@ pub fn ResultTable(
                                                 }
                                                 event.prevent_default();
                                                 event.stop_propagation();
+                                                resize_start_x.set(event.client_coordinates().x);
+                                                resize_start_width.set(details_width());
                                                 details_resize_active.set(true);
-                                                let start_x = event.client_coordinates().x;
-                                                let start_width = details_width();
-                                                spawn(async move {
-                                                    let result = document::eval(&format!(
-                                                        r#"
-                                                        (() => {{
-                                                            const startX = {start_x};
-                                                            const startWidth = {start_width};
-                                                            const minWidth = 280;
-                                                            const maxWidth = 1200;
-                                                            let finished = false;
-                                                            let lastWidth = startWidth;
-
-                                                            const clampWidth = (clientX) => {{
-                                                                const delta = startX - clientX;
-                                                                return Math.min(maxWidth, Math.max(minWidth, startWidth - delta));
-                                                            }};
-
-                                                            return new Promise((resolve) => {{
-                                                                const finish = (clientX) => {{
-                                                                    if (finished) return;
-                                                                    finished = true;
-                                                                    const width = clientX == null ? lastWidth : clampWidth(clientX);
-                                                                    resolve(width);
-                                                                }};
-
-                                                                const onMove = (event) => {{
-                                                                    lastWidth = clampWidth(event.clientX);
-                                                                }};
-
-                                                                const onUp = (event) => finish(event.clientX);
-                                                                const onBlur = () => finish(startX);
-
-                                                                window.addEventListener("mousemove", onMove, {{ passive: true }});
-                                                                window.addEventListener("mouseup", onUp);
-                                                                window.addEventListener("blur", onBlur);
-                                                            }});
-                                                        }})()
-                                                        "#
-                                                    ))
-                                                    .join::<f64>()
-                                                    .await;
-
-                                                    match result {
-                                                        Ok(width) => details_width.set(width),
-                                                        Err(err) => eprintln!("Failed to resize: {err:?}"),
-                                                    }
-                                                    details_resize_active.set(false);
-                                                });
                                             },
+                                        }
+                                        if details_resize_active() {
+                                            div {
+                                                style: "position:fixed;inset:0;z-index:9999;cursor:col-resize;",
+                                                onmousemove: move |event| {
+                                                    let delta = event.client_coordinates().x - resize_start_x();
+                                                    let new_width = (resize_start_width() - delta).clamp(280.0, 1200.0);
+                                                    details_width.set(new_width);
+                                                },
+                                                onmouseup: move |_| {
+                                                    details_resize_active.set(false);
+                                                },
+                                            }
                                         }
                                     }
                                 }
