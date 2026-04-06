@@ -1,4 +1,5 @@
-use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
+use std::time::Duration;
 use std::{path::PathBuf, str::FromStr};
 
 pub struct SqliteDriver {}
@@ -12,15 +13,21 @@ impl database::DatabaseDriver for SqliteDriver {
 
     async fn connect(info: Self::Config) -> Result<Self::Pool, Self::Error> {
         let target = info.trim();
-        let options = if target.eq_ignore_ascii_case(":memory:") || target.starts_with("sqlite:") {
-            SqliteConnectOptions::from_str(target)?
+        if target.eq_ignore_ascii_case(":memory:") || target.starts_with("sqlite:") {
+            let options = SqliteConnectOptions::from_str(target)?;
+            SqlitePool::connect_with(options).await
         } else {
-            SqliteConnectOptions::new()
+            let options = SqliteConnectOptions::new()
                 .filename(PathBuf::from(target))
                 .create_if_missing(false)
-        };
-
-        SqlitePool::connect_with(options).await
+                .busy_timeout(Duration::from_secs(5))
+                .journal_mode(SqliteJournalMode::Wal)
+                .synchronous(SqliteSynchronous::Normal);
+            SqlitePoolOptions::new()
+                .max_connections(4)
+                .connect_with(options)
+                .await
+        }
     }
 }
 

@@ -70,11 +70,6 @@ pub(crate) fn apply_acp_events(state: &mut AcpPanelState, events: Vec<AcpEvent>)
                     .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
             }
             AcpEvent::Error(error) => {
-                if error.contains("server shut down unexpectedly")
-                    || error.contains("ACP initialize failed")
-                {
-                    continue;
-                }
                 let suppress_transcript = state.suppress_transcript;
                 state.busy = false;
                 state.pending_permission = None;

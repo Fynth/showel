@@ -3,7 +3,6 @@ use crate::{
     screens::workspace::actions::{
         new_query_tab, open_structure_tab, refresh_tab_result, replace_active_tab_sql,
         run_explain_for_tab, run_query_for_tab, set_active_tab_status, tab_connection_or_error,
-        update_active_tab_sql,
     },
 };
 use dioxus::prelude::*;

@@ -874,43 +874,54 @@ async fn run_acp_worker(
         });
     }
 
-    let init_response = match conn
-        .initialize(
-            acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-                .client_capabilities(
-                    acp::ClientCapabilities::new()
-                        .fs(acp::FileSystemCapabilities::new()
-                            .read_text_file(true)
-                            .write_text_file(true))
-                        .terminal(true),
+    let init_result = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let init_response = conn
+            .initialize(
+                acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+                    .client_capabilities(
+                        acp::ClientCapabilities::new()
+                            .fs(acp::FileSystemCapabilities::new()
+                                .read_text_file(true)
+                                .write_text_file(true))
+                            .terminal(true),
+                    )
+                    .client_info(
+                        acp::Implementation::new("showel", env!("CARGO_PKG_VERSION"))
+                            .title("Showel ACP Client"),
+                    ),
+            )
+            .await
+            .map_err(|err| {
+                format_error_with_stderr(format!("ACP initialize failed: {err}"), &stderr_buffer)
+            })?;
+
+        let session_response = conn
+            .new_session(acp::NewSessionRequest::new(cwd.clone()))
+            .await
+            .map_err(|err| {
+                format_error_with_stderr(
+                    format!("ACP session creation failed: {err}"),
+                    &stderr_buffer,
                 )
-                .client_info(
-                    acp::Implementation::new("showel", env!("CARGO_PKG_VERSION"))
-                        .title("Showel ACP Client"),
-                ),
-        )
-        .await
-    {
-        Ok(response) => response,
-        Err(err) => {
-            let _ = ready_tx.send(Err(format_error_with_stderr(
-                format!("ACP initialize failed: {err}"),
-                &stderr_buffer,
-            )));
+            })?;
+
+        Ok::<_, String>((init_response, session_response))
+    })
+    .await;
+
+    let (init_response, session_response) = match init_result {
+        Ok(Ok(pair)) => pair,
+        Ok(Err(err)) => {
+            let _ = ready_tx.send(Err(err));
             return;
         }
-    };
-
-    let session_response = match conn
-        .new_session(acp::NewSessionRequest::new(cwd.clone()))
-        .await
-    {
-        Ok(response) => response,
-        Err(err) => {
-            let _ = ready_tx.send(Err(format_error_with_stderr(
-                format!("ACP session creation failed: {err}"),
-                &stderr_buffer,
-            )));
+        Err(_) => {
+            let _ = child.kill().await;
+            let timeout_msg =
+                "ACP agent initialization timed out after 30 seconds. The agent may be unresponsive."
+                    .to_string();
+            let _ = ready_tx.send(Err(timeout_msg.clone()));
+            let _ = event_tx.send(AcpEvent::Error(timeout_msg));
             return;
         }
     };
