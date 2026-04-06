@@ -16,7 +16,7 @@ makedepends=(
 )
 conflicts=('showel-git')
 options=('!debug' '!lto')
-_sourcedir="__REPO__-__TAG_NAME__"
+_sourcedir="__REPO__-__PKGVER__"
 source=(
   "${pkgname}-${pkgver}.tar.gz::https://github.com/__OWNER__/__REPO__/archive/refs/tags/__TAG_NAME__.tar.gz"
 )
