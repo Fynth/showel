@@ -333,21 +333,7 @@ pub fn TabsManager(
                             );
                         },
                     }
-                    IconButton {
-                        icon: ActionIcon::Clear,
-                        label: "Clear SQL editor".to_string(),
-                        onclick: {
-                            let current_id = active_tab_id();
-                            move |_| {
-                                update_active_tab_sql(
-                                    tabs,
-                                    current_id,
-                                    String::new(),
-                                    "Ready".to_string(),
-                                );
-                            }
-                        },
-                    }
+
                     IconButton {
                         icon: ActionIcon::Format,
                         label: "Format SQL".to_string(),
