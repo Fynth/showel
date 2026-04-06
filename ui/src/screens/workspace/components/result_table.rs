@@ -4,6 +4,7 @@ use crate::screens::workspace::actions::{
     toggle_active_tab_sort,
 };
 use crate::screens::workspace::components::{ActionIcon, IconButton};
+use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 use models::{
     EditableTableContext, PendingCellChange, PendingDeleteRow, PendingInsertRow,
@@ -57,6 +58,8 @@ pub fn ResultTable(
     let mut editing_row_values = use_signal(Vec::<(usize, String)>::new);
     let mut editing_row_ref = use_signal(|| None::<EditableRowRef>);
     let mut display_rows_cache = use_signal(Vec::<DisplayRow>::new);
+    let mut details_width = use_signal(|| 360.0);
+    let mut details_resize_active = use_signal(|| false);
 
     let current_editing = editing_cell();
     let active_tab = tabs
@@ -188,6 +191,11 @@ pub fn ResultTable(
                                     "results__layout results__layout--with-details"
                                 } else {
                                     "results__layout"
+                                },
+                                style: if details_visible {
+                                    format!("--results-details-width: {}px;", details_width())
+                                } else {
+                                    String::new()
                                 },
                                 div {
                                     class: "results__main",
@@ -601,7 +609,12 @@ pub fn ResultTable(
 
                                     if details_visible {
                                     aside {
-                                        class: "results__details",
+                                        class: if details_resize_active() {
+                                            "results__details results__details--resizing"
+                                        } else {
+                                            "results__details"
+                                        },
+                                        style: format!("width: var(--results-details-width, 360px);"),
                                         div {
                                             class: "results__details-header",
                                             div {
@@ -699,6 +712,70 @@ pub fn ResultTable(
                                                 }
                                             }
                                         }
+                                    }
+                                    div {
+                                        class: if details_resize_active() {
+                                            "results__details-resize results__details-resize--active"
+                                        } else {
+                                            "results__details-resize"
+                                        },
+                                        onmousedown: move |event| {
+                                            if event.trigger_button() != Some(MouseButton::Primary) {
+                                                return;
+                                            }
+                                            event.prevent_default();
+                                            event.stop_propagation();
+                                            details_resize_active.set(true);
+                                            let start_x = event.client_coordinates().x;
+                                            let start_width = details_width();
+                                            spawn(async move {
+                                                let result = document::eval(&format!(
+                                                    r#"
+                                                    (() => {{
+                                                        const startX = {start_x};
+                                                        const startWidth = {start_width};
+                                                        const minWidth = 280;
+                                                        const maxWidth = 640;
+                                                        let finished = false;
+                                                        let lastWidth = startWidth;
+
+                                                        const clampWidth = (clientX) => {{
+                                                            const delta = startX - clientX;
+                                                            return Math.min(maxWidth, Math.max(minWidth, startWidth - delta));
+                                                        }};
+
+                                                        return new Promise((resolve) => {{
+                                                            const finish = (clientX) => {{
+                                                                if (finished) return;
+                                                                finished = true;
+                                                                const width = clientX == null ? lastWidth : clampWidth(clientX);
+                                                                resolve(width);
+                                                            }};
+
+                                                            const onMove = (event) => {{
+                                                                lastWidth = clampWidth(event.clientX);
+                                                            }};
+
+                                                            const onUp = (event) => finish(event.clientX);
+                                                            const onBlur = () => finish(startX);
+
+                                                            window.addEventListener("mousemove", onMove, {{ passive: true }});
+                                                            window.addEventListener("mouseup", onUp);
+                                                            window.addEventListener("blur", onBlur);
+                                                        }});
+                                                    }})()
+                                                    "#
+                                                ))
+                                                .join::<f64>()
+                                                .await;
+
+                                                match result {
+                                                    Ok(width) => details_width.set(width),
+                                                    Err(err) => eprintln!("Failed to resize details: {err:?}"),
+                                                }
+                                                details_resize_active.set(false);
+                                            });
+                                        },
                                     }
                                 }
                             }
