@@ -86,6 +86,8 @@ pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> Qu
         tab_kind: WorkspaceTabKind::Query,
         is_loading_more: false,
         pending_table_changes: PendingTableChanges::default(),
+        execution_plan: None,
+        show_execution_plan: false,
     }
 }
 
@@ -404,6 +406,51 @@ pub fn run_query_for_tab(
                     });
                     let _ = storage::append_query_history(history_item).await;
                 }
+            }
+        }
+    });
+}
+
+pub fn run_explain_for_tab(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    current_id: u64,
+    connection: DatabaseConnection,
+    sql: String,
+) {
+    if sql.trim().is_empty() {
+        tabs.with_mut(|all_tabs| {
+            if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
+                tab.status = "Query is empty".to_string();
+            }
+        });
+        return;
+    }
+
+    tabs.with_mut(|all_tabs| {
+        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
+            tab.status = "Running EXPLAIN...".to_string();
+            tab.execution_plan = None;
+        }
+    });
+
+    spawn(async move {
+        match query::execute_explain(connection, &sql, false).await {
+            Ok(plan) => {
+                let node_count = plan.flattened_with_depth().len();
+                tabs.with_mut(|all_tabs| {
+                    if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
+                        tab.execution_plan = Some(plan);
+                        tab.show_execution_plan = true;
+                        tab.status = format!("Execution plan loaded ({} operations)", node_count);
+                    }
+                });
+            }
+            Err(err) => {
+                tabs.with_mut(|all_tabs| {
+                    if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
+                        tab.status = format!("EXPLAIN error: {err}");
+                    }
+                });
             }
         }
     });

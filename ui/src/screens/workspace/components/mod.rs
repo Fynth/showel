@@ -2,6 +2,7 @@ mod agent_panel;
 mod blob_viewer;
 mod data_diff;
 mod er_diagram;
+mod execution_plan;
 mod explorer;
 mod history;
 mod icon_button;
@@ -18,6 +19,7 @@ pub(crate) use agent_panel::{
     ensure_opencode_connected, execute_agent_sql_request, extract_sql_candidate,
     preferred_sql_target_tab_id, replace_messages, send_sql_generation_request,
 };
+pub use execution_plan::ExecutionPlanView;
 pub use explorer::{ExplorerConnectionSection, SidebarConnectionTree};
 pub use history::QueryHistoryPanel;
 pub use icon_button::{ActionIcon, IconButton};

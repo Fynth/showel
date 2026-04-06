@@ -628,6 +628,8 @@ mod tests {
             tab_kind: WorkspaceTabKind::Query,
             is_loading_more: false,
             pending_table_changes: PendingTableChanges::default(),
+            execution_plan: None,
+            show_execution_plan: false,
         };
 
         let context = build_active_tab_context(&tab).expect("expected active tab context");
@@ -664,6 +666,8 @@ mod tests {
                 tab_kind: WorkspaceTabKind::TablePreview,
                 is_loading_more: false,
                 pending_table_changes: PendingTableChanges::default(),
+                execution_plan: None,
+                show_execution_plan: false,
             },
             QueryTabState {
                 id: 8,
@@ -681,6 +685,8 @@ mod tests {
                 tab_kind: WorkspaceTabKind::Query,
                 is_loading_more: false,
                 pending_table_changes: PendingTableChanges::default(),
+                execution_plan: None,
+                show_execution_plan: false,
             },
         ];
 

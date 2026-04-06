@@ -1,3 +1,4 @@
+use crate::ExecutionPlan;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,6 +167,8 @@ pub struct QueryTabState {
     pub tab_kind: WorkspaceTabKind,
     pub is_loading_more: bool,
     pub pending_table_changes: PendingTableChanges,
+    pub execution_plan: Option<ExecutionPlan>,
+    pub show_execution_plan: bool,
 }
 
 /// Metrics collected during query execution.

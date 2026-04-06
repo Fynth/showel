@@ -15,6 +15,7 @@ pub enum ActionIcon {
     Clear,
     Format,
     Generate,
+    Explain,
     CreateTable,
     Structure,
     ExportCsv,
@@ -181,6 +182,17 @@ fn IconGlyph(icon: ActionIcon) -> Element {
                     path { d: "m17.5 6.5-2.8 2.8" }
                     path { d: "m9.3 14.7-2.8 2.8" }
                     circle { cx: "12", cy: "12", r: "2.2" }
+                },
+                ActionIcon::Explain => rsx! {
+                    path { d: "M4 4h6v6H4z" }
+                    path { d: "M14 4h6v6h-6z" }
+                    path { d: "M7 10v2" }
+                    path { d: "M17 10v2" }
+                    path { d: "M7 12h10" }
+                    path { d: "M12 12v4" }
+                    path { d: "M10 16h4" }
+                    path { d: "M4 16h6v4H4z" }
+                    path { d: "M14 16h6v4h-6z" }
                 },
                 ActionIcon::CreateTable => rsx! {
                     rect { x: "4", y: "5", width: "12", height: "14", rx: "2" }

@@ -1,5 +1,6 @@
 mod build;
 mod editable;
+mod execution_plan;
 mod rows;
 
 use driver_clickhouse::{execute_json_query, execute_text_query};
@@ -7,6 +8,8 @@ use models::{
     DatabaseConnection, DatabaseError, QueryFilter, QueryOutput, QuerySort, TablePreviewSource,
 };
 use sqlx::Row;
+
+pub use execution_plan::execute_explain;
 
 use self::{
     build::{

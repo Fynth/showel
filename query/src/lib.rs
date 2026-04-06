@@ -1,7 +1,8 @@
 pub use query_core::{
-    create_table, delete_table_row, drop_table, duplicate_table, execute_query, execute_query_page,
-    insert_table_row, insert_table_row_with_values, is_read_only_sql, load_table_preview_page,
-    next_table_primary_key_id, preview_source_for_sql, truncate_table, update_table_cell,
+    create_table, delete_table_row, drop_table, duplicate_table, execute_explain, execute_query,
+    execute_query_page, insert_table_row, insert_table_row_with_values, is_read_only_sql,
+    load_table_preview_page, next_table_primary_key_id, preview_source_for_sql, truncate_table,
+    update_table_cell,
 };
 pub use query_format::format_sql;
 pub use query_io::{

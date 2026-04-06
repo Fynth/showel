@@ -2,7 +2,8 @@ use crate::{
     app_state::{APP_SQL_FORMAT_SETTINGS, APP_STATE, open_connection_screen},
     screens::workspace::actions::{
         new_query_tab, open_structure_tab, refresh_tab_result, replace_active_tab_sql,
-        run_query_for_tab, set_active_tab_status, tab_connection_or_error, update_active_tab_sql,
+        run_explain_for_tab, run_query_for_tab, set_active_tab_status, tab_connection_or_error,
+        update_active_tab_sql,
     },
 };
 use dioxus::prelude::*;
@@ -13,7 +14,7 @@ use models::{
 use rfd::AsyncFileDialog;
 
 use super::{
-    ActionIcon, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor,
+    ActionIcon, ExecutionPlanView, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor,
     ensure_opencode_connected, send_sql_generation_request,
 };
 
@@ -394,6 +395,31 @@ pub fn TabsManager(
                         },
                     }
                     IconButton {
+                        icon: ActionIcon::Explain,
+                        label: "Explain Plan".to_string(),
+                        onclick: {
+                            let current_tab = tab.clone();
+                            move |_| {
+                                let current_id = active_tab_id();
+                                let sql = current_tab.sql.trim().to_string();
+                                if sql.is_empty() {
+                                    tabs.with_mut(|all_tabs| {
+                                        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {
+                                            tab.status = "Enter a query to explain".to_string();
+                                        }
+                                    });
+                                    return;
+                                }
+                                let Some(connection) =
+                                    tab_connection_or_error(tabs, current_id, current_tab.session_id)
+                                else {
+                                    return;
+                                };
+                                run_explain_for_tab(tabs, current_id, connection, sql);
+                            }
+                        },
+                    }
+                    IconButton {
                         icon: ActionIcon::ExportCsv,
                         label: "Export CSV".to_string(),
                         disabled: !has_tabular_result(tab),
@@ -553,6 +579,12 @@ pub fn TabsManager(
                                     }
                                 }
                             }
+                        }
+                    } else if tab.show_execution_plan && tab.execution_plan.is_some() {
+                        ExecutionPlanView {
+                            plan: tab.execution_plan.clone().unwrap(),
+                            tabs,
+                            active_tab_id,
                         }
                     } else {
                         ResultTable {
