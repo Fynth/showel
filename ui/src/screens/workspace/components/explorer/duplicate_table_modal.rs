@@ -1,5 +1,6 @@
 use super::{quote_sql_identifier, quoted_table_name_preview};
 use crate::app_state::session_connection;
+use crate::screens::workspace::actions::{read_only_mode_block_status, read_only_mode_enabled};
 use dioxus::prelude::*;
 use models::{DatabaseKind, TablePreviewSource};
 
@@ -28,7 +29,10 @@ pub(super) fn DuplicateTableModal(
     let mut duplicate_error = use_signal(String::new);
     let mut duplicate_inflight = use_signal(|| false);
     let current_draft = draft();
-    let can_submit = duplicate_table_form_valid(&target, &current_draft) && !duplicate_inflight();
+    let read_only_mode = read_only_mode_enabled();
+    let can_submit = duplicate_table_form_valid(&target, &current_draft)
+        && !duplicate_inflight()
+        && !read_only_mode;
     let preview_sql = duplicate_table_preview_sql(&target, &current_draft);
 
     rsx! {
@@ -150,6 +154,10 @@ pub(super) fn DuplicateTableModal(
                             disabled: !can_submit,
                             onclick: move |_| {
                                 if duplicate_inflight() {
+                                    return;
+                                }
+                                if read_only_mode_enabled() {
+                                    duplicate_error.set(read_only_mode_block_status("table duplication"));
                                     return;
                                 }
 

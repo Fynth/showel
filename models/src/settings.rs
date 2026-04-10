@@ -139,6 +139,7 @@ pub struct AppUiSettings {
     pub theme: AppThemePreference,
     pub ai_features_enabled: bool,
     pub restore_session_on_launch: bool,
+    pub read_only_mode: bool,
     pub show_saved_queries: bool,
     pub show_connections: bool,
     pub show_explorer: bool,
@@ -156,6 +157,7 @@ impl Default for AppUiSettings {
             theme: AppThemePreference::Dark,
             ai_features_enabled: true,
             restore_session_on_launch: true,
+            read_only_mode: false,
             show_saved_queries: true,
             show_connections: false,
             show_explorer: true,
@@ -177,6 +179,38 @@ mod tests {
     fn fresh_default_keeps_sql_editor_collapsed() {
         let defaults = AppUiSettings::default();
         assert!(!defaults.show_sql_editor);
+    }
+
+    #[test]
+    fn fresh_default_keeps_read_only_mode_disabled() {
+        let defaults = AppUiSettings::default();
+        assert!(!defaults.read_only_mode);
+    }
+
+    #[test]
+    fn persisted_read_only_mode_true_is_preserved() {
+        let settings: AppUiSettings = serde_json::from_str(
+            r#"{
+                "theme":"Dark",
+                "ai_features_enabled":true,
+                "restore_session_on_launch":true,
+                "read_only_mode":true,
+                "show_saved_queries":true,
+                "show_connections":false,
+                "show_explorer":true,
+                "show_history":false,
+                "show_sql_editor":true,
+                "show_agent_panel":false,
+                "default_page_size":100,
+                "tool_panel_layout":{
+                    "sidebar":["Connections","Explorer","SavedQueries","History"],
+                    "inspector":["Agent"]
+                }
+            }"#,
+        )
+        .expect("settings fixture should deserialize");
+
+        assert!(settings.read_only_mode);
     }
 
     #[test]

@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::screens::workspace::actions::{
     append_next_tab_page, apply_active_tab_filter, clear_active_tab_filter, load_tab_page,
-    refresh_tab_result, rows_toolbar_summary, set_active_tab_status, tab_connection_or_error,
-    toggle_active_tab_sort,
+    read_only_mode_block_status, read_only_mode_enabled, refresh_tab_result, rows_toolbar_summary,
+    set_active_tab_status, tab_connection_or_error, toggle_active_tab_sort,
 };
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::html::input_data::MouseButton;
@@ -206,8 +206,12 @@ pub fn ResultTable(
                 let can_paginate = active_tab
                     .as_ref()
                     .is_some_and(|tab| tab.last_run_sql.is_some() || tab.preview_source.is_some());
-                let has_previous_page = page.has_previous && can_paginate && !is_loading_more && !has_pending_changes;
-                let has_next_page = page.has_next && can_paginate && !is_loading_more && !has_pending_changes;
+                let has_previous_page =
+                    page.has_previous && can_paginate && !is_loading_more && !has_pending_changes;
+                let has_next_page =
+                    page.has_next && can_paginate && !is_loading_more && !has_pending_changes;
+                let read_only_mode = read_only_mode_enabled();
+                let table_cells_editable = page.editable.is_some() && !read_only_mode;
 
                 rsx! {
                     if page.columns.is_empty() && display_rows.is_empty() {
@@ -301,15 +305,24 @@ pub fn ResultTable(
                                         if page.editable.is_some() {
                                             IconButton {
                                                 icon: ActionIcon::InsertRow,
-                                                label: "Insert draft row".to_string(),
+                                                label: if read_only_mode {
+                                                    "Insert draft row is blocked by read-only mode".to_string()
+                                                } else {
+                                                    "Insert draft row".to_string()
+                                                },
                                                 small: true,
+                                                disabled: read_only_mode,
                                                 onclick: move |_| insert_empty_row(tabs, active_tab_id),
                                             }
                                             IconButton {
                                                 icon: ActionIcon::Apply,
-                                                label: "Apply pending changes".to_string(),
+                                                label: if read_only_mode {
+                                                    "Apply pending changes is blocked by read-only mode".to_string()
+                                                } else {
+                                                    "Apply pending changes".to_string()
+                                                },
                                                 small: true,
-                                                disabled: !has_pending_changes,
+                                                disabled: !has_pending_changes || read_only_mode,
                                                 onclick: move |_| apply_pending_changes(tabs, active_tab_id),
                                             }
                                             IconButton {
@@ -321,9 +334,13 @@ pub fn ResultTable(
                                             }
                                             IconButton {
                                                 icon: ActionIcon::Delete,
-                                                label: "Delete selected row".to_string(),
+                                                label: if read_only_mode {
+                                                    "Delete selected row is blocked by read-only mode".to_string()
+                                                } else {
+                                                    "Delete selected row".to_string()
+                                                },
                                                 small: true,
-                                                disabled: !has_selected_row,
+                                                disabled: !has_selected_row || read_only_mode,
                                                 onclick: {
                                                     let selected_row_index = selected_row_index();
                                                     move |_| {
@@ -561,14 +578,14 @@ pub fn ResultTable(
                                                             for (col_index, cell) in row.values.iter().enumerate() {
                                                                 td {
                                                                     class: cell_class(
-                                                                        page.editable.is_some(),
+                                                                        table_cells_editable,
                                                                         row,
                                                                         page.columns.get(col_index),
                                                                         &updated_cells_set,
                                                                     ),
                                                                     ondoubleclick: {
                                                                         let cell_value = cell.clone();
-                                                                        let editable = page.editable.is_some();
+                                                                        let editable = table_cells_editable;
                                                                         let row_ref = row.row_ref.clone();
                                                                         move |_| {
                                                                             if editable {
@@ -1483,6 +1500,12 @@ fn commit_cell_edit(
     editing: EditingCell,
 ) {
     let current_id = active_tab_id();
+    if read_only_mode_enabled() {
+        editing_cell.set(None);
+        set_active_tab_status(tabs, current_id, read_only_mode_block_status("cell edit"));
+        return;
+    }
+
     let current_tab = tabs.read().iter().find(|tab| tab.id == current_id).cloned();
     let Some(current_tab) = current_tab else {
         editing_cell.set(None);
@@ -1553,6 +1576,15 @@ fn commit_cell_edit(
 
 fn insert_empty_row(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Signal<u64>) {
     let current_id = active_tab_id();
+    if read_only_mode_enabled() {
+        set_active_tab_status(
+            tabs,
+            current_id,
+            read_only_mode_block_status("draft row insert"),
+        );
+        return;
+    }
+
     let current_tab = tabs.read().iter().find(|tab| tab.id == current_id).cloned();
     let Some(current_tab) = current_tab else {
         return;
@@ -1643,6 +1675,15 @@ fn insert_empty_row(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Signal<
 
 fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Signal<u64>) {
     let current_id = active_tab_id();
+    if read_only_mode_enabled() {
+        set_active_tab_status(
+            tabs,
+            current_id,
+            read_only_mode_block_status("pending table changes"),
+        );
+        return;
+    }
+
     let current_tab = tabs.read().iter().find(|tab| tab.id == current_id).cloned();
     let Some(current_tab) = current_tab else {
         return;
@@ -1750,6 +1791,11 @@ fn delete_selected_row(
     row_index: usize,
 ) {
     let current_id = active_tab_id();
+    if read_only_mode_enabled() {
+        set_active_tab_status(tabs, current_id, read_only_mode_block_status("row delete"));
+        return;
+    }
+
     let current_tab = tabs.read().iter().find(|tab| tab.id == current_id).cloned();
     let Some(current_tab) = current_tab else {
         return;

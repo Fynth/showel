@@ -1,4 +1,4 @@
-use crate::app_state::{APP_UI_SETTINGS, activate_session, session_connection};
+use crate::app_state::{APP_READ_ONLY_MODE, APP_UI_SETTINGS, activate_session, session_connection};
 use dioxus::prelude::*;
 use models::{
     DatabaseConnection, PendingTableChanges, QueryFilter, QueryFilterMode, QueryHistoryItem,
@@ -68,6 +68,18 @@ fn unix_timestamp() -> i64 {
 }
 
 type QueryHistorySignals = (Signal<Vec<QueryHistoryItem>>, Signal<u64>, String, String);
+
+pub fn read_only_mode_enabled() -> bool {
+    APP_READ_ONLY_MODE()
+}
+
+pub fn read_only_mode_blocks_sql(sql: &str) -> bool {
+    read_only_mode_enabled() && !query::is_read_only_sql(sql)
+}
+
+pub fn read_only_mode_block_status(action: &str) -> String {
+    format!("Read-only mode blocked {action}. Disable read-only mode in Settings to allow writes.")
+}
 
 pub fn new_query_tab(id: u64, session_id: u64, title: String, sql: String) -> QueryTabState {
     QueryTabState {
@@ -289,6 +301,11 @@ pub fn run_query_for_tab(
     page_size: u32,
     history: Option<QueryHistorySignals>,
 ) {
+    if read_only_mode_blocks_sql(&sql) {
+        set_active_tab_status(tabs, current_id, read_only_mode_block_status("write SQL"));
+        return;
+    }
+
     let filter = tabs
         .read()
         .iter()

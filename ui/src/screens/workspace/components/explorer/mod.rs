@@ -2,7 +2,7 @@ mod create_table_modal;
 mod duplicate_table_modal;
 mod tree_views;
 
-use crate::app_state::{APP_STATE, activate_session, remove_session};
+use crate::app_state::{APP_READ_ONLY_MODE, APP_STATE, activate_session, remove_session};
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
 use models::{DatabaseKind, ExplorerNode, ExplorerNodeKind, QueryTabState};
@@ -37,6 +37,7 @@ pub fn SidebarConnectionTree(
         .iter()
         .map(|section| count_objects(&section.nodes))
         .sum::<usize>();
+    let read_only_mode = APP_READ_ONLY_MODE();
 
     rsx! {
         div { class: "tree",
@@ -51,9 +52,13 @@ pub fn SidebarConnectionTree(
                     class: "tree__header-actions",
                     IconButton {
                         icon: ActionIcon::CreateTable,
-                        label: "Create table".to_string(),
+                        label: if read_only_mode {
+                            "Create table is blocked by read-only mode".to_string()
+                        } else {
+                            "Create table".to_string()
+                        },
                         small: true,
-                        disabled: active_create_target.is_none(),
+                        disabled: active_create_target.is_none() || read_only_mode,
                         onclick: move |_| show_create_table.set(true),
                     }
                 }

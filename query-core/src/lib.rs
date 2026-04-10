@@ -64,10 +64,14 @@ pub async fn execute_query(
 }
 
 pub fn is_read_only_sql(sql: &str) -> bool {
-    matches!(
-        leading_sql_keyword(sql).as_deref(),
-        Some("select" | "with" | "show" | "describe" | "explain" | "pragma")
-    )
+    let keywords = statement_leading_keywords(sql);
+    !keywords.is_empty()
+        && keywords.iter().all(|keyword| {
+            matches!(
+                keyword.as_str(),
+                "select" | "with" | "show" | "describe" | "explain" | "pragma"
+            )
+        })
 }
 
 pub fn preview_source_for_sql(sql: &str) -> Option<TablePreviewSource> {
@@ -298,15 +302,114 @@ fn is_tabular_query(sql: &str) -> bool {
 }
 
 fn is_paginated_query(sql: &str) -> bool {
-    matches!(leading_sql_keyword(sql).as_deref(), Some("select" | "with"))
+    let keywords = statement_leading_keywords(sql);
+    matches!(
+        keywords.as_slice(),
+        [keyword] if matches!(keyword.as_str(), "select" | "with")
+    )
 }
 
 fn leading_sql_keyword(sql: &str) -> Option<String> {
-    sql.split_whitespace()
-        .next()
-        .map(|keyword| keyword.trim_matches(|ch: char| matches!(ch, '(' | ';')))
-        .filter(|keyword| !keyword.is_empty())
-        .map(str::to_ascii_lowercase)
+    let bytes = sql.as_bytes();
+    let mut index = 0;
+
+    loop {
+        while index < bytes.len()
+            && (bytes[index].is_ascii_whitespace() || matches!(bytes[index], b'(' | b';'))
+        {
+            index += 1;
+        }
+
+        if index + 1 < bytes.len() && bytes[index] == b'-' && bytes[index + 1] == b'-' {
+            index += 2;
+            while index < bytes.len() && bytes[index] != b'\n' {
+                index += 1;
+            }
+            continue;
+        }
+
+        if index + 1 < bytes.len() && bytes[index] == b'/' && bytes[index + 1] == b'*' {
+            index += 2;
+            while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/') {
+                index += 1;
+            }
+            index = (index + 2).min(bytes.len());
+            continue;
+        }
+
+        break;
+    }
+
+    let start = index;
+    while index < bytes.len()
+        && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'_'))
+    {
+        index += 1;
+    }
+
+    (index > start).then(|| sql[start..index].to_ascii_lowercase())
+}
+
+fn statement_leading_keywords(sql: &str) -> Vec<String> {
+    let bytes = sql.as_bytes();
+    let mut statements = Vec::new();
+    let mut start = 0;
+    let mut index = 0;
+    let mut quote = None::<u8>;
+
+    while index < bytes.len() {
+        if let Some(quote_byte) = quote {
+            if bytes[index] == quote_byte {
+                if quote_byte == b'\'' && index + 1 < bytes.len() && bytes[index + 1] == b'\'' {
+                    index += 2;
+                    continue;
+                }
+                quote = None;
+            } else if bytes[index] == b'\\' {
+                index = (index + 2).min(bytes.len());
+                continue;
+            }
+            index += 1;
+            continue;
+        }
+
+        match bytes[index] {
+            b'\'' | b'"' | b'`' => {
+                quote = Some(bytes[index]);
+                index += 1;
+            }
+            b'-' if index + 1 < bytes.len() && bytes[index + 1] == b'-' => {
+                index += 2;
+                while index < bytes.len() && bytes[index] != b'\n' {
+                    index += 1;
+                }
+            }
+            b'/' if index + 1 < bytes.len() && bytes[index + 1] == b'*' => {
+                index += 2;
+                while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/')
+                {
+                    index += 1;
+                }
+                index = (index + 2).min(bytes.len());
+            }
+            b';' => {
+                if let Some(keyword) = leading_sql_keyword(&sql[start..index]) {
+                    statements.push(keyword);
+                }
+                start = index + 1;
+                index += 1;
+            }
+            _ => {
+                index += 1;
+            }
+        }
+    }
+
+    if let Some(keyword) = leading_sql_keyword(&sql[start..]) {
+        statements.push(keyword);
+    }
+
+    statements
 }
 
 fn build_insert_row_sql(
@@ -908,6 +1011,14 @@ mod tests {
             leading_sql_keyword("  update t set x = 1"),
             Some("update".to_string())
         );
+        assert_eq!(
+            leading_sql_keyword("-- comment\nselect 1"),
+            Some("select".to_string())
+        );
+        assert_eq!(
+            leading_sql_keyword("/* comment */\nselect 1"),
+            Some("select".to_string())
+        );
         assert_eq!(leading_sql_keyword(""), None);
         assert_eq!(leading_sql_keyword("   "), None);
     }
@@ -927,6 +1038,8 @@ mod tests {
         assert!(!is_read_only_sql("delete from users"));
         assert!(!is_read_only_sql("drop table users"));
         assert!(!is_read_only_sql("alter table users add column email text"));
+        assert!(!is_read_only_sql("select 1; drop table users"));
+        assert!(is_read_only_sql("select '; drop table users' as text"));
     }
 }
 

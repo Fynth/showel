@@ -55,8 +55,7 @@ pub async fn save_app_ui_settings_with_secrets(settings: AppUiSettings) -> Resul
         .map_err(|err| format!("saved UI settings metadata, but secure storage had issues: {err}"))
 }
 
-pub async fn restore_saved_sessions()
--> Result<SessionRestoreResult, String> {
+pub async fn restore_saved_sessions() -> Result<SessionRestoreResult, String> {
     let (open_requests, active_connection_name) = storage::load_session_state().await?;
     if open_requests.is_empty() {
         return Ok(SessionRestoreResult {
@@ -95,9 +94,7 @@ pub async fn connect_and_save_request(
     let connection = connection::connect_to_db(request.clone())
         .await
         .map_err(|err| err.to_string())?;
-    let save_warning = storage::save_connection_request(request)
-        .await
-        .err();
+    let save_warning = storage::save_connection_request(request).await.err();
 
     Ok(ConnectAndSaveResult {
         connection,

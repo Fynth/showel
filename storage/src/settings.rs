@@ -46,14 +46,16 @@ fn load_codestral_api_key_sync() -> Result<String, String> {
                     delete_fallback_secret(CODESTRAL_KEYRING_SERVICE, CODESTRAL_KEYRING_ACCOUNT);
                 Ok(api_key)
             }
-            Err(KeyringError::NoEntry) => Ok(
-                load_fallback_secret(CODESTRAL_KEYRING_SERVICE, CODESTRAL_KEYRING_ACCOUNT)?
-                    .unwrap_or_default(),
-            ),
-            Err(_) => Ok(
-                load_fallback_secret(CODESTRAL_KEYRING_SERVICE, CODESTRAL_KEYRING_ACCOUNT)?
-                    .unwrap_or_default(),
-            ),
+            Err(KeyringError::NoEntry) => Ok(load_fallback_secret(
+                CODESTRAL_KEYRING_SERVICE,
+                CODESTRAL_KEYRING_ACCOUNT,
+            )?
+            .unwrap_or_default()),
+            Err(_) => Ok(load_fallback_secret(
+                CODESTRAL_KEYRING_SERVICE,
+                CODESTRAL_KEYRING_ACCOUNT,
+            )?
+            .unwrap_or_default()),
         },
         Err(_) => Ok(
             load_fallback_secret(CODESTRAL_KEYRING_SERVICE, CODESTRAL_KEYRING_ACCOUNT)?
@@ -80,11 +82,17 @@ fn save_codestral_api_key_sync(api_key: &str) -> Result<(), String> {
                     delete_fallback_secret(CODESTRAL_KEYRING_SERVICE, CODESTRAL_KEYRING_ACCOUNT);
                 Ok(())
             }
-            Err(_) => {
-                save_fallback_secret(CODESTRAL_KEYRING_SERVICE, CODESTRAL_KEYRING_ACCOUNT, api_key)
-            }
+            Err(_) => save_fallback_secret(
+                CODESTRAL_KEYRING_SERVICE,
+                CODESTRAL_KEYRING_ACCOUNT,
+                api_key,
+            ),
         }
     } else {
-        save_fallback_secret(CODESTRAL_KEYRING_SERVICE, CODESTRAL_KEYRING_ACCOUNT, api_key)
+        save_fallback_secret(
+            CODESTRAL_KEYRING_SERVICE,
+            CODESTRAL_KEYRING_ACCOUNT,
+            api_key,
+        )
     }
 }

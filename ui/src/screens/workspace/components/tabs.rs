@@ -4,8 +4,9 @@ use crate::{
         open_connection_screen,
     },
     screens::workspace::actions::{
-        new_query_tab, open_structure_tab, refresh_tab_result, replace_active_tab_sql,
-        run_explain_for_tab, run_query_for_tab, set_active_tab_status, tab_connection_or_error,
+        new_query_tab, open_structure_tab, read_only_mode_block_status, read_only_mode_enabled,
+        refresh_tab_result, replace_active_tab_sql, run_explain_for_tab, run_query_for_tab,
+        set_active_tab_status, tab_connection_or_error,
     },
 };
 use dioxus::prelude::*;
@@ -100,6 +101,7 @@ pub fn TabsManager(
     let active_actionable_source = active_tab.read().as_ref().and_then(actionable_table_source);
     let generate_sql_busy = acp_panel_state().busy;
     let generate_sql_prompt_empty = generate_sql_prompt().trim().is_empty();
+    let read_only_mode = read_only_mode_enabled();
 
     rsx! {
         div {
@@ -461,8 +463,12 @@ pub fn TabsManager(
                     }
                     IconButton {
                         icon: ActionIcon::ImportCsv,
-                        label: "Import CSV".to_string(),
-                        disabled: active_actionable_source.is_none(),
+                        label: if read_only_mode {
+                            "Import CSV is blocked by read-only mode".to_string()
+                        } else {
+                            "Import CSV".to_string()
+                        },
+                        disabled: active_actionable_source.is_none() || read_only_mode,
                         onclick: {
                             let current_tab = tab.clone();
                             move |_| import_csv_into_active_table(tabs, current_tab.clone())
@@ -672,6 +678,15 @@ fn export_active_page(
 }
 
 fn import_csv_into_active_table(tabs: Signal<Vec<QueryTabState>>, current_tab: QueryTabState) {
+    if read_only_mode_enabled() {
+        set_active_tab_status(
+            tabs,
+            current_tab.id,
+            read_only_mode_block_status("CSV import"),
+        );
+        return;
+    }
+
     let Some(source) = actionable_table_source(&current_tab) else {
         set_active_tab_status(
             tabs,

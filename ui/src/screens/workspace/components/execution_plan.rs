@@ -58,7 +58,7 @@ pub fn ExecutionPlanView(
     active_tab_id: Signal<u64>,
 ) -> Element {
     let mut view_mode = use_signal(|| PlanViewMode::Tree);
-    let mut expanded_nodes = use_signal(|| std::collections::HashSet::<usize>::new());
+    let mut expanded_nodes = use_signal(std::collections::HashSet::<usize>::new);
 
     // Initialize all nodes as expanded
     let flattened = plan.flattened_with_depth();

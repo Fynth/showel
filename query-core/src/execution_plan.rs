@@ -156,9 +156,8 @@ fn parse_sqlite_detail(detail: &str) -> ExecutionPlanNode {
             .with_raw_text(detail);
     }
 
-    if upper.starts_with("SEARCH ") {
+    if let Some(upper_rest) = upper.strip_prefix("SEARCH ") {
         let rest_original = &detail["SEARCH ".len()..];
-        let upper_rest = &upper["SEARCH ".len()..];
         let table_name = extract_first_identifier(rest_original);
         let mut node = ExecutionPlanNode::new("Search").with_raw_text(detail);
 
@@ -241,18 +240,17 @@ async fn execute_postgres_explain(
     // Attempt JSON parsing.
     match serde_json::from_str::<Vec<serde_json::Value>>(&json_text) {
         Ok(plans) => {
-            if let Some(first_plan) = plans.first() {
-                if let Some(plan_obj) = first_plan.as_object() {
-                    // Extract planning / execution time.
-                    plan.planning_time_ms = plan_obj.get("Planning Time").and_then(|v| v.as_f64());
-                    plan.execution_time_ms =
-                        plan_obj.get("Execution Time").and_then(|v| v.as_f64());
+            if let Some(first_plan) = plans.first()
+                && let Some(plan_obj) = first_plan.as_object()
+            {
+                // Extract planning / execution time.
+                plan.planning_time_ms = plan_obj.get("Planning Time").and_then(|v| v.as_f64());
+                plan.execution_time_ms = plan_obj.get("Execution Time").and_then(|v| v.as_f64());
 
-                    if let Some(root_json) = plan_obj.get("Plan") {
-                        let root_node = parse_postgres_plan_node(root_json);
-                        plan.total_cost = root_json.get("Total Cost").and_then(|v| v.as_f64());
-                        plan.root_nodes = vec![root_node];
-                    }
+                if let Some(root_json) = plan_obj.get("Plan") {
+                    let root_node = parse_postgres_plan_node(root_json);
+                    plan.total_cost = root_json.get("Total Cost").and_then(|v| v.as_f64());
+                    plan.root_nodes = vec![root_node];
                 }
             }
         }
@@ -349,26 +347,26 @@ fn parse_postgres_plan_node(value: &serde_json::Value) -> ExecutionPlanNode {
     if let Some(filter) = obj.get("Filter").and_then(|v| v.as_str()) {
         node = node.with_detail("Filter", filter);
     }
-    if let Some(sort_key) = obj.get("Sort Key") {
-        if let Some(arr) = sort_key.as_array() {
-            let keys: Vec<String> = arr
-                .iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect();
-            if !keys.is_empty() {
-                node = node.with_detail("Sort Key", keys.join(", "));
-            }
+    if let Some(sort_key) = obj.get("Sort Key")
+        && let Some(arr) = sort_key.as_array()
+    {
+        let keys: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        if !keys.is_empty() {
+            node = node.with_detail("Sort Key", keys.join(", "));
         }
     }
-    if let Some(group_key) = obj.get("Group Key") {
-        if let Some(arr) = group_key.as_array() {
-            let keys: Vec<String> = arr
-                .iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect();
-            if !keys.is_empty() {
-                node = node.with_detail("Group Key", keys.join(", "));
-            }
+    if let Some(group_key) = obj.get("Group Key")
+        && let Some(arr) = group_key.as_array()
+    {
+        let keys: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        if !keys.is_empty() {
+            node = node.with_detail("Group Key", keys.join(", "));
         }
     }
     if let Some(index_name) = obj.get("Index Name").and_then(|v| v.as_str()) {
@@ -451,12 +449,12 @@ fn parse_mysql_query_block(block: &serde_json::Value) -> ExecutionPlanNode {
         node = node.with_detail("select_id", select_id.to_string());
     }
 
-    if let Some(cost_info) = block.get("cost_info") {
-        if let Some(query_cost) = cost_info.get("query_cost").and_then(|v| v.as_str()) {
-            node = node.with_detail("query_cost", query_cost);
-            if let Ok(cost) = query_cost.parse::<f64>() {
-                node = node.with_cost(cost);
-            }
+    if let Some(cost_info) = block.get("cost_info")
+        && let Some(query_cost) = cost_info.get("query_cost").and_then(|v| v.as_str())
+    {
+        node = node.with_detail("query_cost", query_cost);
+        if let Ok(cost) = query_cost.parse::<f64>() {
+            node = node.with_cost(cost);
         }
     }
 
@@ -479,16 +477,16 @@ fn parse_mysql_query_block(block: &serde_json::Value) -> ExecutionPlanNode {
     }
 
     // Parse nested loop (join structure).
-    if let Some(nested_loop) = block.get("nested_loop") {
-        if let Some(items) = nested_loop.as_array() {
-            for item in items {
-                if let Some(qb) = item.get("query_block") {
-                    let child = parse_mysql_query_block(qb);
-                    node.children.push(child);
-                } else if let Some(table) = item.get("table") {
-                    let child = parse_mysql_table(table);
-                    node.children.push(child);
-                }
+    if let Some(nested_loop) = block.get("nested_loop")
+        && let Some(items) = nested_loop.as_array()
+    {
+        for item in items {
+            if let Some(qb) = item.get("query_block") {
+                let child = parse_mysql_query_block(qb);
+                node.children.push(child);
+            } else if let Some(table) = item.get("table") {
+                let child = parse_mysql_table(table);
+                node.children.push(child);
             }
         }
     }
@@ -564,27 +562,27 @@ fn parse_mysql_table(table: &serde_json::Value) -> ExecutionPlanNode {
         node = node.with_detail("key", key);
     }
 
-    if let Some(possible_keys) = obj.get("possible_keys") {
-        if let Some(arr) = possible_keys.as_array() {
-            let keys: Vec<String> = arr
-                .iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect();
-            if !keys.is_empty() {
-                node = node.with_detail("possible_keys", keys.join(", "));
-            }
+    if let Some(possible_keys) = obj.get("possible_keys")
+        && let Some(arr) = possible_keys.as_array()
+    {
+        let keys: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        if !keys.is_empty() {
+            node = node.with_detail("possible_keys", keys.join(", "));
         }
     }
 
-    if let Some(used_parts) = obj.get("used_key_parts") {
-        if let Some(arr) = used_parts.as_array() {
-            let parts: Vec<String> = arr
-                .iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect();
-            if !parts.is_empty() {
-                node = node.with_detail("used_key_parts", parts.join(", "));
-            }
+    if let Some(used_parts) = obj.get("used_key_parts")
+        && let Some(arr) = used_parts.as_array()
+    {
+        let parts: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        if !parts.is_empty() {
+            node = node.with_detail("used_key_parts", parts.join(", "));
         }
     }
 
@@ -611,10 +609,10 @@ fn parse_mysql_table(table: &serde_json::Value) -> ExecutionPlanNode {
 fn parse_mysql_ordering_operation(value: &serde_json::Value) -> ExecutionPlanNode {
     let mut node = ExecutionPlanNode::new("Ordering");
 
-    if let Some(cost_info) = value.get("cost_info") {
-        if let Some(query_cost) = cost_info.get("query_cost").and_then(|v| v.as_str()) {
-            node = node.with_detail("cost", query_cost);
-        }
+    if let Some(cost_info) = value.get("cost_info")
+        && let Some(query_cost) = cost_info.get("query_cost").and_then(|v| v.as_str())
+    {
+        node = node.with_detail("cost", query_cost);
     }
 
     // An ordering_operation may contain a table or nested structures.
@@ -622,12 +620,12 @@ fn parse_mysql_ordering_operation(value: &serde_json::Value) -> ExecutionPlanNod
         node.children.push(parse_mysql_table(table));
     }
 
-    if let Some(nested_loop) = value.get("nested_loop") {
-        if let Some(items) = nested_loop.as_array() {
-            for item in items {
-                if let Some(table) = item.get("table") {
-                    node.children.push(parse_mysql_table(table));
-                }
+    if let Some(nested_loop) = value.get("nested_loop")
+        && let Some(items) = nested_loop.as_array()
+    {
+        for item in items {
+            if let Some(table) = item.get("table") {
+                node.children.push(parse_mysql_table(table));
             }
         }
     }
@@ -639,22 +637,22 @@ fn parse_mysql_ordering_operation(value: &serde_json::Value) -> ExecutionPlanNod
 fn parse_mysql_grouping_operation(value: &serde_json::Value) -> ExecutionPlanNode {
     let mut node = ExecutionPlanNode::new("Grouping");
 
-    if let Some(cost_info) = value.get("cost_info") {
-        if let Some(query_cost) = cost_info.get("query_cost").and_then(|v| v.as_str()) {
-            node = node.with_detail("cost", query_cost);
-        }
+    if let Some(cost_info) = value.get("cost_info")
+        && let Some(query_cost) = cost_info.get("query_cost").and_then(|v| v.as_str())
+    {
+        node = node.with_detail("cost", query_cost);
     }
 
     if let Some(table) = value.get("table") {
         node.children.push(parse_mysql_table(table));
     }
 
-    if let Some(nested_loop) = value.get("nested_loop") {
-        if let Some(items) = nested_loop.as_array() {
-            for item in items {
-                if let Some(table) = item.get("table") {
-                    node.children.push(parse_mysql_table(table));
-                }
+    if let Some(nested_loop) = value.get("nested_loop")
+        && let Some(items) = nested_loop.as_array()
+    {
+        for item in items {
+            if let Some(table) = item.get("table") {
+                node.children.push(parse_mysql_table(table));
             }
         }
     }
@@ -782,21 +780,21 @@ fn parse_clickhouse_line(line: &str) -> ExecutionPlanNode {
     }
 
     // Try to split "Operation (detail)".
-    if let Some(paren_start) = line.find('(') {
-        if line.ends_with(')') {
-            let operation = line[..paren_start].trim();
-            let detail = &line[(paren_start + 1)..(line.len() - 1)];
-            let mut node = ExecutionPlanNode::new(operation);
+    if let Some(paren_start) = line.find('(')
+        && line.ends_with(')')
+    {
+        let operation = line[..paren_start].trim();
+        let detail = &line[(paren_start + 1)..(line.len() - 1)];
+        let mut node = ExecutionPlanNode::new(operation);
 
-            // For ReadFromMergeTree, the parenthesized content is often the table.
-            if operation.eq_ignore_ascii_case("ReadFromMergeTree")
-                || operation.eq_ignore_ascii_case("ReadFromStorage")
-            {
-                node = node.with_target(detail);
-            }
-
-            return node.with_detail("detail", detail);
+        // For ReadFromMergeTree, the parenthesized content is often the table.
+        if operation.eq_ignore_ascii_case("ReadFromMergeTree")
+            || operation.eq_ignore_ascii_case("ReadFromStorage")
+        {
+            node = node.with_target(detail);
         }
+
+        return node.with_detail("detail", detail);
     }
 
     ExecutionPlanNode::new(line)

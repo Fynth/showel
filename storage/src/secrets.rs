@@ -20,7 +20,11 @@ pub(crate) fn load_fallback_secret(service: &str, account: &str) -> Result<Optio
     Ok(store.entries.get(&entry_key(service, account)).cloned())
 }
 
-pub(crate) fn save_fallback_secret(service: &str, account: &str, secret: &str) -> Result<(), String> {
+pub(crate) fn save_fallback_secret(
+    service: &str,
+    account: &str,
+    secret: &str,
+) -> Result<(), String> {
     let mut store = read_secret_store()?;
     let key = entry_key(service, account);
     if secret.trim().is_empty() {

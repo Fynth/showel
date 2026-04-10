@@ -59,6 +59,8 @@ pub static APP_SQL_FORMAT_SETTINGS: GlobalSignal<SqlFormatSettings> =
     Signal::global(SqlFormatSettings::default);
 pub static APP_AI_FEATURES_ENABLED: GlobalSignal<bool> =
     Signal::global(|| AppUiSettings::default().ai_features_enabled);
+pub static APP_READ_ONLY_MODE: GlobalSignal<bool> =
+    Signal::global(|| AppUiSettings::default().read_only_mode);
 pub static APP_SHOW_SAVED_QUERIES: GlobalSignal<bool> =
     Signal::global(|| AppUiSettings::default().show_saved_queries);
 pub static APP_SHOW_CONNECTIONS: GlobalSignal<bool> =
@@ -111,6 +113,12 @@ pub fn set_ai_features_enabled(enabled: bool) {
 pub fn set_restore_session_on_launch(enabled: bool) {
     update_ui_settings(|current| {
         current.restore_session_on_launch = enabled;
+    });
+}
+
+pub fn set_read_only_mode(enabled: bool) {
+    update_ui_settings(|current| {
+        current.read_only_mode = enabled;
     });
 }
 
@@ -180,6 +188,7 @@ pub fn set_codestral_model(model: String) {
 fn sync_runtime_ui_settings(settings: &AppUiSettings) {
     *APP_THEME.write() = settings.theme.css_class().to_string();
     *APP_AI_FEATURES_ENABLED.write() = settings.ai_features_enabled;
+    *APP_READ_ONLY_MODE.write() = settings.read_only_mode;
     *APP_SHOW_SAVED_QUERIES.write() = settings.show_saved_queries;
     *APP_SHOW_CONNECTIONS.write() = settings.show_connections;
     *APP_SHOW_EXPLORER.write() = settings.show_explorer;

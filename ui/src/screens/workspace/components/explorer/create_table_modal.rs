@@ -3,6 +3,7 @@ use super::{
     quoted_table_name_preview,
 };
 use crate::app_state::session_connection;
+use crate::screens::workspace::actions::{read_only_mode_block_status, read_only_mode_enabled};
 use dioxus::prelude::*;
 use models::DatabaseKind;
 use std::collections::HashSet;
@@ -66,7 +67,10 @@ pub(super) fn CreateTableModal(
     let mut create_error = use_signal(String::new);
     let mut create_inflight = use_signal(|| false);
     let current_draft = draft();
-    let can_submit = create_table_form_valid(target.kind, &current_draft) && !create_inflight();
+    let read_only_mode = read_only_mode_enabled();
+    let can_submit = create_table_form_valid(target.kind, &current_draft)
+        && !create_inflight()
+        && !read_only_mode;
     let preview_sql = create_table_preview_sql(target.kind, &current_draft);
 
     rsx! {
@@ -437,6 +441,11 @@ pub(super) fn CreateTableModal(
                             onclick: {
                                 let target = target.clone();
                                 move |_| {
+                                    if read_only_mode_enabled() {
+                                        create_error.set(read_only_mode_block_status("table creation"));
+                                        return;
+                                    }
+
                                     let draft_value = draft();
                                     let table_name = draft_value.table_name.trim().to_string();
                                     if table_name.is_empty() {

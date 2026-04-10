@@ -2,9 +2,10 @@ use crate::{
     app_state::{
         APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_UI_SETTINGS, close_settings_modal,
         reset_ui_settings, set_ai_features_enabled, set_codestral_api_key, set_codestral_enabled,
-        set_codestral_model, set_default_page_size, set_restore_session_on_launch,
-        set_show_agent_panel, set_show_connections, set_show_explorer, set_show_history,
-        set_show_saved_queries, set_show_sql_editor, set_theme_preference,
+        set_codestral_model, set_default_page_size, set_read_only_mode,
+        set_restore_session_on_launch, set_show_agent_panel, set_show_connections,
+        set_show_explorer, set_show_history, set_show_saved_queries, set_show_sql_editor,
+        set_theme_preference,
     },
     screens::SqlFormatSettingsFields,
 };
@@ -145,6 +146,17 @@ pub fn SettingsModal() -> Element {
                                 },
                             }
                             span { "Restore previous session on launch" }
+                        }
+                        label {
+                            class: "settings-modal__toggle",
+                            input {
+                                r#type: "checkbox",
+                                checked: settings.read_only_mode,
+                                oninput: move |event| {
+                                    set_read_only_mode(event.checked());
+                                },
+                            }
+                            span { "Read-only mode (block write SQL, imports, and table edits)" }
                         }
                         label {
                             class: "settings-modal__toggle",

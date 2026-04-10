@@ -3,8 +3,8 @@ mod fs_store;
 mod history;
 mod query_history;
 mod saved_queries;
-mod semantic_cache;
 mod secrets;
+mod semantic_cache;
 mod settings;
 
 pub use chat::{

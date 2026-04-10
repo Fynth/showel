@@ -2,8 +2,8 @@ use super::duplicate_table_modal::{DuplicateTableModal, DuplicateTableTarget};
 use super::{count_objects, disconnect_session, split_children};
 use crate::app_state::{APP_STATE, activate_session, session_connection};
 use crate::screens::workspace::actions::{
-    ensure_tab_for_session, mark_table_deleted, mark_table_truncated, run_table_preview_for_tab,
-    tab_connection_or_error,
+    ensure_tab_for_session, mark_table_deleted, mark_table_truncated, read_only_mode_enabled,
+    run_table_preview_for_tab, tab_connection_or_error,
 };
 use crate::screens::workspace::components::{ActionIcon, IconButton};
 use dioxus::prelude::*;
@@ -234,6 +234,7 @@ fn ExplorerObjectRow(
     let can_duplicate_table = node.kind == ExplorerNodeKind::Table;
     let can_truncate_table = node.kind == ExplorerNodeKind::Table;
     let can_drop_table = node.kind == ExplorerNodeKind::Table;
+    let read_only_mode = read_only_mode_enabled();
     let kind_badge = match node.kind {
         ExplorerNodeKind::Table => "T",
         ExplorerNodeKind::View => "V",
@@ -316,12 +317,19 @@ fn ExplorerObjectRow(
                     if can_duplicate_table {
                         IconButton {
                             icon: ActionIcon::Duplicate,
-                            label: format!("Duplicate table {}", node.name),
+                            label: if read_only_mode {
+                                format!("Duplicate table {} is blocked by read-only mode", node.name)
+                            } else {
+                                format!("Duplicate table {}", node.name)
+                            },
                             small: true,
-                            disabled: table_mutation_inflight().is_some(),
+                            disabled: table_mutation_inflight().is_some() || read_only_mode,
                             onclick: {
                                 move |event: MouseEvent| {
                                     event.stop_propagation();
+                                    if read_only_mode_enabled() {
+                                        return;
+                                    }
                                     show_duplicate_table.set(true);
                                 }
                             },
@@ -330,18 +338,24 @@ fn ExplorerObjectRow(
                     if can_truncate_table {
                         IconButton {
                             icon: ActionIcon::Truncate,
-                            label: table_mutation_button_label(
-                                TableMutationKind::Truncate,
-                                &node.name,
-                                table_mutation_inflight() == Some(TableMutationKind::Truncate),
-                            ),
+                            label: if read_only_mode {
+                                format!("Truncate table {} is blocked by read-only mode", node.name)
+                            } else {
+                                table_mutation_button_label(
+                                    TableMutationKind::Truncate,
+                                    &node.name,
+                                    table_mutation_inflight() == Some(TableMutationKind::Truncate),
+                                )
+                            },
                             small: true,
-                            disabled: table_mutation_inflight().is_some(),
+                            disabled: table_mutation_inflight().is_some() || read_only_mode,
                             onclick: {
                                 let source = preview_source.clone();
                                 move |event: MouseEvent| {
                                     event.stop_propagation();
-                                    if table_mutation_inflight().is_some() {
+                                    if table_mutation_inflight().is_some()
+                                        || read_only_mode_enabled()
+                                    {
                                         return;
                                     }
 
@@ -420,19 +434,23 @@ fn ExplorerObjectRow(
                     }
                     IconButton {
                         icon: ActionIcon::Delete,
-                        label: table_mutation_button_label(
-                            TableMutationKind::Drop,
-                            &node.name,
-                            table_mutation_inflight() == Some(TableMutationKind::Drop),
-                        ),
+                        label: if read_only_mode {
+                            format!("Drop table {} is blocked by read-only mode", node.name)
+                        } else {
+                            table_mutation_button_label(
+                                TableMutationKind::Drop,
+                                &node.name,
+                                table_mutation_inflight() == Some(TableMutationKind::Drop),
+                            )
+                        },
                         small: true,
-                        disabled: table_mutation_inflight().is_some(),
+                        disabled: table_mutation_inflight().is_some() || read_only_mode,
                         onclick: {
                             let source = preview_source.clone();
                             let selected_qualified_name = node.qualified_name.clone();
                             move |event: MouseEvent| {
                                 event.stop_propagation();
-                                if table_mutation_inflight().is_some() {
+                                if table_mutation_inflight().is_some() || read_only_mode_enabled() {
                                     return;
                                 }
 
