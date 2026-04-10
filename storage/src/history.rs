@@ -13,6 +13,7 @@ use std::{
 use crate::fs_store::{
     read_text_file, saved_connections_path, session_state_path, write_json_file,
 };
+use crate::secrets::{delete_fallback_secret, load_fallback_secret, save_fallback_secret};
 
 const MAX_SAVED_CONNECTIONS: usize = 10;
 const KEYRING_SERVICE: &str = "showel.connections";
@@ -373,34 +374,45 @@ fn delete_connection_secret(legacy_name: &str, request: &ConnectionRequest) -> R
 }
 
 fn store_secret(connection_name: &str, secret: &str) -> Result<(), String> {
-    let entry = secret_entry(connection_name)?;
     if secret.is_empty() {
         return delete_secret(connection_name);
     }
 
-    entry
-        .set_password(secret)
-        .map_err(|err| format!("failed to store secret for {connection_name}: {err}"))
+    match secret_entry(connection_name) {
+        Ok(entry) => match entry.set_password(secret) {
+            Ok(()) => {
+                let _ = delete_fallback_secret(KEYRING_SERVICE, connection_name);
+                Ok(())
+            }
+            Err(_) => save_fallback_secret(KEYRING_SERVICE, connection_name, secret),
+        },
+        Err(_) => save_fallback_secret(KEYRING_SERVICE, connection_name, secret),
+    }
 }
 
 fn load_secret(connection_name: &str) -> Result<Option<String>, String> {
-    let entry = secret_entry(connection_name)?;
-    match entry.get_password() {
-        Ok(secret) => Ok(Some(secret)),
-        Err(KeyringError::NoEntry) => Ok(None),
-        Err(err) => Err(format!(
-            "failed to read secret for {connection_name} from secure storage: {err}"
-        )),
+    match secret_entry(connection_name) {
+        Ok(entry) => match entry.get_password() {
+            Ok(secret) => {
+                let _ = delete_fallback_secret(KEYRING_SERVICE, connection_name);
+                Ok(Some(secret))
+            }
+            Err(KeyringError::NoEntry) => load_fallback_secret(KEYRING_SERVICE, connection_name),
+            Err(_) => load_fallback_secret(KEYRING_SERVICE, connection_name),
+        },
+        Err(_) => load_fallback_secret(KEYRING_SERVICE, connection_name),
     }
 }
 
 fn delete_secret(connection_name: &str) -> Result<(), String> {
-    let entry = secret_entry(connection_name)?;
-    match entry.delete_credential() {
-        Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
-        Err(err) => Err(format!(
-            "failed to delete secret for {connection_name} from secure storage: {err}"
-        )),
+    match secret_entry(connection_name) {
+        Ok(entry) => match entry.delete_credential() {
+            Ok(()) | Err(KeyringError::NoEntry) => {
+                delete_fallback_secret(KEYRING_SERVICE, connection_name)
+            }
+            Err(_) => delete_fallback_secret(KEYRING_SERVICE, connection_name),
+        },
+        Err(_) => delete_fallback_secret(KEYRING_SERVICE, connection_name),
     }
 }
 

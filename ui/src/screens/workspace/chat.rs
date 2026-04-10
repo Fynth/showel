@@ -9,9 +9,9 @@ pub fn create_chat_thread(
     mut active_chat_thread_id: Signal<Option<i64>>,
     connection_name: String,
 ) {
-    let _ = acp::disconnect_acp_agent();
+    let _ = services::disconnect_acp_agent();
     spawn(async move {
-        match storage::create_chat_thread(connection_name, Some("New chat".to_string())).await {
+        match services::create_chat_thread(connection_name, Some("New chat".to_string())).await {
             Ok(thread) => {
                 chat_threads
                     .with_mut(|threads| upsert_chat_thread_summary(threads, thread.clone()));
@@ -29,7 +29,7 @@ pub fn select_chat_thread(mut active_chat_thread_id: Signal<Option<i64>>, thread
         return;
     }
 
-    let _ = acp::disconnect_acp_agent();
+    let _ = services::disconnect_acp_agent();
     active_chat_thread_id.set(Some(thread_id));
 }
 
@@ -43,7 +43,7 @@ pub fn delete_chat_thread(
     let fallback_active = active_chat_thread_id();
 
     spawn(async move {
-        if let Err(err) = storage::delete_chat_thread(thread_id).await {
+        if let Err(err) = services::delete_chat_thread(thread_id).await {
             toast_error(format!("Failed to delete chat thread: {err}"));
             return;
         }
@@ -57,7 +57,7 @@ pub fn delete_chat_thread(
         });
 
         if was_active {
-            let _ = acp::disconnect_acp_agent();
+            let _ = services::disconnect_acp_agent();
         }
 
         if let Some(next_thread_id) = next_thread_id {
@@ -65,7 +65,7 @@ pub fn delete_chat_thread(
             return;
         }
 
-        match storage::create_chat_thread(connection_name, Some("New chat".to_string())).await {
+        match services::create_chat_thread(connection_name, Some("New chat".to_string())).await {
             Ok(thread) => {
                 chat_threads
                     .with_mut(|threads| upsert_chat_thread_summary(threads, thread.clone()));

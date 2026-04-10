@@ -13,6 +13,8 @@ const EXPLORER_CACHE_TTL: Duration = Duration::from_secs(300);
 
 static EXPLORER_CACHE: std::sync::LazyLock<Arc<RwLock<HashMap<u64, ExplorerCacheEntry>>>> =
     std::sync::LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+static LAST_SESSION_PERSIST_ERROR: std::sync::LazyLock<std::sync::Mutex<Option<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
 
 #[derive(Clone, Debug)]
 pub struct ExplorerCacheEntry {
@@ -55,11 +57,136 @@ pub static APP_THEME: GlobalSignal<String> =
 pub static APP_UI_SETTINGS: GlobalSignal<AppUiSettings> = Signal::global(AppUiSettings::default);
 pub static APP_SQL_FORMAT_SETTINGS: GlobalSignal<SqlFormatSettings> =
     Signal::global(SqlFormatSettings::default);
+pub static APP_AI_FEATURES_ENABLED: GlobalSignal<bool> =
+    Signal::global(|| AppUiSettings::default().ai_features_enabled);
+pub static APP_SHOW_SAVED_QUERIES: GlobalSignal<bool> =
+    Signal::global(|| AppUiSettings::default().show_saved_queries);
+pub static APP_SHOW_CONNECTIONS: GlobalSignal<bool> =
+    Signal::global(|| AppUiSettings::default().show_connections);
+pub static APP_SHOW_EXPLORER: GlobalSignal<bool> =
+    Signal::global(|| AppUiSettings::default().show_explorer);
 pub static APP_SHOW_HISTORY: GlobalSignal<bool> = Signal::global(|| false);
+pub static APP_SHOW_SQL_EDITOR: GlobalSignal<bool> =
+    Signal::global(|| AppUiSettings::default().show_sql_editor);
+pub static APP_SHOW_AGENT_PANEL: GlobalSignal<bool> =
+    Signal::global(|| AppUiSettings::default().show_agent_panel);
 pub static APP_SHOW_SETTINGS_MODAL: GlobalSignal<bool> = Signal::global(|| false);
 pub static APP_TOOLTIP: GlobalSignal<Option<AppTooltip>> = Signal::global(|| None);
 pub static APP_TOAST: GlobalSignal<Vec<AppToast>> = Signal::global(Vec::new);
 static NEXT_TOAST_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+pub fn replace_ui_settings(settings: AppUiSettings) {
+    *APP_UI_SETTINGS.write() = settings.clone();
+    sync_runtime_ui_settings(&settings);
+}
+
+pub fn update_ui_settings(update: impl FnOnce(&mut AppUiSettings)) {
+    let settings = {
+        let mut current = APP_UI_SETTINGS.write();
+        update(&mut current);
+        current.clone()
+    };
+    sync_runtime_ui_settings(&settings);
+}
+
+pub fn reset_ui_settings() {
+    replace_ui_settings(AppUiSettings::default());
+}
+
+pub fn set_theme_preference(theme: AppThemePreference) {
+    update_ui_settings(|current| {
+        current.theme = theme;
+    });
+}
+
+pub fn set_ai_features_enabled(enabled: bool) {
+    update_ui_settings(|current| {
+        current.ai_features_enabled = enabled;
+        if !enabled {
+            current.show_agent_panel = false;
+        }
+    });
+}
+
+pub fn set_restore_session_on_launch(enabled: bool) {
+    update_ui_settings(|current| {
+        current.restore_session_on_launch = enabled;
+    });
+}
+
+pub fn set_show_saved_queries(visible: bool) {
+    update_ui_settings(|current| {
+        current.show_saved_queries = visible;
+    });
+}
+
+pub fn set_show_connections(visible: bool) {
+    update_ui_settings(|current| {
+        current.show_connections = visible;
+    });
+}
+
+pub fn set_show_explorer(visible: bool) {
+    update_ui_settings(|current| {
+        current.show_explorer = visible;
+    });
+}
+
+pub fn set_show_history(visible: bool) {
+    update_ui_settings(|current| {
+        current.show_history = visible;
+    });
+}
+
+pub fn set_show_sql_editor(visible: bool) {
+    update_ui_settings(|current| {
+        current.show_sql_editor = visible;
+    });
+}
+
+pub fn set_show_agent_panel(visible: bool) {
+    update_ui_settings(|current| {
+        current.show_agent_panel = visible;
+    });
+}
+
+pub fn set_default_page_size(page_size: u32) {
+    update_ui_settings(|current| {
+        current.default_page_size = page_size;
+    });
+}
+
+pub fn set_codestral_enabled(enabled: bool) {
+    update_ui_settings(|current| {
+        current.codestral.enabled = enabled;
+    });
+}
+
+pub fn set_codestral_api_key(api_key: String) {
+    update_ui_settings(|current| {
+        current.codestral.api_key = api_key;
+        if current.codestral.api_key.trim().is_empty() {
+            current.codestral.enabled = false;
+        }
+    });
+}
+
+pub fn set_codestral_model(model: String) {
+    update_ui_settings(|current| {
+        current.codestral.model = model;
+    });
+}
+
+fn sync_runtime_ui_settings(settings: &AppUiSettings) {
+    *APP_THEME.write() = settings.theme.css_class().to_string();
+    *APP_AI_FEATURES_ENABLED.write() = settings.ai_features_enabled;
+    *APP_SHOW_SAVED_QUERIES.write() = settings.show_saved_queries;
+    *APP_SHOW_CONNECTIONS.write() = settings.show_connections;
+    *APP_SHOW_EXPLORER.write() = settings.show_explorer;
+    *APP_SHOW_HISTORY.write() = settings.show_history;
+    *APP_SHOW_SQL_EDITOR.write() = settings.show_sql_editor;
+    *APP_SHOW_AGENT_PANEL.write() = settings.ai_features_enabled && settings.show_agent_panel;
+}
 
 pub fn open_settings_modal() {
     *APP_SHOW_SETTINGS_MODAL.write() = true;
@@ -272,12 +399,30 @@ fn persist_session_state() {
         (requests, active)
     };
 
-    // Use spawn_blocking to avoid blocking the UI thread
-    tokio::task::spawn_blocking(move || {
-        if let Err(err) = storage::save_session_state_sync(open_requests, active_connection_name) {
-            eprintln!("Failed to persist session state: {}", err);
+    match services::save_session_state_sync(open_requests, active_connection_name) {
+        Ok(()) => {
+            if let Ok(mut last_error) = LAST_SESSION_PERSIST_ERROR.lock() {
+                *last_error = None;
+            }
         }
-    });
+        Err(err) => {
+            eprintln!("Failed to persist session state: {}", err);
+            let should_toast = if let Ok(mut last_error) = LAST_SESSION_PERSIST_ERROR.lock() {
+                if last_error.as_ref() == Some(&err) {
+                    false
+                } else {
+                    *last_error = Some(err.clone());
+                    true
+                }
+            } else {
+                true
+            };
+
+            if should_toast {
+                toast_error(format!("Failed to save session state: {err}"));
+            }
+        }
+    }
 }
 
 // Explorer cache functions

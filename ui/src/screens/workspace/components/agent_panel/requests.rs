@@ -14,6 +14,25 @@ use super::state::push_message;
 
 use crate::screens::workspace::actions::{run_query_for_tab, tab_connection_or_error};
 
+fn build_routing_context(
+    connection_label: &str,
+    active_tab_context: Option<&str>,
+    db_context: Option<&str>,
+) -> String {
+    let mut parts = vec![format!("Connection: {connection_label}")];
+    if let Some(active_tab_context) = active_tab_context.filter(|value| !value.trim().is_empty()) {
+        parts.push(format!("Active editor context:\n{active_tab_context}"));
+    }
+    if let Some(db_context) = db_context.filter(|value| !value.trim().is_empty()) {
+        parts.push(format!("Live database context:\n{db_context}"));
+    }
+    parts.join("\n\n")
+}
+
+fn send_routed_prompt(prompt: String, routing_context: String) -> Result<(), String> {
+    services::send_acp_prompt_with_routing(prompt, routing_context)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn send_chat_prompt_request(
     mut panel_state: Signal<AcpPanelState>,
@@ -55,7 +74,7 @@ pub(super) fn send_chat_prompt_request(
     });
 
     spawn(async move {
-        let contextual_prompt = match connection {
+        let (contextual_prompt, routing_context) = match connection {
             Some(connection) => {
                 match acp::build_acp_database_context(
                     connection,
@@ -64,32 +83,49 @@ pub(super) fn send_chat_prompt_request(
                 )
                 .await
                 {
-                    Ok(db_context) => build_chat_prompt(
-                        &connection_label,
-                        &prompt,
-                        Some(db_context),
-                        active_tab_context.clone(),
-                        thread_history.clone(),
+                    Ok(db_context) => (
+                        build_chat_prompt(
+                            &connection_label,
+                            &prompt,
+                            Some(db_context.clone()),
+                            active_tab_context.clone(),
+                            thread_history.clone(),
+                        ),
+                        build_routing_context(
+                            &connection_label,
+                            active_tab_context.as_deref(),
+                            Some(&db_context),
+                        ),
                     ),
-                    Err(_) => build_chat_prompt(
-                        &connection_label,
-                        &prompt,
-                        None,
-                        active_tab_context.clone(),
-                        thread_history.clone(),
+                    Err(_) => (
+                        build_chat_prompt(
+                            &connection_label,
+                            &prompt,
+                            None,
+                            active_tab_context.clone(),
+                            thread_history.clone(),
+                        ),
+                        build_routing_context(
+                            &connection_label,
+                            active_tab_context.as_deref(),
+                            None,
+                        ),
                     ),
                 }
             }
-            None => build_chat_prompt(
-                &connection_label,
-                &prompt,
-                None,
-                active_tab_context.clone(),
-                thread_history.clone(),
+            None => (
+                build_chat_prompt(
+                    &connection_label,
+                    &prompt,
+                    None,
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+                build_routing_context(&connection_label, active_tab_context.as_deref(), None),
             ),
         };
 
-        match acp::send_acp_prompt(contextual_prompt) {
+        match send_routed_prompt(contextual_prompt, routing_context) {
             Ok(()) => {
                 panel_state.with_mut(|state| {
                     push_message(state, AcpMessageKind::User, prompt.clone());
@@ -155,7 +191,7 @@ pub(crate) fn send_sql_generation_request(
     });
 
     spawn(async move {
-        let prompt = match connection {
+        let (prompt, routing_context) = match connection {
             Some(connection) => {
                 match acp::build_acp_database_context(
                     connection,
@@ -164,32 +200,49 @@ pub(crate) fn send_sql_generation_request(
                 )
                 .await
                 {
-                    Ok(db_context) => build_sql_generation_prompt(
-                        &connection_label,
-                        &request,
-                        Some(db_context),
-                        active_tab_context.clone(),
-                        thread_history.clone(),
+                    Ok(db_context) => (
+                        build_sql_generation_prompt(
+                            &connection_label,
+                            &request,
+                            Some(db_context.clone()),
+                            active_tab_context.clone(),
+                            thread_history.clone(),
+                        ),
+                        build_routing_context(
+                            &connection_label,
+                            active_tab_context.as_deref(),
+                            Some(&db_context),
+                        ),
                     ),
-                    Err(_) => build_sql_generation_prompt(
-                        &connection_label,
-                        &request,
-                        None,
-                        active_tab_context.clone(),
-                        thread_history.clone(),
+                    Err(_) => (
+                        build_sql_generation_prompt(
+                            &connection_label,
+                            &request,
+                            None,
+                            active_tab_context.clone(),
+                            thread_history.clone(),
+                        ),
+                        build_routing_context(
+                            &connection_label,
+                            active_tab_context.as_deref(),
+                            None,
+                        ),
                     ),
                 }
             }
-            None => build_sql_generation_prompt(
-                &connection_label,
-                &request,
-                None,
-                active_tab_context.clone(),
-                thread_history.clone(),
+            None => (
+                build_sql_generation_prompt(
+                    &connection_label,
+                    &request,
+                    None,
+                    active_tab_context.clone(),
+                    thread_history.clone(),
+                ),
+                build_routing_context(&connection_label, active_tab_context.as_deref(), None),
             ),
         };
 
-        match acp::send_acp_prompt(prompt) {
+        match send_routed_prompt(prompt, routing_context) {
             Ok(()) => {
                 panel_state.with_mut(|state| {
                     if record_in_agent_panel {
@@ -334,7 +387,7 @@ pub(super) fn send_sql_plan_request(
         };
         let explain_plan = describe_query_output("Explain plan result", &plan_output);
 
-        let prompt = if allow_db_read {
+        let (prompt, routing_context) = if allow_db_read {
             match acp::build_acp_database_context(
                 connection,
                 connection_label.clone(),
@@ -342,16 +395,38 @@ pub(super) fn send_sql_plan_request(
             )
             .await
             {
-                Ok(db_context) => build_sql_plan_prompt(
-                    &connection_label,
-                    &active_sql,
-                    &explain_sql,
-                    &explain_plan,
-                    Some(db_context),
-                    active_tab_context.clone(),
-                    thread_history.clone(),
+                Ok(db_context) => (
+                    build_sql_plan_prompt(
+                        &connection_label,
+                        &active_sql,
+                        &explain_sql,
+                        &explain_plan,
+                        Some(db_context.clone()),
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                    build_routing_context(
+                        &connection_label,
+                        active_tab_context.as_deref(),
+                        Some(&db_context),
+                    ),
                 ),
-                Err(_) => build_sql_plan_prompt(
+                Err(_) => (
+                    build_sql_plan_prompt(
+                        &connection_label,
+                        &active_sql,
+                        &explain_sql,
+                        &explain_plan,
+                        None,
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                    build_routing_context(&connection_label, active_tab_context.as_deref(), None),
+                ),
+            }
+        } else {
+            (
+                build_sql_plan_prompt(
                     &connection_label,
                     &active_sql,
                     &explain_sql,
@@ -360,20 +435,11 @@ pub(super) fn send_sql_plan_request(
                     active_tab_context.clone(),
                     thread_history.clone(),
                 ),
-            }
-        } else {
-            build_sql_plan_prompt(
-                &connection_label,
-                &active_sql,
-                &explain_sql,
-                &explain_plan,
-                None,
-                active_tab_context.clone(),
-                thread_history.clone(),
+                build_routing_context(&connection_label, active_tab_context.as_deref(), None),
             )
         };
 
-        match acp::send_acp_prompt(prompt) {
+        match send_routed_prompt(prompt, routing_context) {
             Ok(()) => {
                 panel_state.with_mut(|state| {
                     push_message(
@@ -447,7 +513,7 @@ pub(super) fn send_sql_explanation_request(
     });
 
     spawn(async move {
-        let prompt = match connection {
+        let (prompt, routing_context) = match connection {
             Some(connection) => match acp::build_acp_database_context(
                 connection,
                 connection_label.clone(),
@@ -455,31 +521,44 @@ pub(super) fn send_sql_explanation_request(
             )
             .await
             {
-                Ok(db_context) => build_sql_explanation_prompt(
-                    &connection_label,
-                    &active_sql,
-                    Some(db_context),
-                    active_tab_context.clone(),
-                    thread_history.clone(),
+                Ok(db_context) => (
+                    build_sql_explanation_prompt(
+                        &connection_label,
+                        &active_sql,
+                        Some(db_context.clone()),
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                    build_routing_context(
+                        &connection_label,
+                        active_tab_context.as_deref(),
+                        Some(&db_context),
+                    ),
                 ),
-                Err(_) => build_sql_explanation_prompt(
+                Err(_) => (
+                    build_sql_explanation_prompt(
+                        &connection_label,
+                        &active_sql,
+                        None,
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                    build_routing_context(&connection_label, active_tab_context.as_deref(), None),
+                ),
+            },
+            None => (
+                build_sql_explanation_prompt(
                     &connection_label,
                     &active_sql,
                     None,
                     active_tab_context.clone(),
                     thread_history.clone(),
                 ),
-            },
-            None => build_sql_explanation_prompt(
-                &connection_label,
-                &active_sql,
-                None,
-                active_tab_context.clone(),
-                thread_history.clone(),
+                build_routing_context(&connection_label, active_tab_context.as_deref(), None),
             ),
         };
 
-        match acp::send_acp_prompt(prompt) {
+        match send_routed_prompt(prompt, routing_context) {
             Ok(()) => {
                 panel_state.with_mut(|state| {
                     push_message(
@@ -565,7 +644,7 @@ pub(super) fn send_sql_error_fix_request(
     });
 
     spawn(async move {
-        let prompt = match connection {
+        let (prompt, routing_context) = match connection {
             Some(connection) => match acp::build_acp_database_context(
                 connection,
                 connection_label.clone(),
@@ -573,15 +652,35 @@ pub(super) fn send_sql_error_fix_request(
             )
             .await
             {
-                Ok(db_context) => build_sql_error_fix_prompt(
-                    &connection_label,
-                    &active_sql,
-                    &error,
-                    Some(db_context),
-                    active_tab_context.clone(),
-                    thread_history.clone(),
+                Ok(db_context) => (
+                    build_sql_error_fix_prompt(
+                        &connection_label,
+                        &active_sql,
+                        &error,
+                        Some(db_context.clone()),
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                    build_routing_context(
+                        &connection_label,
+                        active_tab_context.as_deref(),
+                        Some(&db_context),
+                    ),
                 ),
-                Err(_) => build_sql_error_fix_prompt(
+                Err(_) => (
+                    build_sql_error_fix_prompt(
+                        &connection_label,
+                        &active_sql,
+                        &error,
+                        None,
+                        active_tab_context.clone(),
+                        thread_history.clone(),
+                    ),
+                    build_routing_context(&connection_label, active_tab_context.as_deref(), None),
+                ),
+            },
+            None => (
+                build_sql_error_fix_prompt(
                     &connection_label,
                     &active_sql,
                     &error,
@@ -589,18 +688,11 @@ pub(super) fn send_sql_error_fix_request(
                     active_tab_context.clone(),
                     thread_history.clone(),
                 ),
-            },
-            None => build_sql_error_fix_prompt(
-                &connection_label,
-                &active_sql,
-                &error,
-                None,
-                active_tab_context.clone(),
-                thread_history.clone(),
+                build_routing_context(&connection_label, active_tab_context.as_deref(), None),
             ),
         };
 
-        match acp::send_acp_prompt(prompt) {
+        match send_routed_prompt(prompt, routing_context) {
             Ok(()) => {
                 panel_state.with_mut(|state| {
                     push_message(
@@ -632,7 +724,6 @@ pub(crate) fn execute_agent_sql_request(
     mut panel_state: Signal<AcpPanelState>,
     mut tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
-    show_sql_editor: Signal<bool>,
     mut chat_revision: Signal<u64>,
     sql: String,
     execution_mode: AgentSqlExecutionMode,
@@ -716,13 +807,7 @@ pub(crate) fn execute_agent_sql_request(
             }
         };
 
-        insert_sql_into_editor(
-            panel_state,
-            tabs,
-            active_tab_id,
-            show_sql_editor,
-            resolved.sql.clone(),
-        );
+        insert_sql_into_editor(panel_state, tabs, active_tab_id, resolved.sql.clone());
 
         panel_state.with_mut(|state| {
             state.status = match &resolved.correction_note {
@@ -730,6 +815,14 @@ pub(crate) fn execute_agent_sql_request(
                 None => base_status.clone(),
             };
         });
+        let execution_mode_label = match execution_mode {
+            AgentSqlExecutionMode::Manual => "manual",
+            AgentSqlExecutionMode::AutoReadOnly => "auto-read-only",
+        };
+        let _ = services::record_execution(format!(
+            "Executed agent SQL in tab '{}' ({execution_mode_label})",
+            current_tab.title,
+        ));
         chat_revision += 1;
 
         run_query_for_tab(

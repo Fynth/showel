@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use super::super::components::ExplorerConnectionSection;
 use super::super::helpers::{load_explorer_section, unloaded_explorer_section};
-use crate::app_state::APP_STATE;
+use crate::app_state::{APP_SHOW_EXPLORER, APP_STATE};
 
 pub struct ExplorerState {
     pub tree_status: Signal<String>,
@@ -10,14 +10,14 @@ pub struct ExplorerState {
     pub tree_reload: Signal<u64>,
 }
 
-pub fn use_explorer_state(show_explorer: Signal<bool>) -> ExplorerState {
+pub fn use_explorer_state() -> ExplorerState {
     let mut tree_status = use_signal(|| "Loading explorer...".to_string());
     let mut tree_sections = use_signal(Vec::<ExplorerConnectionSection>::new);
     let tree_reload = use_signal(|| 0_u64);
 
     use_effect(move || {
         let reload_tick = tree_reload();
-        let explorer_visible = show_explorer();
+        let explorer_visible = APP_SHOW_EXPLORER();
         let (sessions, active_session_id) = {
             let app_state = APP_STATE.read();
             (app_state.sessions.clone(), app_state.active_session_id)

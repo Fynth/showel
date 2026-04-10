@@ -100,21 +100,17 @@ pub fn RecentConnections(
                                             let request = saved_connection.request.clone();
                                             move |_| {
                                                 let request_to_connect = request.clone();
-                                                let request_to_save = request.clone();
                                                 let request_to_register = request.clone();
                                                 spawn(async move {
-                                                    match connection::connect_to_db(request_to_connect).await {
-                                                        Ok(connection) => {
-                                                            let save_result = storage::save_connection_request(
-                                                                request_to_save,
-                                                            )
-                                                            .await;
-                                                            add_connection_session(request_to_register, connection);
-                                                            match save_result {
-                                                                Ok(()) => status.set("Connected".to_string()),
-                                                                Err(err) => status.set(format!(
+                                                    match services::connect_and_save_request(request_to_connect).await {
+                                                        Ok(result) => {
+                                                            add_connection_session(request_to_register, result.connection);
+                                                            saved_connections_revision += 1;
+                                                            match result.save_warning {
+                                                                Some(err) => status.set(format!(
                                                                     "Connected, but failed to update saved connections: {err}"
                                                                 )),
+                                                                None => status.set("Connected".to_string()),
                                                             }
                                                         }
                                                         Err(err) => {

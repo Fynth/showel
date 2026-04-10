@@ -1,7 +1,10 @@
 use crate::{
     app_state::{
-        APP_SHOW_HISTORY, APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_THEME,
-        APP_UI_SETTINGS, close_settings_modal,
+        APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_UI_SETTINGS, close_settings_modal,
+        reset_ui_settings, set_ai_features_enabled, set_codestral_api_key, set_codestral_enabled,
+        set_codestral_model, set_default_page_size, set_restore_session_on_launch,
+        set_show_agent_panel, set_show_connections, set_show_explorer, set_show_history,
+        set_show_saved_queries, set_show_sql_editor, set_theme_preference,
     },
     screens::SqlFormatSettingsFields,
 };
@@ -66,10 +69,7 @@ pub fn SettingsModal() -> Element {
                                     "button button--ghost button--small"
                                 },
                                 onclick: move |_| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.theme = AppThemePreference::Dark;
-                                    });
-                                    *APP_THEME.write() = AppThemePreference::Dark.css_class().to_string();
+                                    set_theme_preference(AppThemePreference::Dark);
                                 },
                                 "Dark"
                             }
@@ -80,10 +80,7 @@ pub fn SettingsModal() -> Element {
                                     "button button--ghost button--small"
                                 },
                                 onclick: move |_| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.theme = AppThemePreference::Light;
-                                    });
-                                    *APP_THEME.write() = AppThemePreference::Light.css_class().to_string();
+                                    set_theme_preference(AppThemePreference::Light);
                                 },
                                 "Light"
                             }
@@ -97,12 +94,7 @@ pub fn SettingsModal() -> Element {
                             h3 { class: "settings-modal__section-title", "Workspace" }
                             button {
                                 class: "button button--ghost button--small",
-                                onclick: move |_| {
-                                    let defaults = models::AppUiSettings::default();
-                                    *APP_SHOW_HISTORY.write() = defaults.show_history;
-                                    *APP_THEME.write() = defaults.theme.css_class().to_string();
-                                    *APP_UI_SETTINGS.write() = defaults;
-                                },
+                                onclick: move |_| reset_ui_settings(),
                                 "Reset UI"
                             }
                         }
@@ -118,14 +110,12 @@ pub fn SettingsModal() -> Element {
                                     max: "1000",
                                     value: "{settings.default_page_size}",
                                     oninput: move |event| {
-                                        APP_UI_SETTINGS.with_mut(|current| {
-                                            current.default_page_size = parse_u32_in_range(
-                                                &event.value(),
-                                                current.default_page_size,
-                                                10,
-                                                1000,
-                                            );
-                                        });
+                                        set_default_page_size(parse_u32_in_range(
+                                            &event.value(),
+                                            settings.default_page_size,
+                                            10,
+                                            1000,
+                                        ));
                                     },
                                 }
                             }
@@ -140,13 +130,7 @@ pub fn SettingsModal() -> Element {
                                 r#type: "checkbox",
                                 checked: settings.ai_features_enabled,
                                 oninput: move |event| {
-                                    let enabled = event.checked();
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.ai_features_enabled = enabled;
-                                        if !enabled {
-                                            current.show_agent_panel = false;
-                                        }
-                                    });
+                                    set_ai_features_enabled(event.checked());
                                 },
                             }
                             span { "Enable AI features (ACP panel, prompts, and SQL actions)" }
@@ -157,9 +141,7 @@ pub fn SettingsModal() -> Element {
                                 r#type: "checkbox",
                                 checked: settings.restore_session_on_launch,
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.restore_session_on_launch = event.checked();
-                                    });
+                                    set_restore_session_on_launch(event.checked());
                                 },
                             }
                             span { "Restore previous session on launch" }
@@ -170,9 +152,7 @@ pub fn SettingsModal() -> Element {
                                 r#type: "checkbox",
                                 checked: settings.show_saved_queries,
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.show_saved_queries = event.checked();
-                                    });
+                                    set_show_saved_queries(event.checked());
                                 },
                             }
                             span { "Show saved queries panel by default" }
@@ -183,9 +163,7 @@ pub fn SettingsModal() -> Element {
                                 r#type: "checkbox",
                                 checked: settings.show_connections,
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.show_connections = event.checked();
-                                    });
+                                    set_show_connections(event.checked());
                                 },
                             }
                             span { "Show connections panel by default" }
@@ -196,9 +174,7 @@ pub fn SettingsModal() -> Element {
                                 r#type: "checkbox",
                                 checked: settings.show_explorer,
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.show_explorer = event.checked();
-                                    });
+                                    set_show_explorer(event.checked());
                                 },
                             }
                             span { "Show explorer by default" }
@@ -209,11 +185,7 @@ pub fn SettingsModal() -> Element {
                                 r#type: "checkbox",
                                 checked: settings.show_history,
                                 oninput: move |event| {
-                                    let checked = event.checked();
-                                    *APP_SHOW_HISTORY.write() = checked;
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.show_history = checked;
-                                    });
+                                    set_show_history(event.checked());
                                 },
                             }
                             span { "Show history by default" }
@@ -224,9 +196,7 @@ pub fn SettingsModal() -> Element {
                                 r#type: "checkbox",
                                 checked: settings.show_sql_editor,
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.show_sql_editor = event.checked();
-                                    });
+                                    set_show_sql_editor(event.checked());
                                 },
                             }
                             span { "Show SQL editor by default" }
@@ -238,9 +208,7 @@ pub fn SettingsModal() -> Element {
                                 checked: settings.show_agent_panel,
                                 disabled: !settings.ai_features_enabled,
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.show_agent_panel = event.checked();
-                                    });
+                                    set_show_agent_panel(event.checked());
                                 },
                             }
                             span { "Show ACP agent panel by default" }
@@ -286,9 +254,7 @@ pub fn SettingsModal() -> Element {
                                 checked: settings.codestral.enabled,
                                 disabled: settings.codestral.api_key.is_empty(),
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.codestral.enabled = event.checked();
-                                    });
+                                    set_codestral_enabled(event.checked());
                                 },
                             }
                             span { "Enable CodeStral inline completion" }
@@ -302,12 +268,7 @@ pub fn SettingsModal() -> Element {
                                 placeholder: "sk-...",
                                 value: "{settings.codestral.api_key}",
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.codestral.api_key = event.value();
-                                        if current.codestral.api_key.is_empty() {
-                                            current.codestral.enabled = false;
-                                        }
-                                    });
+                                    set_codestral_api_key(event.value());
                                 },
                             }
                         }
@@ -319,9 +280,7 @@ pub fn SettingsModal() -> Element {
                                 placeholder: "codestral-latest",
                                 value: "{settings.codestral.model}",
                                 oninput: move |event| {
-                                    APP_UI_SETTINGS.with_mut(|current| {
-                                        current.codestral.model = event.value();
-                                    });
+                                    set_codestral_model(event.value());
                                 },
                             }
                         }

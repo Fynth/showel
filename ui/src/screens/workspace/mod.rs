@@ -5,7 +5,12 @@ mod context;
 pub mod helpers;
 mod hooks;
 
-use crate::app_state::{APP_SHOW_HISTORY, APP_STATE, APP_UI_SETTINGS, open_connection_screen};
+use crate::app_state::{
+    APP_AI_FEATURES_ENABLED, APP_SHOW_AGENT_PANEL, APP_SHOW_CONNECTIONS, APP_SHOW_EXPLORER,
+    APP_SHOW_HISTORY, APP_SHOW_SAVED_QUERIES, APP_SHOW_SQL_EDITOR, APP_STATE, APP_UI_SETTINGS,
+    open_connection_screen, set_show_agent_panel, set_show_connections, set_show_explorer,
+    set_show_history, set_show_saved_queries, set_show_sql_editor, update_ui_settings,
+};
 use dioxus::{html::input_data::MouseButton, prelude::*};
 use models::{
     AcpPanelState, ChatThreadSummary, QueryHistoryItem, QueryTabState, SavedQuery,
@@ -107,7 +112,6 @@ fn AgentToolPanel(
     mut acp_panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
-    show_sql_editor: Signal<bool>,
     chat_revision: Signal<u64>,
     allow_agent_db_read: Signal<bool>,
     allow_agent_read_sql_run: Signal<bool>,
@@ -143,7 +147,6 @@ fn AgentToolPanel(
             panel_state: acp_panel_state,
             tabs,
             active_tab_id,
-            show_sql_editor,
             chat_revision,
             allow_agent_db_read,
             allow_agent_read_sql_run,
@@ -188,7 +191,6 @@ fn WorkspacePanelContent(
     history: Signal<Vec<QueryHistoryItem>>,
     saved_queries: Signal<Vec<SavedQuery>>,
     next_saved_query_id: Signal<u64>,
-    show_sql_editor: Signal<bool>,
     acp_panel_state: Signal<AcpPanelState>,
     chat_revision: Signal<u64>,
     allow_agent_db_read: Signal<bool>,
@@ -244,7 +246,6 @@ fn WorkspacePanelContent(
                 acp_panel_state,
                 tabs,
                 active_tab_id,
-                show_sql_editor,
                 chat_revision,
                 allow_agent_db_read,
                 allow_agent_read_sql_run,
@@ -274,7 +275,6 @@ fn WorkspaceDockPanel(
     history: Signal<Vec<QueryHistoryItem>>,
     saved_queries: Signal<Vec<SavedQuery>>,
     next_saved_query_id: Signal<u64>,
-    show_sql_editor: Signal<bool>,
     acp_panel_state: Signal<AcpPanelState>,
     chat_revision: Signal<u64>,
     allow_agent_db_read: Signal<bool>,
@@ -338,7 +338,6 @@ fn WorkspaceDockPanel(
                 history,
                 saved_queries,
                 next_saved_query_id,
-                show_sql_editor,
                 acp_panel_state,
                 chat_revision,
                 allow_agent_db_read,
@@ -368,7 +367,6 @@ fn WorkspaceDock(
     history: Signal<Vec<QueryHistoryItem>>,
     saved_queries: Signal<Vec<SavedQuery>>,
     next_saved_query_id: Signal<u64>,
-    show_sql_editor: Signal<bool>,
     acp_panel_state: Signal<AcpPanelState>,
     chat_revision: Signal<u64>,
     allow_agent_db_read: Signal<bool>,
@@ -412,7 +410,6 @@ fn WorkspaceDock(
                     history,
                     saved_queries,
                     next_saved_query_id,
-                    show_sql_editor,
                     acp_panel_state,
                     chat_revision,
                     allow_agent_db_read,
@@ -454,12 +451,11 @@ fn WorkspaceBody(
     next_saved_query_id: Signal<u64>,
     tree_status: Signal<String>,
     tree_sections: Signal<Vec<ExplorerConnectionSection>>,
-    show_saved_queries: Signal<bool>,
-    show_connections: Signal<bool>,
-    show_explorer: Signal<bool>,
-    show_sql_editor: Signal<bool>,
-    ai_features_enabled: Signal<bool>,
-    show_agent_panel: Signal<bool>,
+    show_saved_queries: bool,
+    show_connections: bool,
+    show_explorer: bool,
+    ai_features_enabled: bool,
+    show_agent_panel: bool,
     show_history: bool,
     tree_reload: Signal<u64>,
     dragging_panel: Signal<Option<WorkspaceToolPanel>>,
@@ -494,7 +490,6 @@ fn WorkspaceBody(
                         history,
                         saved_queries,
                         next_saved_query_id,
-                        show_sql_editor,
                         acp_panel_state,
                         chat_revision,
                         allow_agent_db_read,
@@ -556,54 +551,36 @@ fn WorkspaceBody(
                     class: "workspace__toolbar",
                     IconButton {
                         icon: ActionIcon::SavedQueries,
-                        label: if show_saved_queries() {
+                        label: if show_saved_queries {
                             "Hide saved queries".to_string()
                         } else {
                             "Show saved queries".to_string()
                         },
-                        active: show_saved_queries(),
+                        active: show_saved_queries,
                         small: true,
-                        onclick: move |_| {
-                            let next = !show_saved_queries();
-                            show_saved_queries.set(next);
-                            APP_UI_SETTINGS.with_mut(|settings| {
-                                settings.show_saved_queries = next;
-                            });
-                        },
+                        onclick: move |_| set_show_saved_queries(!APP_SHOW_SAVED_QUERIES()),
                     }
                     IconButton {
                         icon: ActionIcon::Connections,
-                        label: if show_connections() {
+                        label: if show_connections {
                             "Hide connections".to_string()
                         } else {
                             "Show connections".to_string()
                         },
-                        active: show_connections(),
+                        active: show_connections,
                         small: true,
-                        onclick: move |_| {
-                            let next = !show_connections();
-                            show_connections.set(next);
-                            APP_UI_SETTINGS.with_mut(|settings| {
-                                settings.show_connections = next;
-                            });
-                        },
+                        onclick: move |_| set_show_connections(!APP_SHOW_CONNECTIONS()),
                     }
                     IconButton {
                         icon: ActionIcon::Explorer,
-                        label: if show_explorer() {
+                        label: if show_explorer {
                             "Hide explorer".to_string()
                         } else {
                             "Show explorer".to_string()
                         },
-                        active: show_explorer(),
+                        active: show_explorer,
                         small: true,
-                        onclick: move |_| {
-                            let next = !show_explorer();
-                            show_explorer.set(next);
-                            APP_UI_SETTINGS.with_mut(|settings| {
-                                settings.show_explorer = next;
-                            });
-                        },
+                        onclick: move |_| set_show_explorer(!APP_SHOW_EXPLORER()),
                     }
                     IconButton {
                         icon: ActionIcon::History,
@@ -614,48 +591,30 @@ fn WorkspaceBody(
                         },
                         active: show_history,
                         small: true,
-                        onclick: move |_| {
-                            let next = !APP_SHOW_HISTORY();
-                            *APP_SHOW_HISTORY.write() = next;
-                            APP_UI_SETTINGS.with_mut(|settings| {
-                                settings.show_history = next;
-                            });
-                        },
+                        onclick: move |_| set_show_history(!APP_SHOW_HISTORY()),
                     }
                     IconButton {
                         icon: ActionIcon::SqlEditor,
-                        label: if show_sql_editor() {
+                        label: if APP_SHOW_SQL_EDITOR() {
                             "Hide SQL editor".to_string()
                         } else {
                             "Show SQL editor".to_string()
                         },
-                        active: show_sql_editor(),
+                        active: APP_SHOW_SQL_EDITOR(),
                         small: true,
-                        onclick: move |_| {
-                            let next = !show_sql_editor();
-                            show_sql_editor.set(next);
-                            APP_UI_SETTINGS.with_mut(|settings| {
-                                settings.show_sql_editor = next;
-                            });
-                        },
+                        onclick: move |_| set_show_sql_editor(!APP_SHOW_SQL_EDITOR()),
                     }
-                    if ai_features_enabled() {
+                    if ai_features_enabled {
                         IconButton {
                             icon: ActionIcon::Agent,
-                            label: if show_agent_panel() {
+                            label: if show_agent_panel {
                                 "Hide agent panel".to_string()
                             } else {
                                 "Show agent panel".to_string()
                             },
-                            active: show_agent_panel(),
+                            active: show_agent_panel,
                             small: true,
-                            onclick: move |_| {
-                                let next = !show_agent_panel();
-                                show_agent_panel.set(next);
-                                APP_UI_SETTINGS.with_mut(|settings| {
-                                    settings.show_agent_panel = next;
-                                });
-                            },
+                            onclick: move |_| set_show_agent_panel(!APP_SHOW_AGENT_PANEL()),
                         }
                     }
                     IconButton {
@@ -687,12 +646,10 @@ fn WorkspaceBody(
                         next_tab_id,
                         history,
                         next_history_id,
-                        show_sql_editor,
                         explorer_sections: tree_sections,
                         acp_panel_state,
                         chat_revision,
                         allow_agent_db_read,
-                        ai_features_enabled,
                     }
                 }
                 if show_inspector {
@@ -754,7 +711,6 @@ fn WorkspaceBody(
                             history,
                             saved_queries,
                             next_saved_query_id,
-                            show_sql_editor,
                             acp_panel_state,
                             chat_revision,
                             allow_agent_db_read,
@@ -781,14 +737,6 @@ pub fn Workspace() -> Element {
         .unwrap_or_else(|| "No connection".to_string());
     let show_history = APP_SHOW_HISTORY();
 
-    // ── Panel visibility signals (owned by Workspace) ──────────────
-    let mut show_saved_queries = use_signal(|| APP_UI_SETTINGS().show_saved_queries);
-    let mut show_connections = use_signal(|| APP_UI_SETTINGS().show_connections);
-    let mut show_explorer = use_signal(|| APP_UI_SETTINGS().show_explorer);
-    let mut show_sql_editor = use_signal(|| APP_UI_SETTINGS().show_sql_editor);
-    let mut ai_features_enabled = use_signal(|| APP_UI_SETTINGS().ai_features_enabled);
-    let mut show_agent_panel = use_signal(|| APP_UI_SETTINGS().show_agent_panel);
-
     // ── Layout signals (owned by Workspace) ────────────────────────
     let sidebar_width = use_signal(|| 320.0);
     let sidebar_resize_active = use_signal(|| false);
@@ -802,7 +750,7 @@ pub fn Workspace() -> Element {
         tree_status,
         tree_sections,
         tree_reload,
-    } = use_explorer_state(show_explorer);
+    } = use_explorer_state();
 
     let QueryTabsState {
         tabs,
@@ -820,7 +768,7 @@ pub fn Workspace() -> Element {
         saved_queries,
         next_saved_query_id,
         ..
-    } = use_chat_state(ai_features_enabled, connection_label.clone());
+    } = use_chat_state(connection_label.clone());
 
     let AcpState {
         acp_panel_state,
@@ -830,9 +778,6 @@ pub fn Workspace() -> Element {
         allow_agent_tool_run,
         ..
     } = use_acp_state(AcpStateInputs {
-        ai_features_enabled,
-        show_agent_panel,
-        show_sql_editor,
         chat_threads,
         active_chat_thread_id,
         chat_revision,
@@ -861,36 +806,25 @@ pub fn Workspace() -> Element {
         connection_label: connection_label.clone(),
     });
 
-    // ── Effect: sync panel visibility from UI settings ─────────────
-    use_effect(move || {
-        let settings = APP_UI_SETTINGS();
-        show_saved_queries.set(settings.show_saved_queries);
-        show_connections.set(settings.show_connections);
-        show_explorer.set(settings.show_explorer);
-        show_sql_editor.set(settings.show_sql_editor);
-        ai_features_enabled.set(settings.ai_features_enabled);
-        show_agent_panel.set(settings.ai_features_enabled && settings.show_agent_panel);
-        *APP_SHOW_HISTORY.write() = settings.show_history;
-    });
-
     // ── Effect: normalize panel layout ─────────────────────────────
     use_effect(move || {
-        let normalized = APP_UI_SETTINGS().tool_panel_layout.normalized();
-        if APP_UI_SETTINGS().tool_panel_layout != normalized {
-            APP_UI_SETTINGS.with_mut(|settings| {
-                settings.tool_panel_layout = normalized;
+        let settings = APP_UI_SETTINGS();
+        let normalized = settings.tool_panel_layout.normalized();
+        if settings.tool_panel_layout != normalized {
+            update_ui_settings(|current| {
+                current.tool_panel_layout = normalized;
             });
         }
     });
 
     let tool_panel_layout = APP_UI_SETTINGS().tool_panel_layout.normalized();
     let tool_vis = helpers::ToolPanelVisibility {
-        show_saved_queries: show_saved_queries(),
-        show_connections: show_connections(),
-        show_explorer: show_explorer(),
+        show_saved_queries: APP_SHOW_SAVED_QUERIES(),
+        show_connections: APP_SHOW_CONNECTIONS(),
+        show_explorer: APP_SHOW_EXPLORER(),
         show_history,
-        show_agent_panel: show_agent_panel(),
-        ai_features_enabled: ai_features_enabled(),
+        show_agent_panel: APP_SHOW_AGENT_PANEL(),
+        ai_features_enabled: APP_AI_FEATURES_ENABLED(),
     };
     let sidebar_panels = visible_tool_panels(&tool_panel_layout.sidebar, &tool_vis);
     let inspector_panels = visible_tool_panels(&tool_panel_layout.inspector, &tool_vis);
@@ -957,12 +891,11 @@ pub fn Workspace() -> Element {
                 next_saved_query_id,
                 tree_status,
                 tree_sections,
-                show_saved_queries,
-                show_connections,
-                show_explorer,
-                show_sql_editor,
-                ai_features_enabled,
-                show_agent_panel,
+                show_saved_queries: APP_SHOW_SAVED_QUERIES(),
+                show_connections: APP_SHOW_CONNECTIONS(),
+                show_explorer: APP_SHOW_EXPLORER(),
+                ai_features_enabled: APP_AI_FEATURES_ENABLED(),
+                show_agent_panel: APP_SHOW_AGENT_PANEL(),
                 show_history,
                 tree_reload,
                 dragging_panel,

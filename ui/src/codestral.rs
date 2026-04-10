@@ -88,20 +88,22 @@ impl CodeStralClient {
             return Err(CodeStralError::Api(status.as_u16(), body_text));
         }
 
-        println!("[CODESTRAL] response body: {}", body_text);
+        let completion: CodeStralResponse = serde_json::from_str(&body_text).map_err(|e| {
+            CodeStralError::Parse(format!(
+                "{e}; response_length={}",
+                body_text.chars().count()
+            ))
+        })?;
 
-        let completion: CodeStralResponse =
-            serde_json::from_str(&body_text).map_err(|e| CodeStralError::Parse(format!("{}: body={}", e, body_text)))?;
-
-        Ok(completion
-            .choices
-            .first()
-            .and_then(|c| {
-                c.text
-                    .as_deref()
-                    .map(|t| t.trim().to_string())
-                    .or_else(|| c.message.as_ref()?.content.as_ref().map(|c| c.trim().to_string()))
-            }))
+        Ok(completion.choices.first().and_then(|c| {
+            c.text.as_deref().map(|t| t.trim().to_string()).or_else(|| {
+                c.message
+                    .as_ref()?
+                    .content
+                    .as_ref()
+                    .map(|c| c.trim().to_string())
+            })
+        }))
     }
 }
 

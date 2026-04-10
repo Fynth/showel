@@ -1,19 +1,24 @@
-//! Services facade — unified API for Showel operations.
-//!
-//! This crate re-exports the public APIs from individual service crates
-//! to provide a single dependency point. Other crates (especially `ui`)
-//! can depend on `services` instead of importing from each crate individually.
-//!
-//! # Crates covered
-//!
-//! - **connection** — database connection management
-//! - **explorer** — schema exploration and table metadata
-//! - **query** — query execution, formatting, import/export, and table editing
-//! - **storage** — local persistence for settings, sessions, queries, and chat
-//! - **acp** — ACP agent runtime, registry, and context building
+// Services facade — unified API for Showel operations.
+//
+// This crate re-exports the public APIs from individual service crates
+// to provide a single dependency point. Other crates (especially `ui`)
+// can depend on `services` instead of importing from each crate individually.
+//
+// Crates covered:
+// - connection — database connection management
+// - explorer — schema exploration and table metadata
+// - query — query execution, formatting, import/export, and table editing
+// - storage — local persistence for settings, sessions, queries, and chat
+// - acp — ACP agent runtime, registry, and context building
+
+mod app;
 
 // --- Connection management ---
 
+pub use app::{
+    AppStartupSettings, ConnectAndSaveResult, SessionRestoreResult, connect_and_save_request,
+    load_app_startup_settings, restore_saved_sessions, save_app_ui_settings_with_secrets,
+};
 pub use connection::connect_to_db;
 
 // --- Schema exploration ---
@@ -36,12 +41,14 @@ pub use storage::{
     load_chat_thread_messages, load_chat_threads, load_query_history, load_saved_connections,
     load_saved_queries, load_session_state, load_session_state_sync, save_chat_thread_snapshot,
     save_connection_request, save_saved_query, save_session_state, save_session_state_sync,
+    save_sql_format_settings,
 };
 
 // --- ACP agent runtime ---
 
 pub use acp::{
     build_acp_database_context, cancel_acp_prompt, connect_acp_agent, disconnect_acp_agent,
-    drain_acp_events, install_acp_registry_agent, load_acp_registry_agents, respond_acp_permission,
-    send_acp_prompt, warm_acp_database_schema_context,
+    drain_acp_events, install_acp_registry_agent, load_acp_registry_agents, record_execution,
+    respond_acp_permission, send_acp_prompt, send_acp_prompt_with_routing,
+    warm_acp_database_schema_context,
 };

@@ -45,7 +45,6 @@ pub fn AcpAgentPanel(
     mut panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
-    mut show_sql_editor: Signal<bool>,
     mut chat_revision: Signal<u64>,
     allow_agent_db_read: Signal<bool>,
     allow_agent_read_sql_run: Signal<bool>,
@@ -370,7 +369,6 @@ pub fn AcpAgentPanel(
                                                                                             panel_state,
                                                                                             tabs,
                                                                                             active_tab_id,
-                                                                                            show_sql_editor,
                                                                                             sql.clone(),
                                                                                         );
                                                                                     }
@@ -392,7 +390,6 @@ pub fn AcpAgentPanel(
                                                                                             panel_state,
                                                                                             tabs,
                                                                                             active_tab_id,
-                                                                                            show_sql_editor,
                                                                                             chat_revision,
                                                                                             sql.clone(),
                                                                                             AgentSqlExecutionMode::Manual,
@@ -440,7 +437,6 @@ pub fn AcpAgentPanel(
                                                                                     panel_state,
                                                                                     tabs,
                                                                                     active_tab_id,
-                                                                                    show_sql_editor,
                                                                                     sql.clone(),
                                                                                 );
                                                                             }
@@ -462,7 +458,6 @@ pub fn AcpAgentPanel(
                                                                                     panel_state,
                                                                                     tabs,
                                                                                     active_tab_id,
-                                                                                    show_sql_editor,
                                                                                     chat_revision,
                                                                                     sql.clone(),
                                                                                     AgentSqlExecutionMode::Manual,
@@ -503,7 +498,6 @@ pub fn AcpAgentPanel(
                                                                                     panel_state,
                                                                                     tabs,
                                                                                     active_tab_id,
-                                                                                    show_sql_editor,
                                                                                     sql.clone(),
                                                                                 );
                                                                             }
@@ -525,7 +519,6 @@ pub fn AcpAgentPanel(
                                                                                     panel_state,
                                                                                     tabs,
                                                                                     active_tab_id,
-                                                                                    show_sql_editor,
                                                                                     chat_revision,
                                                                                     sql.clone(),
                                                                                     AgentSqlExecutionMode::Manual,
@@ -569,7 +562,6 @@ pub fn AcpAgentPanel(
                                                                                 panel_state,
                                                                                 tabs,
                                                                                 active_tab_id,
-                                                                                show_sql_editor,
                                                                                 sql.clone(),
                                                                             );
                                                                         }
@@ -591,7 +583,6 @@ pub fn AcpAgentPanel(
                                                                                 panel_state,
                                                                                 tabs,
                                                                                 active_tab_id,
-                                                                                show_sql_editor,
                                                                                 chat_revision,
                                                                                 sql.clone(),
                                                                                 AgentSqlExecutionMode::Manual,
@@ -697,7 +688,6 @@ pub fn AcpAgentPanel(
                         panel_state,
                         tabs,
                         active_tab_id,
-                        show_sql_editor,
                         chat_revision,
                         allow_agent_db_read,
                         allow_agent_read_sql_run,

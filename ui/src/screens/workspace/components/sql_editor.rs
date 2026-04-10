@@ -33,9 +33,7 @@ fn hash_sql(sql: &str) -> usize {
     })
 }
 
-fn log_completion(msg: &str) {
-    println!("[COMPLETION] {}", msg);
-}
+fn log_completion(_msg: &str) {}
 
 fn build_schema_context(sections: &[ExplorerConnectionSection], session_id: u64) -> String {
     let section = match sections.iter().find(|s| s.session_id == session_id) {
@@ -50,24 +48,22 @@ fn build_schema_context(sections: &[ExplorerConnectionSection], session_id: u64)
             let schema_name = &node.name;
             for table in &node.children {
                 if table.kind == ExplorerNodeKind::Table || table.kind == ExplorerNodeKind::View {
-                    let columns: Vec<String> = table
-                        .children
-                        .iter()
-                        .map(|col| col.name.clone())
-                        .collect();
+                    let columns: Vec<String> =
+                        table.children.iter().map(|col| col.name.clone()).collect();
                     if columns.is_empty() {
                         parts.push(format!("{}.{}", schema_name, table.name));
                     } else {
-                        parts.push(format!("{}.{}({})", schema_name, table.name, columns.join(", ")));
+                        parts.push(format!(
+                            "{}.{}({})",
+                            schema_name,
+                            table.name,
+                            columns.join(", ")
+                        ));
                     }
                 }
             }
         } else if node.kind == ExplorerNodeKind::Table || node.kind == ExplorerNodeKind::View {
-            let columns: Vec<String> = node
-                .children
-                .iter()
-                .map(|col| col.name.clone())
-                .collect();
+            let columns: Vec<String> = node.children.iter().map(|col| col.name.clone()).collect();
             if columns.is_empty() {
                 parts.push(node.name.clone());
             } else {
@@ -208,7 +204,11 @@ pub fn SqlEditor(
             }
 
             let prompt = format!("{}{}", schema_ctx, sql_for_api);
-            log_completion(&format!("calling API with schema context ({} chars), sql: {}", schema_ctx.len(), sql_for_api));
+            log_completion(&format!(
+                "calling API with schema context ({} chars), sql: {}",
+                schema_ctx.len(),
+                sql_for_api
+            ));
             let client = CodeStralClient::new(APP_UI_SETTINGS().codestral);
             match client.get_completion(&prompt, None).await {
                 Ok(Some(completion)) if !completion.is_empty() => {

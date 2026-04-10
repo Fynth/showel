@@ -118,6 +118,7 @@ impl AppThemePreference {
 #[serde(default)]
 pub struct CodeStralSettings {
     pub enabled: bool,
+    #[serde(skip_serializing)]
     pub api_key: String,
     pub model: String,
 }
@@ -225,5 +226,46 @@ mod tests {
         .expect("legacy settings fixture should deserialize");
 
         assert!(settings.show_saved_queries);
+    }
+
+    #[test]
+    fn codestral_api_key_is_not_serialized_to_plaintext_settings() {
+        let mut settings = AppUiSettings::default();
+        settings.codestral.api_key = "top-secret".to_string();
+
+        let serialized = serde_json::to_string(&settings).expect("settings should serialize");
+
+        assert!(!serialized.contains("top-secret"));
+        assert!(!serialized.contains("\"api_key\""));
+    }
+
+    #[test]
+    fn legacy_codestral_api_key_still_deserializes_for_migration() {
+        let settings: AppUiSettings = serde_json::from_str(
+            r#"{
+                "theme":"Dark",
+                "ai_features_enabled":true,
+                "restore_session_on_launch":true,
+                "show_saved_queries":true,
+                "show_connections":false,
+                "show_explorer":true,
+                "show_history":false,
+                "show_sql_editor":false,
+                "show_agent_panel":false,
+                "default_page_size":100,
+                "tool_panel_layout":{
+                    "sidebar":["Connections","Explorer","SavedQueries","History"],
+                    "inspector":["Agent"]
+                },
+                "codestral":{
+                    "enabled":true,
+                    "api_key":"legacy-secret",
+                    "model":"codestral-latest"
+                }
+            }"#,
+        )
+        .expect("legacy settings fixture should deserialize");
+
+        assert_eq!(settings.codestral.api_key, "legacy-secret");
     }
 }

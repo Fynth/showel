@@ -4,7 +4,10 @@ use models::{
     TablePreviewSource, WorkspaceTabKind,
 };
 
-use crate::{app_state::session_connection, screens::workspace::actions::update_active_tab_sql};
+use crate::{
+    app_state::{session_connection, set_show_sql_editor},
+    screens::workspace::actions::update_active_tab_sql,
+};
 
 use super::state::push_message;
 
@@ -218,7 +221,6 @@ pub(super) fn insert_sql_into_editor(
     mut panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
     mut active_tab_id: Signal<u64>,
-    mut show_sql_editor: Signal<bool>,
     sql: String,
 ) {
     let Some(target_tab_id) = preferred_sql_target_tab_id(tabs, active_tab_id()) else {
@@ -233,7 +235,7 @@ pub(super) fn insert_sql_into_editor(
         return;
     };
 
-    show_sql_editor.set(true);
+    set_show_sql_editor(true);
     active_tab_id.set(target_tab_id);
     update_active_tab_sql(
         tabs,

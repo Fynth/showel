@@ -7,5 +7,7 @@ edition = "2024"
 acp.workspace = true
 connection.workspace = true
 explorer.workspace = true
+futures-util.workspace = true
+models.workspace = true
 query.workspace = true
 storage.workspace = true

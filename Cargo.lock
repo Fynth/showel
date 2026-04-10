@@ -6001,6 +6001,8 @@ dependencies = [
  "acp",
  "connection",
  "explorer",
+ "futures-util",
+ "models",
  "query",
  "storage",
 ]
@@ -7281,6 +7283,7 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "services",
  "storage",
  "tokio",
  "tree-sitter-highlight",

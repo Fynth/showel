@@ -1,5 +1,8 @@
 use crate::{
-    app_state::{APP_SQL_FORMAT_SETTINGS, APP_STATE, open_connection_screen},
+    app_state::{
+        APP_AI_FEATURES_ENABLED, APP_SHOW_SQL_EDITOR, APP_SQL_FORMAT_SETTINGS, APP_STATE,
+        open_connection_screen,
+    },
     screens::workspace::actions::{
         new_query_tab, open_structure_tab, refresh_tab_result, replace_active_tab_sql,
         run_explain_for_tab, run_query_for_tab, set_active_tab_status, tab_connection_or_error,
@@ -68,12 +71,10 @@ pub fn TabsManager(
     mut next_tab_id: Signal<u64>,
     history: Signal<Vec<QueryHistoryItem>>,
     next_history_id: Signal<u64>,
-    show_sql_editor: Signal<bool>,
     explorer_sections: Signal<Vec<ExplorerConnectionSection>>,
     acp_panel_state: Signal<AcpPanelState>,
     chat_revision: Signal<u64>,
     allow_agent_db_read: Signal<bool>,
-    ai_features_enabled: Signal<bool>,
 ) -> Element {
     let mut editor_height = use_signal(|| EDITOR_DEFAULT_HEIGHT);
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
@@ -103,7 +104,7 @@ pub fn TabsManager(
     rsx! {
         div {
             class: {
-                let mut class_name = if show_sql_editor() {
+                let mut class_name = if APP_SHOW_SQL_EDITOR() {
                     "editor-shell".to_string()
                 } else {
                     "editor-shell editor-shell--editor-hidden".to_string()
@@ -115,7 +116,7 @@ pub fn TabsManager(
 
                 class_name
             },
-            style: if show_sql_editor() {
+            style: if APP_SHOW_SQL_EDITOR() {
                 format!("--editor-pane-height: {:.0}px;", editor_height())
             } else {
                 String::new()
@@ -253,7 +254,7 @@ pub fn TabsManager(
             }
 
             if let Some(ref tab) = *active_tab.read() {
-                if show_sql_editor() {
+                if APP_SHOW_SQL_EDITOR() {
                     div {
                         class: "editor",
                         SqlEditor {
@@ -347,7 +348,7 @@ pub fn TabsManager(
                         label: "Generate SQL".to_string(),
                         disabled: generate_sql_busy,
                         onclick: move |_| {
-                            if !ai_features_enabled() {
+                            if !APP_AI_FEATURES_ENABLED() {
                                 set_active_tab_status(
                                     tabs,
                                     active_tab_id(),

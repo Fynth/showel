@@ -44,6 +44,10 @@ pub(crate) fn session_state_path() -> PathBuf {
     storage_root().join("session_state.json")
 }
 
+pub(crate) fn secret_store_path() -> PathBuf {
+    storage_root().join("secret_store.json")
+}
+
 async fn ensure_storage_dir(path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)

@@ -1,99 +1,102 @@
 use crate::{
     app_state::{
-        APP_SHOW_HISTORY, APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_STATE, APP_THEME,
-        APP_TOOLTIP, APP_UI_SETTINGS, restore_connection_sessions,
+        APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_STATE, APP_THEME, APP_TOOLTIP,
+        APP_UI_SETTINGS, replace_ui_settings, restore_connection_sessions, toast_error,
     },
     layout::{SettingsModal, StatusBar, ToastContainer, Toolbar},
     screens::{DbConnect, Workspace},
 };
 use dioxus::prelude::*;
-use futures_util::future::join_all;
 use models::{AppUiSettings, SqlFormatSettings};
 
 #[component]
 pub fn App() -> Element {
     let mut restored_once = use_signal(|| false);
-    let mut ui_settings_loaded = use_signal(|| false);
-    let mut sql_settings_loaded = use_signal(|| false);
+    let mut startup_loaded = use_signal(|| false);
+    let mut startup_error_reported = use_signal(|| false);
     let mut last_saved_ui_settings = use_signal(|| None::<AppUiSettings>);
     let mut last_saved_sql_settings = use_signal(|| None::<SqlFormatSettings>);
-    let persisted_ui_settings =
-        use_resource(
-            move || async move { storage::load_app_ui_settings().await.unwrap_or_default() },
-        );
-    let persisted_sql_settings = use_resource(move || async move {
-        storage::load_sql_format_settings()
-            .await
-            .unwrap_or_default()
-    });
+    let startup_settings =
+        use_resource(move || async move { services::load_app_startup_settings().await });
 
     use_effect(move || {
-        let Some(settings) = persisted_ui_settings() else {
+        let Some(result) = startup_settings() else {
             return;
         };
-        if ui_settings_loaded() {
+        if startup_loaded() {
             return;
         }
 
-        *APP_UI_SETTINGS.write() = settings.clone();
-        *APP_THEME.write() = settings.theme.css_class().to_string();
-        *APP_SHOW_HISTORY.write() = settings.show_history;
-        last_saved_ui_settings.set(Some(settings.clone()));
-        ui_settings_loaded.set(true);
+        let startup = match result {
+            Ok(startup) => startup,
+            Err(err) => {
+                if !startup_error_reported() {
+                    toast_error(format!("Failed to load app settings: {err}"));
+                    startup_error_reported.set(true);
+                }
+                last_saved_ui_settings.set(Some(APP_UI_SETTINGS()));
+                last_saved_sql_settings.set(Some(APP_SQL_FORMAT_SETTINGS()));
+                startup_loaded.set(true);
+                restored_once.set(true);
+                return;
+            }
+        };
 
-        if restored_once() || !settings.restore_session_on_launch {
+        replace_ui_settings(startup.ui_settings.clone());
+        *APP_SQL_FORMAT_SETTINGS.write() = startup.sql_format_settings.clone();
+        last_saved_ui_settings.set(Some(startup.ui_settings.clone()));
+        last_saved_sql_settings.set(Some(startup.sql_format_settings.clone()));
+        startup_loaded.set(true);
+
+        if restored_once() || !startup.ui_settings.restore_session_on_launch {
             restored_once.set(true);
             return;
         }
 
         restored_once.set(true);
         spawn(async move {
-            let Ok((open_requests, active_connection_name)) = storage::load_session_state().await
-            else {
+            let Ok(result) = services::restore_saved_sessions().await else {
+                toast_error("Failed to restore saved sessions.");
                 return;
             };
-            if open_requests.is_empty() {
+            if !result.failed_requests.is_empty() {
+                let failed_labels = result
+                    .failed_requests
+                    .iter()
+                    .take(3)
+                    .map(|(request, _)| request.display_name())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let summary = if result.failed_requests.len() > 3 {
+                    format!(
+                        "Failed to restore {} saved sessions: {} and more.",
+                        result.failed_requests.len(),
+                        failed_labels
+                    )
+                } else {
+                    format!(
+                        "Failed to restore {} saved sessions: {}.",
+                        result.failed_requests.len(),
+                        failed_labels
+                    )
+                };
+                toast_error(summary);
+            }
+            if result.restored.is_empty() {
                 return;
             }
 
-            let restored = join_all(open_requests.into_iter().map(|request| async move {
-                connection::connect_to_db(request.clone())
-                    .await
-                    .ok()
-                    .map(|connection| (request, connection))
-            }))
-            .await
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-
-            if !restored.is_empty() {
-                restore_connection_sessions(restored, active_connection_name);
-            }
+            restore_connection_sessions(result.restored, result.active_connection_name);
         });
     });
 
     use_effect(move || {
-        let Some(settings) = persisted_sql_settings() else {
-            return;
-        };
-        if sql_settings_loaded() {
-            return;
-        }
-
-        *APP_SQL_FORMAT_SETTINGS.write() = settings.clone();
-        last_saved_sql_settings.set(Some(settings));
-        sql_settings_loaded.set(true);
-    });
-
-    use_effect(move || {
-        if !ui_settings_loaded() {
+        if !startup_loaded() {
             return;
         }
 
         let settings = APP_UI_SETTINGS();
         *APP_THEME.write() = settings.theme.css_class().to_string();
-        *APP_SHOW_HISTORY.write() = settings.show_history;
 
         if last_saved_ui_settings().as_ref() == Some(&settings) {
             return;
@@ -101,12 +104,14 @@ pub fn App() -> Element {
 
         last_saved_ui_settings.set(Some(settings.clone()));
         spawn(async move {
-            let _ = storage::save_app_ui_settings(settings).await;
+            if let Err(err) = services::save_app_ui_settings_with_secrets(settings).await {
+                toast_error(format!("Failed to save app settings: {err}"));
+            }
         });
     });
 
     use_effect(move || {
-        if !sql_settings_loaded() {
+        if !startup_loaded() {
             return;
         }
 
@@ -117,7 +122,9 @@ pub fn App() -> Element {
 
         last_saved_sql_settings.set(Some(settings.clone()));
         spawn(async move {
-            let _ = storage::save_sql_format_settings(settings).await;
+            if let Err(err) = services::save_sql_format_settings(settings).await {
+                toast_error(format!("Failed to save SQL format settings: {err}"));
+            }
         });
     });
 

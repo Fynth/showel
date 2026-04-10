@@ -14,12 +14,11 @@ use super::super::helpers::{
     derive_chat_thread_title, launch_uses_opencode, reset_panel_for_thread,
     upsert_chat_thread_summary,
 };
-use crate::app_state::{APP_STATE, toast_error};
+use crate::app_state::{
+    APP_AI_FEATURES_ENABLED, APP_SHOW_AGENT_PANEL, APP_STATE, set_show_sql_editor, toast_error,
+};
 
 pub struct AcpStateInputs {
-    pub ai_features_enabled: Signal<bool>,
-    pub show_agent_panel: Signal<bool>,
-    pub show_sql_editor: Signal<bool>,
     pub chat_threads: Signal<Vec<ChatThreadSummary>>,
     pub active_chat_thread_id: Signal<Option<i64>>,
     pub chat_revision: Signal<u64>,
@@ -55,9 +54,6 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
     let mut ai_disable_applied = use_signal(|| false);
 
     // ── External signals (from other hooks / workspace) ────────────
-    let ai_features_enabled = inputs.ai_features_enabled;
-    let show_agent_panel = inputs.show_agent_panel;
-    let mut show_sql_editor = inputs.show_sql_editor;
     let mut chat_threads = inputs.chat_threads;
     let active_chat_thread_id = inputs.active_chat_thread_id;
     let mut chat_revision = inputs.chat_revision;
@@ -71,7 +67,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
 
     // ── Effect: AI features disable ────────────────────────────────
     use_effect(move || {
-        if ai_features_enabled() {
+        if APP_AI_FEATURES_ENABLED() {
             if ai_disable_applied() {
                 ai_disable_applied.set(false);
                 opencode_autostart_attempted.set(false);
@@ -85,7 +81,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
 
         ai_disable_applied.set(true);
         opencode_autostart_attempted.set(false);
-        let _ = acp::disconnect_acp_agent();
+        let _ = services::disconnect_acp_agent();
         acp_panel_state.with_mut(|state| {
             let launch = state.launch.clone();
             let ollama = state.ollama.clone();
@@ -98,7 +94,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
 
     // ── Effect: load chat messages on thread switch ────────────────
     use_effect(move || {
-        if !ai_features_enabled() {
+        if !APP_AI_FEATURES_ENABLED() {
             return;
         }
         let Some(thread_id) = active_chat_thread_id() else {
@@ -112,7 +108,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                 .find(|thread| thread.id == thread_id)
                 .map(|thread| thread.title.clone())
                 .unwrap_or_else(|| "New chat".to_string());
-            let messages = match storage::load_chat_thread_messages(thread_id).await {
+            let messages = match services::load_chat_thread_messages(thread_id).await {
                 Ok(messages) => messages,
                 Err(err) => {
                     toast_error(format!("Failed to load chat thread: {err}"));
@@ -121,7 +117,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
             };
             let last_message_id = messages.iter().map(|message| message.id).max().unwrap_or(0);
 
-            let _ = acp::disconnect_acp_agent();
+            let _ = services::disconnect_acp_agent();
             handled_agent_sql_message_id.set(last_message_id);
             opencode_autostart_attempted.set(false);
             acp_panel_state
@@ -131,7 +127,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
 
     // ── Effect: auto-connect opencode ──────────────────────────────
     use_effect(move || {
-        if !ai_features_enabled() {
+        if !APP_AI_FEATURES_ENABLED() {
             return;
         }
         if !chat_threads_loaded() || active_chat_thread_id().is_none() {
@@ -154,7 +150,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
 
     // ── Effect: warm schema context for ACP ────────────────────────
     use_effect(move || {
-        if !ai_features_enabled() || !allow_agent_db_read() {
+        if !APP_AI_FEATURES_ENABLED() || !allow_agent_db_read() {
             return;
         }
 
@@ -169,7 +165,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
 
         warmed_schema_session_id.set(session.id);
         spawn(async move {
-            let _ = acp::warm_acp_database_schema_context(
+            let _ = services::warm_acp_database_schema_context(
                 session.connection.clone(),
                 session.name.clone(),
             )
@@ -199,7 +195,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
             let next_title =
                 derive_chat_thread_title(current_title.as_deref(), &messages, &connection_name);
 
-            match storage::save_chat_thread_snapshot(
+            match services::save_chat_thread_snapshot(
                 thread_id,
                 next_title,
                 connection_name.clone(),
@@ -226,8 +222,8 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                 if STOP_FLAG.load(Ordering::Relaxed) {
                     break;
                 }
-                let ai_active = ai_features_enabled();
-                let panel_visible = show_agent_panel();
+                let ai_active = APP_AI_FEATURES_ENABLED();
+                let panel_visible = APP_SHOW_AGENT_PANEL();
                 let poll_delay = if ai_active && acp_panel_state().connected {
                     if panel_visible {
                         Duration::from_millis(120)
@@ -239,7 +235,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                 };
 
                 if !ai_active {
-                    let _ = acp::drain_acp_events();
+                    let _ = services::drain_acp_events();
                     tokio::time::sleep(poll_delay).await;
                     continue;
                 }
@@ -248,7 +244,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                     break;
                 }
 
-                let events = acp::drain_acp_events();
+                let events = services::drain_acp_events();
                 if !events.is_empty() {
                     acp_panel_state.with_mut(|state| apply_acp_events(state, events));
                     chat_revision += 1;
@@ -285,7 +281,6 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                                 acp_panel_state,
                                 tabs,
                                 active_tab_id,
-                                show_sql_editor,
                                 chat_revision,
                                 sql,
                                 AgentSqlExecutionMode::AutoReadOnly,
@@ -295,7 +290,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                             && let Some(target_tab_id) =
                                 preferred_sql_target_tab_id(tabs, active_tab_id())
                         {
-                            show_sql_editor.set(true);
+                            set_show_sql_editor(true);
                             active_tab_id.set(target_tab_id);
                             update_active_tab_sql(
                                 tabs,
@@ -317,7 +312,6 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                                 acp_panel_state,
                                 tabs,
                                 active_tab_id,
-                                show_sql_editor,
                                 chat_revision,
                                 sql,
                                 AgentSqlExecutionMode::AutoReadOnly,
@@ -327,7 +321,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                             && let Some(target_tab_id) =
                                 preferred_sql_target_tab_id(tabs, active_tab_id())
                         {
-                            show_sql_editor.set(true);
+                            set_show_sql_editor(true);
                             active_tab_id.set(target_tab_id);
                             update_active_tab_sql(
                                 tabs,

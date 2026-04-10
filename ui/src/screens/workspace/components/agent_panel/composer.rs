@@ -12,7 +12,6 @@ pub(super) fn AgentComposer(
     panel_state: Signal<AcpPanelState>,
     tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: Signal<u64>,
-    show_sql_editor: Signal<bool>,
     chat_revision: Signal<u64>,
     allow_agent_db_read: Signal<bool>,
     allow_agent_read_sql_run: Signal<bool>,

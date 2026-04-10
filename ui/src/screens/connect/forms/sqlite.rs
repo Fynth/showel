@@ -6,7 +6,7 @@ use rfd::AsyncFileDialog;
 use super::{connection_status_class, format_connection_error};
 
 #[component]
-pub fn SqliteForm() -> Element {
+pub fn SqliteForm(mut saved_connections_revision: Signal<u64>) -> Element {
     let mut path = use_signal(|| "".to_string());
     let mut status = use_signal(String::new);
     let status_value = status();
@@ -30,21 +30,18 @@ pub fn SqliteForm() -> Element {
                 });
 
                 spawn(async move {
-                    match connection::connect_to_db(request.clone()).await {
-                        Ok(connection) => {
-                            let save_result =
-                                storage::save_connection_request(request.clone()).await;
-                            add_connection_session(request, connection);
-                            match save_result {
-                                Ok(()) => status.set("Connected".to_string()),
-                                Err(err) => status.set(format!(
+                    match services::connect_and_save_request(request.clone()).await {
+                        Ok(result) => {
+                            add_connection_session(request, result.connection);
+                            saved_connections_revision += 1;
+                            match result.save_warning {
+                                Some(err) => status.set(format!(
                                     "Connected, but failed to save connection: {err}"
                                 )),
+                                None => status.set("Connected".to_string()),
                             }
                         }
-                        Err(err) => {
-                            status.set(format_connection_error(err));
-                        }
+                        Err(err) => status.set(format_connection_error(err)),
                     }
                 });
             },
