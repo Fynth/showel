@@ -10,24 +10,27 @@
 .field__label {
   color: var(--color-text-muted);
   font-size: $font-size-sm;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .input {
   width: 100%;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-md;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 54%, var(--color-border));
+  border-radius: 12px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel-2)) 96%, white 2%),
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, black 3%)
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel-2)) 86%, var(--glass-tint-strong)),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 88%, transparent)
     );
   color: var(--color-text);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.035),
-    0 8px 16px rgba(2, 8, 20, 0.08);
+    inset 0 1px 0 var(--glass-highlight),
+    0 10px 24px rgba(2, 8, 20, 0.08);
+  backdrop-filter: blur(14px) saturate(130%);
   transition:
     border-color 120ms ease,
     box-shadow 120ms ease,
@@ -38,21 +41,22 @@
   }
 
   &:hover {
-    border-color: color-mix(in srgb, var(--color-border-strong) 80%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-border-strong));
   }
 
   &:focus-visible {
     border-color: var(--color-primary);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.04),
-      0 0 0 1px color-mix(in srgb, var(--color-primary) 24%, transparent),
-      0 0 0 4px color-mix(in srgb, var(--color-primary) 18%, transparent);
+      inset 0 1px 0 var(--glass-highlight),
+      0 0 0 1px color-mix(in srgb, var(--color-primary) 28%, transparent),
+      0 0 0 5px color-mix(in srgb, var(--color-primary) 15%, transparent),
+      0 16px 32px rgba(2, 8, 20, 0.1);
   }
 }
 
 textarea.input {
   min-height: 72px;
-  padding: 6px 8px;
+  padding: 8px 11px;
   resize: vertical;
 }
 

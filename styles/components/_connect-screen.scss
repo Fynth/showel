@@ -1,7 +1,7 @@
 @use "../base/tokens" as *;
 
 .connect-screen {
-  width: min(960px, 100%);
+  width: min(1080px, 100%);
   min-width: 0;
 }
 
@@ -12,17 +12,20 @@
 .connect-screen__panel {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-  gap: clamp($spacing-md, 2vw, $spacing-xl);
-  padding: clamp($spacing-lg, 2.4vw, $spacing-2xl);
-  border: 1px solid var(--color-border);
-  border-radius: $radius-lg;
+  gap: clamp($spacing-lg, 2.3vw, 28px);
+  padding: clamp(18px, 3vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
   background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--color-primary) 18%, transparent), transparent 34%),
+    radial-gradient(circle at 96% 10%, color-mix(in srgb, var(--color-info) 12%, transparent), transparent 28%),
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, white 3%),
-      var(--color-surface-main, var(--color-panel))
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 82%, var(--glass-tint-strong)),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, transparent)
     );
-  box-shadow: $shadow-md;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(30px) saturate(160%);
 }
 
 .connect-screen__hero,
@@ -40,20 +43,24 @@
 .connect-screen__section,
 .connect-screen__recent {
   min-width: 0;
-  padding: clamp($spacing-md, 1.6vw, $spacing-lg);
-  border: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
-  border-radius: $radius-lg;
+  padding: clamp($spacing-md, 1.6vw, $spacing-xl);
+  border: 1px solid color-mix(in srgb, var(--glass-border) 78%, var(--color-border));
+  border-radius: 22px;
   background:
     linear-gradient(
       180deg,
       color-mix(
         in srgb,
-        var(--color-surface-contrast, var(--color-panel-2)) 84%,
+        var(--color-surface-contrast, var(--color-panel-2)) 56%,
         transparent
       ),
       transparent 160px
     ),
-    color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 96%, transparent);
+    color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 84%, var(--glass-tint));
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 16px 36px rgba(8, 10, 20, 0.1);
+  backdrop-filter: blur(22px) saturate(145%);
 }
 
 .connect-screen__hero-topbar {
@@ -66,12 +73,16 @@
 .connect-screen__eyebrow {
   color: var(--color-primary);
   font-size: $font-size-sm;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
 }
 
 .connect-screen__title {
-  font-size: clamp($font-size-xl, 1.2vw, $font-size-2xl);
+  font-size: clamp(28px, 4.5vw, 54px);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
 }
 
 .connect-screen__section-title {
@@ -198,14 +209,30 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: $spacing-md;
-  padding: $spacing-sm $spacing-md;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-md;
+  padding: $spacing-md;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 64%, var(--color-border));
+  border-radius: 16px;
   background: color-mix(
     in srgb,
-    var(--color-surface-main, var(--color-panel)) 76%,
+    var(--color-surface-main, var(--color-panel)) 68%,
     var(--color-surface-elevated, var(--color-panel-2))
   );
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 10px 24px rgba(8, 10, 20, 0.08);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.recent-connection:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-primary) 24%, var(--color-border-strong));
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 18px 38px rgba(8, 10, 20, 0.12);
 }
 
 .recent-connection__actions {

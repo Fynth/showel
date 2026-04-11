@@ -7,7 +7,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-surface-main, var(--color-panel));
+  background: color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 86%, transparent);
   overflow: hidden;
 }
 
@@ -19,11 +19,16 @@
 .editor {
   flex: 0 0 var(--editor-pane-height, clamp(160px, 30vh, 260px));
   min-height: 120px;
-  padding: 8px;
-  background: var(--color-surface-elevated, var(--color-panel));
+  padding: 10px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 82%, var(--glass-tint)),
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 90%, transparent)
+    );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.025),
-    0 12px 24px rgba(2, 8, 18, 0.08);
+    inset 0 1px 0 var(--glass-highlight),
+    0 14px 32px rgba(2, 8, 18, 0.1);
   min-width: 0;
   overflow: hidden;
 }
@@ -116,12 +121,13 @@
   gap: 6px;
   flex-wrap: wrap;
   padding: 6px 10px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
   background: color-mix(
     in srgb,
-    var(--color-surface-contrast, var(--color-panel-2)) 76%,
+    var(--color-surface-contrast, var(--color-panel-2)) 58%,
     transparent
   );
+  backdrop-filter: blur(16px) saturate(140%);
 }
 
 .editor__pagination-meta {
@@ -254,18 +260,34 @@
   position: relative;
   min-height: 0;
   height: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-lg;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 70%, var(--color-border));
+  border-radius: 20px;
   background:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--color-primary) 9%, transparent), transparent 28%),
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--editor-bg) 96%, white 2%),
+      color-mix(in srgb, var(--editor-bg) 92%, var(--glass-tint)),
       var(--editor-bg)
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    0 18px 30px rgba(2, 8, 18, 0.12);
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 5%, transparent),
+    0 24px 54px rgba(2, 8, 18, 0.18);
+  backdrop-filter: blur(18px) saturate(135%);
   overflow: hidden;
+}
+
+.sql-editor::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, var(--editor-line) 1px, transparent 1px) 0 0 / 64px 64px,
+    linear-gradient(180deg, var(--editor-line) 1px, transparent 1px) 0 0 / 64px 64px;
+  opacity: 0.28;
+  mask-image: linear-gradient(180deg, black, transparent 82%);
 }
 
 .sql-editor__viewport,
@@ -285,10 +307,10 @@
 .sql-editor__highlight,
 .sql-editor__input {
   margin: 0;
-  padding: 14px 16px;
+  padding: 18px 20px;
   font-family: $font-family-mono;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.64;
   letter-spacing: 0.01em;
   white-space: pre-wrap;
   word-break: normal;
@@ -322,7 +344,7 @@
 
 .sql-editor__input {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   resize: none;
   border: none;
   background: transparent;
@@ -354,10 +376,11 @@
   display: flex;
   flex-direction: column;
   overflow: auto;
-  border: 1px solid var(--color-border-strong);
-  border-radius: $radius-md;
-  background: color-mix(in srgb, var(--editor-bg) 94%, black);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.34);
+  border: 1px solid color-mix(in srgb, var(--glass-border) 68%, var(--color-border-strong));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--editor-bg) 86%, var(--glass-tint-strong));
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(24px) saturate(155%);
 }
 
 .sql-editor__autocomplete-item {
@@ -466,6 +489,6 @@
 .inline-completion {
   opacity: 0.5;
   font-style: italic;
-  color: #888;
-  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  color: var(--color-text-dim);
+  font-family: $font-family-mono;
 }

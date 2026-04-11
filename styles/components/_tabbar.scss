@@ -5,29 +5,29 @@
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  min-height: 34px;
+  min-height: 38px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px 0;
+  gap: 6px;
+  padding: 6px 10px 0;
   margin-bottom: -1px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, white 2%),
-      var(--color-surface-main, var(--color-panel))
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 82%, var(--glass-tint)),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 88%, transparent)
     );
+  backdrop-filter: blur(16px) saturate(135%);
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .tabbar__tab,
 .tabbar__add {
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 52%, var(--color-border));
+  border-radius: 13px 13px 0 0;
   color: var(--color-text-muted);
   cursor: pointer;
   @include interactive;
@@ -40,15 +40,15 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--editor-bg) 96%, white 2%),
+      color-mix(in srgb, var(--editor-bg) 88%, var(--glass-tint-strong)),
       color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 10%, var(--editor-bg))
     );
-  border-color: var(--color-border);
+  border-color: color-mix(in srgb, var(--glass-border) 74%, var(--color-border));
   border-bottom-color: transparent;
   color: var(--color-text);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 -10px 24px rgba(2, 8, 18, 0.16);
+    inset 0 1px 0 var(--glass-highlight),
+    0 -10px 28px rgba(2, 8, 18, 0.18);
 }
 
 .tabbar__tab {
@@ -60,12 +60,12 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel-2)) 88%, white 2%),
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 8%, var(--color-surface-elevated, var(--color-panel-2)))
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel-2)) 76%, var(--glass-tint)),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 14%, var(--color-surface-elevated, var(--color-panel-2)))
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    0 10px 18px rgba(2, 8, 18, 0.08);
+    inset 0 1px 0 var(--glass-highlight),
+    0 10px 20px rgba(2, 8, 18, 0.08);
 }
 
 .tabbar__copy {

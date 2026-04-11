@@ -8,14 +8,14 @@
     minmax(180px, var(--workspace-sidebar-width, clamp(200px, 19vw, 260px)))
     6px
     minmax(0, 1fr);
-  gap: 4px;
-  padding: 4px;
+  gap: 8px;
+  padding: 8px;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 24%),
-    radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 6%, transparent), transparent 22%),
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 28%),
+    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--color-info) 10%, transparent), transparent 26%),
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 90%, black 10%),
+      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 92%, transparent),
       var(--color-surface-shell, var(--color-bg))
     );
   overflow: hidden;
@@ -29,17 +29,18 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
-  border-radius: $radius-lg;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 98%, white 1%),
-      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 8%, var(--color-surface-sidebar, var(--color-panel)))
+      color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 88%, var(--glass-tint-strong)),
+      color-mix(in srgb, var(--color-surface-sidebar, var(--color-panel)) 88%, transparent)
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.025),
-    0 14px 26px rgba(8, 10, 14, 0.18);
+    inset 0 1px 0 var(--glass-highlight),
+    var(--shadow-panel);
+  backdrop-filter: blur(28px) saturate(150%);
   overflow: hidden;
 }
 
@@ -47,10 +48,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding: 3px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
 }
 
 .workspace__title {
@@ -78,17 +79,18 @@
   min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr;
-  border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
-  border-radius: $radius-lg;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 98%, white 1%),
-      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 6%, var(--color-surface-main, var(--color-panel)))
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 88%, var(--glass-tint-strong)),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 92%, transparent)
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.02),
-    0 18px 34px rgba(8, 10, 14, 0.18);
+    inset 0 1px 0 var(--glass-highlight),
+    var(--shadow-panel);
+  backdrop-filter: blur(30px) saturate(155%);
   overflow: hidden;
 }
 
@@ -121,30 +123,33 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 3px;
-  border-left: 1px solid var(--color-border);
+  gap: 6px;
+  padding: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-inspector, var(--color-panel-2)) 97%, white 1%),
-      color-mix(in srgb, var(--color-surface-shell, var(--color-bg)) 6%, var(--color-surface-inspector, var(--color-panel-2)))
+      color-mix(in srgb, var(--color-surface-inspector, var(--color-panel-2)) 88%, var(--glass-tint)),
+      color-mix(in srgb, var(--color-surface-inspector, var(--color-panel-2)) 92%, transparent)
     );
-  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.02);
+  box-shadow: inset 1px 0 0 var(--glass-highlight);
+  backdrop-filter: blur(24px) saturate(145%);
 }
 
 .workspace__header {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 5px;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--color-border);
-  background: color-mix(
-    in srgb,
-    var(--color-surface-inspector, var(--color-panel-2)) 86%,
-    var(--color-surface-contrast, var(--color-panel-3))
-  );
+  gap: 6px;
+  padding: 7px 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--glass-tint-strong) 80%, var(--color-surface-inspector, var(--color-panel-2))),
+      color-mix(in srgb, var(--glass-tint) 52%, transparent)
+    );
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .workspace__toolbar {
@@ -162,14 +167,14 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 3px 3px;
-  border-top: 1px solid var(--color-border);
+  gap: 6px;
+  padding: 0 6px 6px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 96%, white 1%),
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 8%, var(--color-surface-elevated, var(--color-panel)))
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 84%, var(--glass-tint)),
+      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 88%, transparent)
     );
   overflow: auto;
 }
@@ -260,8 +265,8 @@
 
 @media (max-height: 860px) {
   .workspace {
-    gap: 4px;
-    padding: 4px;
+    gap: 6px;
+    padding: 6px;
   }
 
   .workspace__header {

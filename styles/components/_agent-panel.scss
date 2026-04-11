@@ -24,10 +24,15 @@
 }
 
 .agent-panel__header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
   align-items: flex-start;
-  justify-content: space-between;
   gap: 6px;
+}
+
+.agent-panel__header::before {
+  content: "";
+  min-width: 0;
 }
 
 .agent-panel__header-copy,
@@ -37,13 +42,17 @@
 }
 
 .agent-panel__header-copy {
-  flex: 1 1 auto;
+  grid-column: 2;
+  min-width: 0;
   flex-direction: column;
+  align-items: center;
   gap: $spacing-2xs;
+  text-align: center;
 }
 
 .agent-panel__header-actions {
-  flex: 0 0 auto;
+  grid-column: 3;
+  justify-self: end;
   align-items: center;
   justify-content: flex-end;
   gap: $spacing-xs;
@@ -167,6 +176,7 @@
 .agent-panel__title {
   font-size: $font-size-lg;
   font-weight: 600;
+  text-align: center;
 }
 
 .agent-panel__meta,
@@ -217,24 +227,28 @@
 .agent-panel__connect {
   min-height: 0;
   overflow: auto;
-  padding-right: $spacing-2xs;
+  padding: $spacing-xs $spacing-2xs $spacing-sm;
+  align-items: center;
 }
 
 .agent-panel__mode-switch {
+  width: min(100%, 430px);
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: $spacing-xs;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-sm;
+  justify-content: center;
 }
 
 .agent-panel__mode-button {
   height: auto;
-  min-height: 52px;
+  min-height: 62px;
   padding: $spacing-sm;
-  align-items: flex-start;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   flex-direction: column;
   gap: 3px;
-  text-align: left;
+  text-align: center;
 }
 
 .agent-panel__mode-name {
@@ -250,6 +264,7 @@
 
 .agent-panel__section,
 .agent-panel__registry-card {
+  width: min(100%, 430px);
   display: flex;
   flex-direction: column;
   gap: $spacing-sm;
@@ -263,19 +278,26 @@
   );
 }
 
+.agent-panel__section {
+  margin: 0 auto;
+}
+
 .agent-panel__section-header,
 .agent-panel__registry-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 6px;
   flex-wrap: wrap;
+  text-align: center;
 }
 
 .agent-panel__section-copy {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 2px;
+  text-align: center;
 }
 
 .agent-panel__field-grid {

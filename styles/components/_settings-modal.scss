@@ -8,7 +8,7 @@
   place-items: center;
   padding: clamp($spacing-md, 3vw, $spacing-xl);
   background: var(--color-backdrop);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(30px) saturate(145%);
 }
 
 .settings-modal {
@@ -19,20 +19,22 @@
   flex-direction: column;
   gap: $spacing-md;
   padding: clamp($spacing-md, 2vw, $spacing-lg);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
   background:
+    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 30%),
     linear-gradient(
       180deg,
       color-mix(
         in srgb,
-        var(--color-surface-contrast, var(--color-panel-2)) 80%,
+        var(--color-surface-contrast, var(--color-panel-2)) 54%,
         transparent
       ),
       transparent 180px
     ),
-    var(--color-surface-main, var(--color-panel));
-  box-shadow: $shadow-lg;
+    color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 90%, var(--glass-tint));
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(30px) saturate(160%);
 }
 
 .settings-modal__header {
@@ -49,8 +51,9 @@
 }
 
 .settings-modal__title {
-  font-size: $font-size-2xl;
-  font-weight: 700;
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
   color: var(--color-text);
 }
 
@@ -72,13 +75,16 @@
   flex-direction: column;
   gap: $spacing-sm;
   padding: $spacing-md;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 72%, var(--color-border));
+  border-radius: 18px;
   background: color-mix(
     in srgb,
-    var(--color-surface-elevated, var(--color-panel)) 94%,
+    var(--color-surface-elevated, var(--color-panel)) 82%,
     transparent
   );
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 12px 26px rgba(8, 10, 20, 0.08);
 }
 
 .settings-modal__section-header {
@@ -113,11 +119,11 @@
 
 .settings-modal__grid .field {
   padding: $spacing-sm;
-  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
-  border-radius: $radius-md;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 58%, var(--color-border));
+  border-radius: 14px;
   background: color-mix(
     in srgb,
-    var(--color-surface-contrast, var(--color-panel-2)) 76%,
+    var(--color-surface-contrast, var(--color-panel-2)) 56%,
     transparent
   );
 }
@@ -128,11 +134,11 @@
   align-items: start;
   gap: $spacing-sm;
   padding: $spacing-sm;
-  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
-  border-radius: $radius-md;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 58%, var(--color-border));
+  border-radius: 14px;
   background: color-mix(
     in srgb,
-    var(--color-surface-contrast, var(--color-panel-2)) 74%,
+    var(--color-surface-contrast, var(--color-panel-2)) 54%,
     transparent
   );
   color: var(--color-text);

@@ -12,19 +12,20 @@
   flex: 0 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
-  border-radius: $radius-md;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--glass-border) 82%, var(--color-border));
+  border-radius: 17px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 96%, white 1%),
-      color-mix(in srgb, var(--color-surface-main, var(--color-panel)) 6%, var(--color-surface-elevated, var(--color-panel)))
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 88%, var(--glass-tint)),
+      color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 90%, transparent)
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.025),
-    0 10px 18px rgba(8, 10, 14, 0.1);
+    inset 0 1px 0 var(--glass-highlight),
+    0 14px 34px rgba(8, 10, 22, 0.14);
+  backdrop-filter: blur(22px) saturate(145%);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -36,12 +37,12 @@
       180deg,
       color-mix(
         in srgb,
-        var(--color-surface-contrast, var(--color-panel-2)) 72%,
+        var(--color-primary) 9%,
         transparent
       ),
-      transparent 160px
+      transparent 170px
     ),
-    var(--color-surface-elevated, var(--color-panel));
+    color-mix(in srgb, var(--color-surface-elevated, var(--color-panel)) 90%, var(--glass-tint));
 }
 
 .workspace__tool-panel {
@@ -51,7 +52,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   overflow: hidden;
 }
 

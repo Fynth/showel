@@ -1,5 +1,11 @@
-$font-family-sans: "IBM Plex Sans", "SF Pro Text", "Segoe UI Variable", "Segoe UI", sans-serif;
-$font-family-mono: "JetBrains Mono", "Cascadia Code", monospace;
+$font-family-sans:
+  "SF Pro Text",
+  "SF Pro Display",
+  "IBM Plex Sans",
+  "Segoe UI Variable",
+  "Segoe UI",
+  sans-serif;
+$font-family-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", monospace;
 
 $font-size-xs: 10px;
 $font-size-sm: 11px;
@@ -19,13 +25,13 @@ $spacing-lg: 12px;
 $spacing-xl: 18px;
 $spacing-2xl: 24px;
 
-$radius-sm: 4px;
-$radius-md: 6px;
-$radius-lg: 10px;
+$radius-sm: 7px;
+$radius-md: 11px;
+$radius-lg: 18px;
 
-$shadow-sm: 0 8px 18px rgba(3, 9, 20, 0.18);
-$shadow-md: 0 18px 44px rgba(3, 9, 20, 0.26);
-$shadow-lg: 0 32px 80px rgba(2, 8, 20, 0.34);
+$shadow-sm: 0 10px 24px rgba(3, 9, 20, 0.16);
+$shadow-md: 0 22px 58px rgba(3, 9, 20, 0.26);
+$shadow-lg: 0 42px 120px rgba(2, 8, 20, 0.42);
 
 $toolbar-height: 34px;
 $statusbar-height: 20px;
