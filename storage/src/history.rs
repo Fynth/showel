@@ -16,7 +16,7 @@ use crate::fs_store::{
 use crate::secrets::{delete_fallback_secret, load_fallback_secret, save_fallback_secret};
 
 const MAX_SAVED_CONNECTIONS: usize = 10;
-const KEYRING_SERVICE: &str = "showel.connections";
+const KEYRING_SERVICE: &str = "shovel.connections";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct PersistedSavedConnection {

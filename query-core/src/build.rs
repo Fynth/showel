@@ -18,7 +18,7 @@ pub(super) fn build_paginated_query(
 ) -> String {
     let base_sql = sql.trim().trim_end_matches(';');
     build_outer_paginated_query(
-        format!("select * from ({base_sql}) as showel_page"),
+        format!("select * from ({base_sql}) as shovel_page"),
         page_size,
         offset,
         filter,

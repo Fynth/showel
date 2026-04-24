@@ -1,8 +1,11 @@
 use models::CodeStralSettings;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 const CODESTRAL_API_URL: &str = "https://codestral.mistral.ai/v1/fim/completions";
+
+static CODESTRAL_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct CodeStralClient {
@@ -40,7 +43,7 @@ struct CodeStralMessage {
 impl CodeStralClient {
     pub fn new(settings: CodeStralSettings) -> Self {
         Self {
-            client: Client::new(),
+            client: CODESTRAL_HTTP_CLIENT.get_or_init(Client::new).clone(),
             settings,
         }
     }
@@ -62,10 +65,10 @@ impl CodeStralClient {
             model: self.settings.model.clone(),
             prompt: prefix.to_string(),
             suffix: suffix.map(String::from),
-            max_tokens: 100,
-            temperature: 0.3,
+            max_tokens: 80,
+            temperature: 0.2,
             top_p: 0.95,
-            stop: vec!["\n".to_string(), ";".to_string(), " ".to_string()],
+            stop: vec!["\n\n".to_string(), ";".to_string()],
         };
 
         let response = self
@@ -96,15 +99,23 @@ impl CodeStralClient {
         })?;
 
         Ok(completion.choices.first().and_then(|c| {
-            c.text.as_deref().map(|t| t.trim().to_string()).or_else(|| {
-                c.message
-                    .as_ref()?
-                    .content
-                    .as_ref()
-                    .map(|c| c.trim().to_string())
-            })
+            c.text
+                .as_deref()
+                .map(normalize_completion_text)
+                .or_else(|| {
+                    c.message
+                        .as_ref()?
+                        .content
+                        .as_ref()
+                        .map(|c| normalize_completion_text(c))
+                })
         }))
     }
+}
+
+fn normalize_completion_text(text: &str) -> String {
+    text.trim_matches(|ch| matches!(ch, '\r' | '\n'))
+        .to_string()
 }
 
 #[derive(Debug)]

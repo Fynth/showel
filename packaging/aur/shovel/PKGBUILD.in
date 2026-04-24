@@ -1,4 +1,4 @@
-pkgname=showel
+pkgname=shovel
 pkgver=__PKGVER__
 pkgrel=__PKGREL__
 pkgdesc="Fast native desktop database client built with Rust and Dioxus"
@@ -14,7 +14,7 @@ makedepends=(
   'pkgconf'
   'rust'
 )
-conflicts=('showel-git')
+conflicts=('shovel-git')
 options=('!debug' '!lto')
 _sourcedir="__REPO__-__PKGVER__"
 source=(
@@ -43,9 +43,9 @@ build() {
 package() {
   cd "${srcdir}/${_sourcedir}"
 
-  install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/showel"
-  install -Dm644 "app/assets/app.css" "${pkgdir}/usr/lib/showel/assets/app.css"
-  install -Dm644 "packaging/arch/showel.desktop" "${pkgdir}/usr/share/applications/showel.desktop"
-  install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/showel.svg"
-  install -Dm644 "README.md" "${pkgdir}/usr/share/doc/showel/README.md"
+  install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/shovel"
+  install -Dm644 "app/assets/app.css" "${pkgdir}/usr/lib/shovel/assets/app.css"
+  install -Dm644 "packaging/arch/shovel.desktop" "${pkgdir}/usr/share/applications/shovel.desktop"
+  install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/shovel.svg"
+  install -Dm644 "README.md" "${pkgdir}/usr/share/doc/shovel/README.md"
 }

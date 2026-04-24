@@ -96,8 +96,8 @@ fn write_generated_icon_rgba(manifest_dir: &Path, out_dir: &Path) -> Result<(), 
 
     fs::create_dir_all(out_dir)?;
     fs::write(out_dir.join("app_icon.rgba"), image.into_raw())?;
-    println!("cargo:rustc-env=SHOWEL_ICON_WIDTH={width}");
-    println!("cargo:rustc-env=SHOWEL_ICON_HEIGHT={height}");
+    println!("cargo:rustc-env=SHOVEL_ICON_WIDTH={width}");
+    println!("cargo:rustc-env=SHOVEL_ICON_HEIGHT={height}");
 
     Ok(())
 }

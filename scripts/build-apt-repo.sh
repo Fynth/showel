@@ -10,7 +10,7 @@ fi
 repo_root="$1"
 repo_url="$2"
 dist_dir="${repo_root}/dists/stable/main/binary-amd64"
-pool_dir="${repo_root}/pool/main/s/showel"
+pool_dir="${repo_root}/pool/main/s/shovel"
 
 mkdir -p "${dist_dir}"
 mkdir -p "${pool_dir}"
@@ -38,8 +38,8 @@ packages_sha256="$(sha256sum "${dist_dir}/Packages" | awk '{print $1}')"
 packages_gz_sha256="$(sha256sum "${dist_dir}/Packages.gz" | awk '{print $1}')"
 
 cat > "${repo_root}/dists/stable/Release" <<EOF
-Origin: Showel
-Label: Showel
+Origin: Shovel
+Label: Shovel
 Suite: stable
 Codename: stable
 Architectures: amd64
@@ -58,14 +58,14 @@ cat > "${repo_root}/index.html" <<EOF
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Showel APT Repository</title>
+  <title>Shovel APT Repository</title>
 </head>
 <body>
-  <h1>Showel APT Repository</h1>
+  <h1>Shovel APT Repository</h1>
   <p>Add this repository:</p>
-  <pre><code>echo "deb [arch=amd64 trusted=yes] ${repo_url} stable main" | sudo tee /etc/apt/sources.list.d/showel.list
+  <pre><code>echo "deb [arch=amd64 trusted=yes] ${repo_url} stable main" | sudo tee /etc/apt/sources.list.d/shovel.list
 sudo apt update
-sudo apt install showel</code></pre>
+sudo apt install shovel</code></pre>
 </body>
 </html>
 EOF

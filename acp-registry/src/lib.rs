@@ -11,7 +11,7 @@ use std::{
 const ACP_REGISTRY_URL: &str =
     "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 const ACP_REGISTRY_ACCEPT: &str = "application/json";
-const ACP_REGISTRY_USER_AGENT: &str = concat!("showel/", env!("CARGO_PKG_VERSION"));
+const ACP_REGISTRY_USER_AGENT: &str = concat!("shovel/", env!("CARGO_PKG_VERSION"));
 const ACP_REGISTRY_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 const ACP_REGISTRY_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const ACP_ARCHIVE_CONNECT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -484,9 +484,9 @@ fn current_platform_key() -> Result<String, String> {
 fn install_root(agent_id: &str, version: &str) -> Result<PathBuf, String> {
     let base_dir = dirs::data_local_dir()
         .or_else(dirs::data_dir)
-        .unwrap_or_else(|| std::env::temp_dir().join("showel"));
+        .unwrap_or_else(|| std::env::temp_dir().join("shovel"));
     Ok(base_dir
-        .join("showel")
+        .join("shovel")
         .join("acp")
         .join("registry")
         .join(agent_id)

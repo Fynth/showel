@@ -886,8 +886,8 @@ async fn run_acp_worker(
                             .terminal(true),
                     )
                     .client_info(
-                        acp::Implementation::new("showel", env!("CARGO_PKG_VERSION"))
-                            .title("Showel ACP Client"),
+                        acp::Implementation::new("shovel", env!("CARGO_PKG_VERSION"))
+                            .title("Shovel ACP Client"),
                     ),
             )
             .await
@@ -1064,7 +1064,7 @@ fn opencode_runtime_environment() -> Option<[(&'static str, PathBuf); 3]> {
     let runtime_root = storage::acp_agent_runtime_root("opencode")
         .or_else(|_| {
             let fallback = std::env::temp_dir()
-                .join("showel")
+                .join("shovel")
                 .join("acp")
                 .join("runtime")
                 .join("opencode");
@@ -1472,7 +1472,7 @@ mod tests {
     #[test]
     fn normalize_cwd_path_uses_parent_for_existing_file() {
         let temp_root =
-            std::env::temp_dir().join(format!("showel-acp-runtime-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("shovel-acp-runtime-test-{}", std::process::id()));
         std::fs::create_dir_all(&temp_root).unwrap();
         let file = temp_root.join("workspace.db");
         std::fs::write(&file, b"test").unwrap();
@@ -1492,7 +1492,7 @@ mod tests {
     fn initialize_request_uses_numeric_protocol_version() {
         let request = acp::InitializeRequest::new(acp::ProtocolVersion::LATEST)
             .client_capabilities(acp::ClientCapabilities::new().terminal(true))
-            .client_info(acp::Implementation::new("showel", "test"));
+            .client_info(acp::Implementation::new("shovel", "test"));
 
         let payload = serde_json::to_value(&request).unwrap();
 
@@ -1524,7 +1524,7 @@ mod tests {
     }
 
     #[test]
-    fn opencode_runtime_environment_isolated_under_showel_storage() {
+    fn opencode_runtime_environment_isolated_under_shovel_storage() {
         let envs = opencode_runtime_environment().expect("opencode env should be available");
 
         for (key, value) in envs {
@@ -1533,7 +1533,7 @@ mod tests {
                 "XDG_DATA_HOME" | "XDG_STATE_HOME" | "XDG_CACHE_HOME"
             ));
             let value = value.to_string_lossy().to_string();
-            assert!(value.contains("showel/acp/runtime/opencode"));
+            assert!(value.contains("shovel/acp/runtime/opencode"));
         }
     }
 

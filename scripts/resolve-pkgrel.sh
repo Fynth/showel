@@ -13,8 +13,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 tag="$("${script_dir}/resolve-release-tag.sh" "${version}")"
 
-if [[ -n "${SHOWEL_PKGREL_OVERRIDE:-}" ]]; then
-  echo "${SHOWEL_PKGREL_OVERRIDE}"
+if [[ -n "${SHOVEL_PKGREL_OVERRIDE:-}" ]]; then
+  echo "${SHOVEL_PKGREL_OVERRIDE}"
   exit 0
 fi
 
@@ -31,8 +31,8 @@ fi
 case "${package_kind}" in
   aur-source)
     paths=(
-      "packaging/aur/showel/PKGBUILD.in"
-      "packaging/arch/showel.desktop"
+      "packaging/aur/shovel/PKGBUILD.in"
+      "packaging/arch/shovel.desktop"
       "scripts/render-aur-release-package.sh"
       "scripts/resolve-pkgrel.sh"
     )
@@ -40,8 +40,8 @@ case "${package_kind}" in
   aur-bin)
     paths=(
       ".github/workflows/linux.yml"
-      "packaging/aur/showel-bin/PKGBUILD.in"
-      "packaging/arch/showel.desktop"
+      "packaging/aur/shovel-bin/PKGBUILD.in"
+      "packaging/arch/shovel.desktop"
       "scripts/render-aur-binary-package.sh"
       "scripts/resolve-pkgrel.sh"
     )
@@ -49,7 +49,7 @@ case "${package_kind}" in
   arch)
     paths=(
       "packaging/arch/PKGBUILD.in"
-      "packaging/arch/showel.desktop"
+      "packaging/arch/shovel.desktop"
       "scripts/render-arch-package.sh"
       "scripts/resolve-pkgrel.sh"
     )
@@ -57,7 +57,7 @@ case "${package_kind}" in
   deb)
     paths=(
       ".github/workflows/apt-repo.yml"
-      "packaging/arch/showel.desktop"
+      "packaging/arch/shovel.desktop"
       "scripts/build-apt-repo.sh"
       "scripts/build-deb-package.sh"
       "scripts/resolve-pkgrel.sh"

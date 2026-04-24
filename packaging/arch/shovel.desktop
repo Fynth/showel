@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Showel
+Name=Shovel
 Comment=Fast native desktop database client
-Exec=showel
-Icon=dev.showel.app
+Exec=shovel
+Icon=shovel
 Terminal=false
 Categories=Development;Database;
-StartupWMClass=Showel
+StartupWMClass=Shovel

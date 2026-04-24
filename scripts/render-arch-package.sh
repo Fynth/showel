@@ -15,11 +15,11 @@ source_selector="$5"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 template="${project_root}/packaging/arch/PKGBUILD.in"
-desktop_file="${project_root}/packaging/arch/showel.desktop"
+desktop_file="${project_root}/packaging/arch/shovel.desktop"
 pkgrel="$("${script_dir}/resolve-pkgrel.sh" "${version}" arch)"
 
 mkdir -p "${output_dir}"
-cp "${desktop_file}" "${output_dir}/showel.desktop"
+cp "${desktop_file}" "${output_dir}/shovel.desktop"
 
 desktop_sha="$(sha256sum "${desktop_file}" | awk '{print $1}')"
 

@@ -72,15 +72,15 @@ jobs:
         run: |
           rm -rf bundle
           mkdir -p bundle/bin
-          mkdir -p bundle/lib/showel/assets
+          mkdir -p bundle/lib/shovel/assets
           mkdir -p bundle/share/applications
           mkdir -p bundle/share/icons/hicolor/scalable/apps
-          cp target/release/app bundle/bin/showel
-          cp app/assets/app.css bundle/lib/showel/assets/app.css
-          cp packaging/arch/showel.desktop bundle/share/applications/showel.desktop
-          cp app/assets/icon.svg bundle/share/icons/hicolor/scalable/apps/showel.svg
+          cp target/release/app bundle/bin/shovel
+          cp app/assets/app.css bundle/lib/shovel/assets/app.css
+          cp packaging/arch/shovel.desktop bundle/share/applications/shovel.desktop
+          cp app/assets/icon.svg bundle/share/icons/hicolor/scalable/apps/shovel.svg
           cp README.md bundle/README.md
-          tar -C bundle -czf showel-linux-x86_64.tar.gz .
+          tar -C bundle -czf shovel-linux-x86_64.tar.gz .
 
       - name: Write release metadata
         if: steps.meta.outputs.release_tag != ''
@@ -93,8 +93,8 @@ jobs:
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: showel-linux-x86_64
-          path: showel-linux-x86_64.tar.gz
+          name: shovel-linux-x86_64
+          path: shovel-linux-x86_64.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -102,7 +102,7 @@ jobs:
         if: steps.meta.outputs.release_tag != ''
         uses: actions/upload-artifact@v4
         with:
-          name: showel-release-metadata
+          name: shovel-release-metadata
           path: release-metadata/version.env
           if-no-files-found: error
           retention-days: 7
@@ -113,4 +113,4 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.release_tag }}
           files: |
-            showel-linux-x86_64.tar.gz
+            shovel-linux-x86_64.tar.gz

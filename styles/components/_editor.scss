@@ -302,6 +302,7 @@
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  contain: paint;
 }
 
 .sql-editor__highlight,
@@ -321,6 +322,16 @@
 .sql-editor__highlight {
   min-height: 100%;
   color: var(--editor-token-plain);
+  will-change: transform;
+}
+
+.sql-editor--typing .sql-editor__highlight {
+  opacity: 0;
+}
+
+.sql-editor--typing .sql-editor__input {
+  color: var(--editor-token-plain);
+  -webkit-text-fill-color: var(--editor-token-plain);
 }
 
 @media (max-height: 860px) {

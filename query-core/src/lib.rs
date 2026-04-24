@@ -36,7 +36,7 @@ use self::{
     },
 };
 
-const LOCATOR_COLUMN: &str = "__showel_locator";
+const LOCATOR_COLUMN: &str = "__shovel_locator";
 const SQLITE_DIALECT: SqlBuildDialect = SqlBuildDialect {
     quote_identifier,
     filter_expression: sqlite_filter_expression,

@@ -49,7 +49,7 @@ pub fn Toolbar() -> Element {
                     div {
                         class: "toolbar__brand-copy",
                         span { class: "toolbar__eyebrow", "Database Client" }
-                        strong { class: "toolbar__title", "Showel" }
+                        strong { class: "toolbar__title", "Shovel" }
                     }
                 }
                 div {

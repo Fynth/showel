@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="app/assets/icon.svg" alt="Showel logo" width="96" height="96" />
+  <img src="app/assets/icon.svg" alt="Shovel logo" width="96" height="96" />
 </p>
 
-<h1 align="center">Showel</h1>
+<h1 align="center">Shovel</h1>
 <img width="1890" height="1137" alt="image" src="https://github.com/user-attachments/assets/2584a85c-1d82-4a8c-ab61-d4a477a32e11" />
 
 
@@ -17,16 +17,16 @@
 </p>
 
 <p align="center">
-  If Showel saves you time, give the repo a star.
+  If Shovel saves you time, give the repo a star.
 </p>
 
 ---
 
-## Why Showel
+## Why Shovel
 
 Most database clients are either heavy, web-first, or overloaded with enterprise UI noise.
 
-Showel is trying to be the opposite:
+Shovel is trying to be the opposite:
 
 - native desktop app, not a browser tab pretending to be one
 - chat-first database workflows with persistent threads
@@ -61,7 +61,7 @@ It is built for people who want a responsive database tool that feels closer to 
 
 ## AI / ACP Support
 
-Showel includes an ACP client layer and an embedded Ollama ACP bridge.
+Shovel includes an ACP client layer and an embedded Ollama ACP bridge.
 
 That means you can:
 
@@ -71,7 +71,7 @@ That means you can:
 - generate SQL against the active connection context
 - send general database prompts and insert generated SQL into the editor
 
-This is opt-in. If you do not care about AI features, Showel still works as a regular database client.
+This is opt-in. If you do not care about AI features, Shovel still works as a regular database client.
 
 ## Quick Start
 
@@ -99,7 +99,7 @@ GitHub Actions can build a Linux desktop tarball from `.github/workflows/linux.y
 
 The archive contains:
 
-- `bin/showel`
+- `bin/shovel`
 - desktop entry
 - app icon
 - README
@@ -114,7 +114,7 @@ dx bundle --release --platform desktop --package app --features bundle --package
 
 Release artifacts are published here:
 
-- [GitHub Releases](https://github.com/Fynth/showel/releases)
+- [GitHub Releases](https://github.com/Fynth/shovel/releases)
 
 ### Ubuntu / Debian via APT repository
 
@@ -122,15 +122,15 @@ If the APT repository has already been configured on the machine, installation i
 
 ```bash
 sudo apt update
-sudo apt install showel
+sudo apt install shovel
 ```
 
 To add the repository first:
 
 ```bash
-echo "deb [arch=amd64 trusted=yes] https://fynth.github.io/showel/apt stable main" | sudo tee /etc/apt/sources.list.d/showel.list
+echo "deb [arch=amd64 trusted=yes] https://fynth.github.io/shovel/apt stable main" | sudo tee /etc/apt/sources.list.d/shovel.list
 sudo apt update
-sudo apt install showel
+sudo apt install shovel
 ```
 
 Notes:
@@ -142,18 +142,18 @@ Notes:
 
 Download the latest Debian package from:
 
-- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+- [Latest Releases](https://github.com/Fynth/shovel/releases/latest)
 
 Then install it with:
 
 ```bash
-sudo apt install ./showel_<version>_amd64.deb
+sudo apt install ./shovel_<version>_amd64.deb
 ```
 
 or:
 
 ```bash
-sudo dpkg -i showel_<version>_amd64.deb
+sudo dpkg -i shovel_<version>_amd64.deb
 sudo apt -f install
 ```
 
@@ -161,58 +161,58 @@ sudo apt -f install
 
 Available AUR packages:
 
-- `showel`
-- `showel-bin`
-- `showel-git`
+- `shovel`
+- `shovel-bin`
+- `shovel-git`
 
 Install with:
 
 ```bash
-yay -S showel
+yay -S shovel
 ```
 
 or:
 
 ```bash
-yay -S showel-bin
+yay -S shovel-bin
 ```
 
 or:
 
 ```bash
-yay -S showel-git
+yay -S shovel-git
 ```
 
 ### Linux via Flatpak bundle
 
 Download the Flatpak bundle from:
 
-- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+- [Latest Releases](https://github.com/Fynth/shovel/releases/latest)
 
 Then install and run it with:
 
 ```bash
-flatpak install --user ./showel-linux-x86_64.flatpak
-flatpak run dev.showel.app
+flatpak install --user ./shovel-linux-x86_64.flatpak
+flatpak run dev.shovel.app
 ```
 
 ### Linux via release tarball
 
 Download the Linux archive from:
 
-- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+- [Latest Releases](https://github.com/Fynth/shovel/releases/latest)
 
 Then unpack and run:
 
 ```bash
-tar -xzf showel-linux-x86_64.tar.gz
-./bin/showel
+tar -xzf shovel-linux-x86_64.tar.gz
+./bin/shovel
 ```
 
 The archive contains:
 
-- `bin/showel`
-- `lib/showel/assets/app.css`
+- `bin/shovel`
+- `lib/shovel/assets/app.css`
 - desktop entry
 - app icon
 
@@ -220,11 +220,11 @@ The archive contains:
 
 Download from:
 
-- [Latest Releases](https://github.com/Fynth/showel/releases/latest)
+- [Latest Releases](https://github.com/Fynth/shovel/releases/latest)
 
 Available artifacts:
 
-- `showel-windows-x86_64.exe`
+- `shovel-windows-x86_64.exe`
 - Windows `.msi` installer
 
 Notes:
@@ -255,16 +255,16 @@ cargo build -p app --release --features desktop
 
 This repo includes two AUR packaging paths:
 
-- `packaging/aur/showel-git/` for a VCS package that tracks the repository head
-- `packaging/aur/showel/PKGBUILD.in` plus `scripts/render-aur-release-package.sh` for a stable `showel` package generated from release tags
-- `packaging/aur/showel-bin/PKGBUILD.in` plus `scripts/render-aur-binary-package.sh` for a binary `showel-bin` package generated from GitHub release assets
+- `packaging/aur/shovel-git/` for a VCS package that tracks the repository head
+- `packaging/aur/shovel/PKGBUILD.in` plus `scripts/render-aur-release-package.sh` for a stable `shovel` package generated from release tags
+- `packaging/aur/shovel-bin/PKGBUILD.in` plus `scripts/render-aur-binary-package.sh` for a binary `shovel-bin` package generated from GitHub release assets
 
 Once the packages are published to AUR, install with:
 
 ```bash
-yay -S showel
-yay -S showel-bin
-yay -S showel-git
+yay -S shovel
+yay -S shovel-bin
+yay -S shovel-git
 ```
 
 Update with:
@@ -275,7 +275,7 @@ yay -Syu
 
 ### Automatic AUR updates on each release
 
-The workflow `.github/workflows/aur-publish.yml` pushes fresh `PKGBUILD` and `.SRCINFO` metadata to the AUR repositories `showel.git` and `showel-bin.git` every time a GitHub release is published.
+The workflow `.github/workflows/aur-publish.yml` pushes fresh `PKGBUILD` and `.SRCINFO` metadata to the AUR repositories `shovel.git` and `shovel-bin.git` every time a GitHub release is published.
 
 One-time setup:
 
@@ -289,10 +289,10 @@ After that, each new published release updates the AUR package automatically.
 
 Notes:
 
-- `showel` is the stable source package built from the tagged source tarball
-- `showel-bin` installs the prebuilt Linux release artifact and is the fastest option on AUR
-- `showel-git` is still useful if you want AUR users to track the latest commit instead of tagged releases
-- `.github/workflows/aur-check.yml` verifies the tracked `showel-git` metadata and smoke-tests the generated stable and binary package metadata
+- `shovel` is the stable source package built from the tagged source tarball
+- `shovel-bin` installs the prebuilt Linux release artifact and is the fastest option on AUR
+- `shovel-git` is still useful if you want AUR users to track the latest commit instead of tagged releases
+- `.github/workflows/aur-check.yml` verifies the tracked `shovel-git` metadata and smoke-tests the generated stable and binary package metadata
 
 ## Windows CI
 
@@ -325,7 +325,7 @@ This repo now includes Debian packaging and a GitHub Pages-backed APT repository
 - `scripts/build-deb-package.sh`
 - `scripts/build-apt-repo.sh`
 
-The workflow builds a `showel` package and publishes an `amd64` APT repository under:
+The workflow builds a `shovel` package and publishes an `amd64` APT repository under:
 
 ```bash
 https://<owner>.github.io/<repo>/apt
@@ -334,9 +334,9 @@ https://<owner>.github.io/<repo>/apt
 To install from the published repository:
 
 ```bash
-echo "deb [arch=amd64 trusted=yes] https://<owner>.github.io/<repo>/apt stable main" | sudo tee /etc/apt/sources.list.d/showel.list
+echo "deb [arch=amd64 trusted=yes] https://<owner>.github.io/<repo>/apt stable main" | sudo tee /etc/apt/sources.list.d/shovel.list
 sudo apt update
-sudo apt install showel
+sudo apt install shovel
 ```
 
 Notes:
@@ -350,14 +350,14 @@ Notes:
 This repo also includes a Flatpak release workflow:
 
 - `.github/workflows/flatpak.yml`
-- `packaging/flatpak/dev.showel.app.yml`
+- `packaging/flatpak/dev.shovel.app.yml`
 - `scripts/build-flatpak-bundle.sh`
 
-Each `v*` release publishes a `showel-linux-x86_64.flatpak` bundle to GitHub Releases.
+Each `v*` release publishes a `shovel-linux-x86_64.flatpak` bundle to GitHub Releases.
 
 ## Project Layout
 
-Showel is organized as a Rust workspace with focused crates instead of one large application crate.
+Shovel is organized as a Rust workspace with focused crates instead of one large application crate.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -382,7 +382,7 @@ Showel is organized as a Rust workspace with focused crates instead of one large
 
 ## Current Status
 
-Showel is actively evolving.
+Shovel is actively evolving.
 
 Today it is already useful for:
 

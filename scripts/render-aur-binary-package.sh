@@ -14,14 +14,14 @@ output_dir="$4"
 source_sha="${5:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
-template="${project_root}/packaging/aur/showel-bin/PKGBUILD.in"
+template="${project_root}/packaging/aur/shovel-bin/PKGBUILD.in"
 pkgrel="$("${script_dir}/resolve-pkgrel.sh" "${version}" aur-bin)"
 tag_name="$("${script_dir}/resolve-release-tag.sh" "${version}")"
-wait_seconds="${SHOWEL_BINARY_ASSET_WAIT_SECONDS:-900}"
-wait_interval="${SHOWEL_BINARY_ASSET_WAIT_INTERVAL:-15}"
+wait_seconds="${SHOVEL_BINARY_ASSET_WAIT_SECONDS:-900}"
+wait_interval="${SHOVEL_BINARY_ASSET_WAIT_INTERVAL:-15}"
 
 if [[ -z "${source_sha}" ]]; then
-  source_url="https://github.com/${owner}/${repo}/releases/download/${tag_name}/showel-linux-x86_64.tar.gz"
+  source_url="https://github.com/${owner}/${repo}/releases/download/${tag_name}/shovel-linux-x86_64.tar.gz"
   archive_file="$(mktemp)"
   trap 'rm -f "${archive_file}"' EXIT
 

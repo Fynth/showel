@@ -9,7 +9,7 @@ on:
       - '.github/workflows/aur-publish.yml'
       - '.github/workflows/aur-publish-bin.yml'
       - 'packaging/aur/**'
-      - 'packaging/arch/showel.desktop'
+      - 'packaging/arch/shovel.desktop'
       - 'scripts/publish-aur-package.sh'
       - 'scripts/resolve-release-tag.sh'
       - 'scripts/resolve-pkgrel.sh'
@@ -23,7 +23,7 @@ on:
       - '.github/workflows/aur-publish.yml'
       - '.github/workflows/aur-publish-bin.yml'
       - 'packaging/aur/**'
-      - 'packaging/arch/showel.desktop'
+      - 'packaging/arch/shovel.desktop'
       - 'scripts/publish-aur-package.sh'
       - 'scripts/resolve-release-tag.sh'
       - 'scripts/resolve-pkgrel.sh'
@@ -65,10 +65,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          temp_dir="${RUNNER_TEMP}/aur-check-showel-git"
+          temp_dir="${RUNNER_TEMP}/aur-check-shovel-git"
           rm -rf "${temp_dir}"
           install -d -m 755 "${temp_dir}"
-          cp "${GITHUB_WORKSPACE}/packaging/aur/showel-git/PKGBUILD" "${temp_dir}/PKGBUILD"
+          cp "${GITHUB_WORKSPACE}/packaging/aur/shovel-git/PKGBUILD" "${temp_dir}/PKGBUILD"
           chown -R builder:builder "${temp_dir}"
           su builder -c "cd '${GITHUB_WORKSPACE}' && bash ./scripts/update-aur-srcinfo.sh '${temp_dir}'"
 
@@ -77,15 +77,15 @@ jobs:
         run: |
           set -euo pipefail
           diff -u \
-            "${GITHUB_WORKSPACE}/packaging/aur/showel-git/.SRCINFO" \
-            "${RUNNER_TEMP}/aur-check-showel-git/.SRCINFO"
+            "${GITHUB_WORKSPACE}/packaging/aur/shovel-git/.SRCINFO" \
+            "${RUNNER_TEMP}/aur-check-shovel-git/.SRCINFO"
 
       - name: Render stable AUR package metadata
         shell: bash
         run: |
           set -euo pipefail
           dummy_sha="$(printf '0%.0s' {1..64})"
-          output_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel"
+          output_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-shovel"
           su builder -c "cd '${GITHUB_WORKSPACE}' && ./scripts/render-aur-release-package.sh '0.0.0' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${output_dir}' '${dummy_sha}' && bash ./scripts/update-aur-srcinfo.sh '${output_dir}'"
 
           test -s "${output_dir}/PKGBUILD"
@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           dummy_sha="$(printf 'f%.0s' {1..64})"
-          output_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin"
+          output_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-shovel-bin"
           su builder -c "cd '${GITHUB_WORKSPACE}' && ./scripts/render-aur-binary-package.sh '0.0.0' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${output_dir}' '${dummy_sha}' && bash ./scripts/update-aur-srcinfo.sh '${output_dir}'"
 
           test -s "${output_dir}/PKGBUILD"

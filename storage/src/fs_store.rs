@@ -5,7 +5,7 @@ use tokio::fs;
 fn storage_root() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-        .join("showel")
+        .join("shovel")
 }
 
 pub(crate) fn acp_workspace_root() -> PathBuf {
@@ -21,7 +21,7 @@ pub(crate) fn saved_connections_path() -> PathBuf {
 }
 
 pub(crate) fn chat_db_path() -> PathBuf {
-    storage_root().join("showel.db")
+    storage_root().join("shovel.db")
 }
 
 pub(crate) fn query_history_path() -> PathBuf {

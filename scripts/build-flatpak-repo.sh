@@ -12,7 +12,7 @@ repo_dir="$2"
 repo_url="$3"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
-app_id="dev.showel.app"
+app_id="dev.shovel.app"
 manifest_rel="packaging/flatpak/${app_id}.yml"
 build_root="$(mktemp -d)"
 source_root="${build_root}/src"
@@ -44,16 +44,16 @@ flatpak-builder \
 
 flatpak build-update-repo \
   --generate-static-deltas \
-  --title="Showel Flatpak Repository" \
+  --title="Shovel Flatpak Repository" \
   "${repo_dir}"
 
-cat > "${repo_dir}/showel.flatpakrepo" <<EOF
+cat > "${repo_dir}/shovel.flatpakrepo" <<EOF
 [Flatpak Repo]
-Title=Showel Flatpak Repository
-Comment=Flatpak repository for Showel ${version}
+Title=Shovel Flatpak Repository
+Comment=Flatpak repository for Shovel ${version}
 Url=${repo_url}
-Homepage=https://github.com/Fynth/showel
-Icon=https://raw.githubusercontent.com/Fynth/showel/refs/heads/main/app/assets/icon.png
+Homepage=https://github.com/Fynth/shovel
+Icon=https://raw.githubusercontent.com/Fynth/shovel/refs/heads/main/app/assets/icon.png
 DefaultBranch=stable
 GPGVerify=false
 EOF
@@ -63,13 +63,13 @@ cat > "${repo_dir}/index.html" <<EOF
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Showel Flatpak Repository</title>
+  <title>Shovel Flatpak Repository</title>
 </head>
 <body>
-  <h1>Showel Flatpak Repository</h1>
+  <h1>Shovel Flatpak Repository</h1>
   <p>Add the repository:</p>
-  <pre><code>flatpak remote-add --user --if-not-exists showel-flatpak ${repo_url}/showel.flatpakrepo
-flatpak install --user showel-flatpak ${app_id}</code></pre>
+  <pre><code>flatpak remote-add --user --if-not-exists shovel-flatpak ${repo_url}/shovel.flatpakrepo
+flatpak install --user shovel-flatpak ${app_id}</code></pre>
 </body>
 </html>
 EOF

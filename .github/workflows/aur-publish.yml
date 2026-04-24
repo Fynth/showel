@@ -63,8 +63,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stable_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel"
-          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOWEL_TAG_OVERRIDE='${{ steps.meta.outputs.tag_name }}' ./scripts/render-aur-release-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${stable_dir}' && bash ./scripts/update-aur-srcinfo.sh '${stable_dir}'"
+          stable_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-shovel"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOVEL_TAG_OVERRIDE='${{ steps.meta.outputs.tag_name }}' ./scripts/render-aur-release-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${stable_dir}' && bash ./scripts/update-aur-srcinfo.sh '${stable_dir}'"
 
       - name: Configure SSH for AUR
         env:
@@ -91,8 +91,8 @@ jobs:
       - name: Push source package to AUR
         env:
           VERSION: ${{ steps.meta.outputs.version }}
-          SHOWEL_SSH_RETRY_ATTEMPTS: 5
-          SHOWEL_SSH_RETRY_DELAY_SECONDS: 8
+          SHOVEL_SSH_RETRY_ATTEMPTS: 5
+          SHOVEL_SSH_RETRY_DELAY_SECONDS: 8
         shell: bash
         run: |
           set -euo pipefail
@@ -100,6 +100,6 @@ jobs:
           ssh_dir="${RUNNER_TEMP}/aur-ssh"
           export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
           ./scripts/publish-aur-package.sh \
-            "showel" \
-            "${GITHUB_WORKSPACE}/packaging/aur/generated-showel" \
+            "shovel" \
+            "${GITHUB_WORKSPACE}/packaging/aur/generated-shovel" \
             "${VERSION}"

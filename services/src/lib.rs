@@ -1,4 +1,4 @@
-// Services facade — unified API for Showel operations.
+// Services facade — unified API for Shovel operations.
 //
 // This crate re-exports the public APIs from individual service crates
 // to provide a single dependency point. Other crates (especially `ui`)

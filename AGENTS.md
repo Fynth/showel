@@ -1,4 +1,4 @@
-This repository is Showel: a native desktop database client built as a Rust workspace with Dioxus Desktop 0.7.3.
+This repository is Shovel: a native desktop database client built as a Rust workspace with Dioxus Desktop 0.7.3.
 
 Use this file as the repo-specific operating manual. Prefer it over generic framework advice.
 
@@ -12,7 +12,7 @@ Use this file as the repo-specific operating manual. Prefer it over generic fram
 
 ## Product summary
 
-Showel is a desktop DB client with:
+Shovel is a desktop DB client with:
 
 - SQLite, PostgreSQL, MySQL, and ClickHouse connections
 - schema explorer, table previews, query execution, exports, and row editing
@@ -49,10 +49,10 @@ The root `Cargo.toml` defines a multi-crate workspace. The important crates are:
 
 - `app/src/main.rs` is the real entrypoint.
 - Normal startup installs a panic hook, configures the Dioxus desktop window, injects `app.css`, and launches `ui::App`.
-- Panic handling writes crash logs under the OS temp dir in `showel/crash-<timestamp>.log` and shows a native error dialog.
-- On Unix desktop builds the app sets `app_id = "dev.showel.app"`.
+- Panic handling writes crash logs under the OS temp dir in `shovel/crash-<timestamp>.log` and shows a native error dialog.
+- On Unix desktop builds the app sets `app_id = "dev.shovel.app"`.
 - The binary also supports an embedded ACP mode:
-  - `showel acp-agent ollama --model ...`
+  - `shovel acp-agent ollama --model ...`
   - this bypasses UI launch and runs the embedded ACP agent instead
 
 ## UI architecture
@@ -115,7 +115,7 @@ When adding a new persisted UI toggle, update all of these together:
 
 Local app data lives under:
 
-- `dirs::data_local_dir()/showel`
+- `dirs::data_local_dir()/shovel`
 
 Current storage files include:
 
@@ -125,13 +125,13 @@ Current storage files include:
 - `query_history.json`
 - `sql_format_settings.json`
 - `app_ui_settings.json`
-- `showel.db`
+- `shovel.db`
 - `acp/workspace/...`
 
 Storage behavior that matters:
 
 - Saved connection metadata is serialized without passwords.
-- Passwords are stored via `keyring` service `showel.connections`.
+- Passwords are stored via `keyring` service `shovel.connections`.
 - Secret entries use a hashed key derived from `request.identity_key()`.
 - Legacy secret lookup by display name is still supported and migrated forward to the identity-key form.
 - Session state persists open connection requests plus the active connection key.
@@ -221,7 +221,7 @@ Important Pages rule:
 Flatpak repo publishing:
 
 - `scripts/build-flatpak-repo.sh` builds a static Flatpak repo for Pages.
-- It archives the current git tree, runs `cargo vendor`, builds the Flatpak repo, generates static deltas, and writes `showel.flatpakrepo` plus a simple `index.html`.
+- It archives the current git tree, runs `cargo vendor`, builds the Flatpak repo, generates static deltas, and writes `shovel.flatpakrepo` plus a simple `index.html`.
 
 ## Build and test commands
 

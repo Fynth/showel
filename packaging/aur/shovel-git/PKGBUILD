@@ -1,9 +1,9 @@
-pkgname=showel-git
+pkgname=shovel-git
 pkgver=0.1.0.r0.g0000000
 pkgrel=2
 pkgdesc="Fast native desktop database client built with Rust and Dioxus"
 arch=('x86_64')
-url="https://github.com/Fynth/showel"
+url="https://github.com/Fynth/shovel"
 license=('unknown')
 depends=(
   'gtk3'
@@ -15,16 +15,16 @@ makedepends=(
   'pkgconf'
   'rust'
 )
-provides=('showel')
-conflicts=('showel')
+provides=('shovel')
+conflicts=('shovel')
 options=('!debug' '!lto')
 source=(
-  "showel::git+${url}.git"
+  "shovel::git+${url}.git"
 )
 sha256sums=('SKIP')
 
 pkgver() {
-  cd "${srcdir}/showel"
+  cd "${srcdir}/shovel"
 
   local base_ver
   local commit_count
@@ -38,7 +38,7 @@ pkgver() {
 }
 
 build() {
-  cd "${srcdir}/showel"
+  cd "${srcdir}/shovel"
 
   export CARGO_HOME="${srcdir}/cargo-home"
   export CARGO_TARGET_DIR="${srcdir}/target"
@@ -47,11 +47,11 @@ build() {
 }
 
 package() {
-  cd "${srcdir}/showel"
+  cd "${srcdir}/shovel"
 
-  install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/showel"
-  install -Dm644 "app/assets/app.css" "${pkgdir}/usr/lib/showel/assets/app.css"
-  install -Dm644 "packaging/arch/showel.desktop" "${pkgdir}/usr/share/applications/showel.desktop"
-  install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/showel.svg"
-  install -Dm644 "README.md" "${pkgdir}/usr/share/doc/showel/README.md"
+  install -Dm755 "${srcdir}/target/release/app" "${pkgdir}/usr/bin/shovel"
+  install -Dm644 "app/assets/app.css" "${pkgdir}/usr/lib/shovel/assets/app.css"
+  install -Dm644 "packaging/arch/shovel.desktop" "${pkgdir}/usr/share/applications/shovel.desktop"
+  install -Dm644 "app/assets/icon.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/shovel.svg"
+  install -Dm644 "README.md" "${pkgdir}/usr/share/doc/shovel/README.md"
 }

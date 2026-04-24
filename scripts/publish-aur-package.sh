@@ -13,8 +13,8 @@ version="$3"
 aur_repo="${RUNNER_TEMP:-/tmp}/aur-${package_name}"
 
 with_retry() {
-  local attempts="${SHOWEL_SSH_RETRY_ATTEMPTS:-5}"
-  local delay_seconds="${SHOWEL_SSH_RETRY_DELAY_SECONDS:-5}"
+  local attempts="${SHOVEL_SSH_RETRY_ATTEMPTS:-5}"
+  local delay_seconds="${SHOVEL_SSH_RETRY_DELAY_SECONDS:-5}"
   local attempt=1
   local exit_code=0
 

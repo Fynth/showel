@@ -1,4 +1,8 @@
 use dioxus::prelude::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
+static SELECTION_SYNC_REQUEST_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EditorSelection {
@@ -119,29 +123,53 @@ pub fn apply_suggestion(
     (next_sql, range.start + replacement.len())
 }
 
-pub fn sync_editor_selection(
-    mut editor_selection: Signal<EditorSelection>,
+pub fn sync_editor_selection(editor_selection: Signal<EditorSelection>, editor_id: &'static str) {
+    sync_editor_selection_with_delay(editor_selection, editor_id, 0);
+}
+
+pub fn sync_editor_selection_debounced(
+    editor_selection: Signal<EditorSelection>,
     editor_id: &'static str,
 ) {
+    sync_editor_selection_with_delay(editor_selection, editor_id, 16);
+}
+
+fn sync_editor_selection_with_delay(
+    mut editor_selection: Signal<EditorSelection>,
+    editor_id: &'static str,
+    delay_ms: u64,
+) {
+    let request_id = SELECTION_SYNC_REQUEST_ID.fetch_add(1, Ordering::SeqCst) + 1;
     spawn(async move {
-        let Ok((start, end)) = document::eval(&selection_query_script(editor_id))
-            .join::<(usize, usize)>()
-            .await
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            if SELECTION_SYNC_REQUEST_ID.load(Ordering::SeqCst) != request_id {
+                return;
+            }
+        }
+
+        let Ok((_value, start, end)) =
+            document::eval(&editor_value_and_selection_query_script(editor_id))
+                .join::<(String, usize, usize)>()
+                .await
         else {
             return;
         };
+        if SELECTION_SYNC_REQUEST_ID.load(Ordering::SeqCst) != request_id {
+            return;
+        }
 
         editor_selection.set(EditorSelection { start, end });
     });
 }
 
-fn selection_query_script(editor_id: &str) -> String {
+pub fn editor_value_and_selection_query_script(editor_id: &str) -> String {
     format!(
         r#"
         (() => {{
             const editor = document.getElementById({editor_id:?});
             if (!editor) {{
-                return [0, 0];
+                return ["", 0, 0];
             }}
             const toByteIndex = (value, utf16Offset) =>
                 new TextEncoder().encode(value.slice(0, utf16Offset)).length;
@@ -149,6 +177,7 @@ fn selection_query_script(editor_id: &str) -> String {
             const start = editor.selectionStart ?? value.length ?? 0;
             const end = editor.selectionEnd ?? start;
             return [
+                value,
                 toByteIndex(value, start),
                 toByteIndex(value, end)
             ];
@@ -180,6 +209,48 @@ pub fn set_editor_selection_script(editor_id: &str, position: usize) -> String {
             }}
             editor.focus();
             editor.setSelectionRange(utf16Position, utf16Position);
+            return true;
+        }})()
+        "#
+    )
+}
+
+#[allow(dead_code)]
+pub fn set_editor_value_script(
+    editor_id: &str,
+    value: &str,
+    position: usize,
+    focus: bool,
+) -> String {
+    let value = serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        r#"
+        (() => {{
+            const editor = document.getElementById({editor_id:?});
+            if (!editor) {{
+                return false;
+            }}
+            const nextValue = {value};
+            const encoder = new TextEncoder();
+            if (editor.value !== nextValue) {{
+                editor.value = nextValue;
+            }}
+            let utf16Position = 0;
+            let byteOffset = 0;
+            for (const ch of nextValue) {{
+                const nextByteOffset = byteOffset + encoder.encode(ch).length;
+                if (nextByteOffset > {position}) {{
+                    break;
+                }}
+                byteOffset = nextByteOffset;
+                utf16Position += ch.length;
+            }}
+            if ({focus} || document.activeElement === editor) {{
+                if ({focus}) {{
+                    editor.focus();
+                }}
+                editor.setSelectionRange(utf16Position, utf16Position);
+            }}
             return true;
         }})()
         "#

@@ -101,16 +101,16 @@ jobs:
           set -euo pipefail
           mkdir -p pacman-repo/arch/x86_64
           cp packaging/arch/generated/*.pkg.tar.* pacman-repo/arch/x86_64/
-          ./scripts/build-pacman-repo.sh pacman-repo/arch/x86_64 showel
+          ./scripts/build-pacman-repo.sh pacman-repo/arch/x86_64 shovel
           cat <<'EOF' > pacman-repo/index.html
           <!doctype html>
           <html lang="en">
           <head>
             <meta charset="utf-8">
-            <title>Showel Arch Repository</title>
+            <title>Shovel Arch Repository</title>
           </head>
           <body>
-            <h1>Showel Arch Repository</h1>
+            <h1>Shovel Arch Repository</h1>
             <p>Repository URL: <code>https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/arch/$arch</code></p>
           </body>
           </html>
@@ -119,7 +119,7 @@ jobs:
       - name: Upload Arch package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: showel-arch-package
+          name: shovel-arch-package
           path: packaging/arch/generated/*.pkg.tar.*
           if-no-files-found: error
           retention-days: 30

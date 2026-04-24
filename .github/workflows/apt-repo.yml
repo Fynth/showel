@@ -79,8 +79,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p apt-site/apt/pool/main/s/showel
-          cp packaging/deb/generated/*.deb apt-site/apt/pool/main/s/showel/
+          mkdir -p apt-site/apt/pool/main/s/shovel
+          cp packaging/deb/generated/*.deb apt-site/apt/pool/main/s/shovel/
           scripts/build-apt-repo.sh \
             apt-site/apt \
             "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/apt"
@@ -88,7 +88,7 @@ jobs:
       - name: Upload Debian package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: showel-deb-package
+          name: shovel-deb-package
           path: packaging/deb/generated/*.deb
           if-no-files-found: error
           retention-days: 30

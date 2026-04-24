@@ -5,7 +5,7 @@ use models::{
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) fn default_acp_panel_state() -> AcpPanelState {
-    let cwd = std::env::var("SHOWEL_ACP_CWD")
+    let cwd = std::env::var("SHOVEL_ACP_CWD")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or_else(|| {
@@ -22,14 +22,14 @@ pub(crate) fn default_acp_panel_state() -> AcpPanelState {
 
     AcpPanelState::new(
         AcpLaunchRequest {
-            command: std::env::var("SHOWEL_ACP_COMMAND").unwrap_or_default(),
-            args: std::env::var("SHOWEL_ACP_ARGS").unwrap_or_default(),
+            command: std::env::var("SHOVEL_ACP_COMMAND").unwrap_or_default(),
+            args: std::env::var("SHOVEL_ACP_ARGS").unwrap_or_default(),
             cwd,
         },
         AcpOllamaConfig {
-            base_url: std::env::var("SHOWEL_OLLAMA_BASE_URL")
+            base_url: std::env::var("SHOVEL_OLLAMA_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:11434/api".to_string()),
-            model: std::env::var("SHOWEL_OLLAMA_MODEL").unwrap_or_default(),
+            model: std::env::var("SHOVEL_OLLAMA_MODEL").unwrap_or_default(),
             api_key: std::env::var("OLLAMA_API_KEY").unwrap_or_default(),
         },
     )

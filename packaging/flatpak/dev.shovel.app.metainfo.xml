@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>dev.showel.app</id>
-  <name>Showel</name>
+  <id>dev.shovel.app</id>
+  <name>Shovel</name>
   <summary>Fast native desktop database client</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
-  <developer_name>Showel</developer_name>
-  <launchable type="desktop-id">dev.showel.app.desktop</launchable>
-  <url type="homepage">https://github.com/Fynth/showel</url>
-  <url type="bugtracker">https://github.com/Fynth/showel/issues</url>
-  <url type="vcs-browser">https://github.com/Fynth/showel</url>
+  <developer_name>Shovel</developer_name>
+  <launchable type="desktop-id">dev.shovel.app.desktop</launchable>
+  <url type="homepage">https://github.com/Fynth/shovel</url>
+  <url type="bugtracker">https://github.com/Fynth/shovel/issues</url>
+  <url type="vcs-browser">https://github.com/Fynth/shovel</url>
   <description>
     <p>
-      Showel is a native desktop database client for SQLite, PostgreSQL, MySQL, and ClickHouse.
+      Shovel is a native desktop database client for SQLite, PostgreSQL, MySQL, and ClickHouse.
       It includes a schema explorer, SQL editor, result grid, connection history, and ACP-powered AI workflows.
     </p>
   </description>

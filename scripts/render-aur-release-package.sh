@@ -14,7 +14,7 @@ output_dir="$4"
 source_sha="${5:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
-template="${project_root}/packaging/aur/showel/PKGBUILD.in"
+template="${project_root}/packaging/aur/shovel/PKGBUILD.in"
 pkgrel="$("${script_dir}/resolve-pkgrel.sh" "${version}" aur-source)"
 tag_name="$("${script_dir}/resolve-release-tag.sh" "${version}")"
 

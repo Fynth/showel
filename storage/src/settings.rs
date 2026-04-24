@@ -6,7 +6,7 @@ use crate::fs_store::{
 };
 use crate::secrets::{delete_fallback_secret, load_fallback_secret, save_fallback_secret};
 
-const CODESTRAL_KEYRING_SERVICE: &str = "showel.codestral";
+const CODESTRAL_KEYRING_SERVICE: &str = "shovel.codestral";
 const CODESTRAL_KEYRING_ACCOUNT: &str = "default";
 
 pub async fn load_app_ui_settings() -> Result<AppUiSettings, String> {

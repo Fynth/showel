@@ -82,7 +82,7 @@ jobs:
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v4
         with:
-          name: showel-flatpak-bundle
+          name: shovel-flatpak-bundle
           path: packaging/flatpak/generated/*.flatpak
           if-no-files-found: error
           retention-days: 30

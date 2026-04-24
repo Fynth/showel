@@ -44,20 +44,19 @@ pub(super) fn SqlHighlightContent(
     inline_suffix: Option<String>,
 ) -> Element {
     let inline_cursor_position = inline_cursor_position.unwrap_or(sql.len()).min(sql.len());
-    let inline_enabled = inline_suffix
-        .as_ref()
-        .is_some_and(|suffix| !suffix.is_empty());
-    let highlighted_before = if inline_enabled {
-        highlight_sql(&sql[..inline_cursor_position])
-    } else {
-        highlight_sql(&sql)
-    };
-    let highlighted_after = if inline_enabled {
-        highlight_sql(&sql[inline_cursor_position..])
-    } else {
-        Vec::new()
-    };
-
+    let highlighted_before = use_memo(use_reactive(
+        (&sql, &inline_cursor_position, &inline_suffix),
+        |(sql, inline_cursor_position, inline_suffix)| {
+            if inline_suffix
+                .as_ref()
+                .is_some_and(|suffix| !suffix.is_empty())
+            {
+                highlight_sql(&sql[..inline_cursor_position])
+            } else {
+                highlight_sql(&sql)
+            }
+        },
+    ));
     rsx! {
         if sql.is_empty() && inline_suffix.is_none() {
             span {
@@ -65,7 +64,7 @@ pub(super) fn SqlHighlightContent(
                 "-- Write SQL here. Syntax highlighting is powered by tree-sitter."
             }
         } else {
-            for segment in highlighted_before {
+            for segment in highlighted_before() {
                 span {
                     class: format!("sql-editor__token {}", segment.class_name),
                     "{segment.text}"
@@ -77,12 +76,6 @@ pub(super) fn SqlHighlightContent(
                         class: "sql-editor__token sql-editor__token--inline",
                         "{suffix}"
                     }
-                }
-            }
-            for segment in highlighted_after {
-                span {
-                    class: format!("sql-editor__token {}", segment.class_name),
-                    "{segment.text}"
                 }
             }
         }

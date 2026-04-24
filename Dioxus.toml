@@ -1,11 +1,11 @@
 [application]
-name = "showel"
+name = "shovel"
 default_platform = "desktop"
 out_dir = "dist"
 sub_package = "app"
 
 [web.app]
-title = "Showel"
+title = "Shovel"
 
 [web.resource]
 style = []
@@ -16,12 +16,12 @@ script = []
 
 [bundle]
 icon = ["app/assets/icon.png", "icons/icon.ico"]
-identifier = "dev.showel.app"
-publisher = "Showel"
+identifier = "dev.shovel.app"
+publisher = "Shovel"
 category = "DeveloperTool"
 short_description = "Fast native desktop database client built with Rust and Dioxus."
 long_description = """
-Showel is a lightweight native desktop database client for SQLite, PostgreSQL, MySQL, and ClickHouse.
+Shovel is a lightweight native desktop database client for SQLite, PostgreSQL, MySQL, and ClickHouse.
 """
 resources = []
 

@@ -56,7 +56,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
-          name: showel-release-metadata
+          name: shovel-release-metadata
           path: ${{ runner.temp }}/release-metadata
 
       - name: Install AUR publish dependencies
@@ -92,13 +92,13 @@ jobs:
 
       - name: Render AUR binary package files
         env:
-          SHOWEL_BINARY_ASSET_WAIT_SECONDS: 300
-          SHOWEL_BINARY_ASSET_WAIT_INTERVAL: 10
+          SHOVEL_BINARY_ASSET_WAIT_SECONDS: 300
+          SHOVEL_BINARY_ASSET_WAIT_INTERVAL: 10
         shell: bash
         run: |
           set -euo pipefail
-          binary_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin"
-          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOWEL_TAG_OVERRIDE='${{ steps.meta.outputs.tag_name }}' SHOWEL_BINARY_ASSET_WAIT_SECONDS='${SHOWEL_BINARY_ASSET_WAIT_SECONDS}' SHOWEL_BINARY_ASSET_WAIT_INTERVAL='${SHOWEL_BINARY_ASSET_WAIT_INTERVAL}' ./scripts/render-aur-binary-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${binary_dir}' && bash ./scripts/update-aur-srcinfo.sh '${binary_dir}'"
+          binary_dir="${GITHUB_WORKSPACE}/packaging/aur/generated-shovel-bin"
+          su builder -c "cd '${GITHUB_WORKSPACE}' && SHOVEL_TAG_OVERRIDE='${{ steps.meta.outputs.tag_name }}' SHOVEL_BINARY_ASSET_WAIT_SECONDS='${SHOVEL_BINARY_ASSET_WAIT_SECONDS}' SHOVEL_BINARY_ASSET_WAIT_INTERVAL='${SHOVEL_BINARY_ASSET_WAIT_INTERVAL}' ./scripts/render-aur-binary-package.sh '${{ steps.meta.outputs.version }}' '${{ github.repository_owner }}' '${{ github.event.repository.name }}' '${binary_dir}' && bash ./scripts/update-aur-srcinfo.sh '${binary_dir}'"
 
       - name: Configure SSH for AUR
         env:
@@ -125,8 +125,8 @@ jobs:
       - name: Push binary package to AUR
         env:
           VERSION: ${{ steps.meta.outputs.version }}
-          SHOWEL_SSH_RETRY_ATTEMPTS: 5
-          SHOWEL_SSH_RETRY_DELAY_SECONDS: 8
+          SHOVEL_SSH_RETRY_ATTEMPTS: 5
+          SHOVEL_SSH_RETRY_DELAY_SECONDS: 8
         shell: bash
         run: |
           set -euo pipefail
@@ -134,6 +134,6 @@ jobs:
           ssh_dir="${RUNNER_TEMP}/aur-ssh"
           export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/aur -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
           ./scripts/publish-aur-package.sh \
-            "showel-bin" \
-            "${GITHUB_WORKSPACE}/packaging/aur/generated-showel-bin" \
+            "shovel-bin" \
+            "${GITHUB_WORKSPACE}/packaging/aur/generated-shovel-bin" \
             "${VERSION}"

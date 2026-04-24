@@ -11,8 +11,8 @@ version="$1"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 
-if [[ -n "${SHOWEL_TAG_OVERRIDE:-}" ]]; then
-  echo "${SHOWEL_TAG_OVERRIDE}"
+if [[ -n "${SHOVEL_TAG_OVERRIDE:-}" ]]; then
+  echo "${SHOVEL_TAG_OVERRIDE}"
   exit 0
 fi
 

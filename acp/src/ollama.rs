@@ -178,7 +178,7 @@ impl acp::Agent for OllamaAgent {
         let title = format!("Ollama ACP Bridge ({})", self.config.model);
         Ok(
             acp::InitializeResponse::new(acp::ProtocolVersion::V1).agent_info(
-                acp::Implementation::new("showel-ollama", env!("CARGO_PKG_VERSION")).title(title),
+                acp::Implementation::new("shovel-ollama", env!("CARGO_PKG_VERSION")).title(title),
             ),
         )
     }
@@ -496,7 +496,7 @@ pub fn build_embedded_ollama_launch(
     }
 
     let command = std::env::current_exe()
-        .map_err(|err| format!("Failed to resolve Showel executable path: {err}"))?
+        .map_err(|err| format!("Failed to resolve Shovel executable path: {err}"))?
         .display()
         .to_string();
 

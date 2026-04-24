@@ -61,7 +61,7 @@ fn launch_app() {
         target_os = "netbsd",
         target_os = "openbsd"
     ))]
-    event_loop_builder.with_app_id("dev.showel.app");
+    event_loop_builder.with_app_id("dev.shovel.app");
     let event_loop = event_loop_builder.build();
 
     LaunchBuilder::desktop()
@@ -82,7 +82,7 @@ fn launch_app() {
 
 fn main_window_builder() -> WindowBuilder {
     let window = WindowBuilder::new()
-        .with_title("Showel")
+        .with_title("Shovel")
         .with_inner_size(LogicalSize::new(1440.0, 920.0))
         .with_min_inner_size(LogicalSize::new(720.0, 480.0))
         .with_always_on_top(false)
@@ -109,7 +109,7 @@ fn env_flag(name: &str) -> bool {
 fn should_disable_wayland_dma_buf() -> bool {
     #[cfg(target_os = "linux")]
     {
-        env_flag("SHOWEL_DISABLE_WAYLAND_GPU")
+        env_flag("SHOVEL_DISABLE_WAYLAND_GPU")
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -119,10 +119,10 @@ fn should_disable_wayland_dma_buf() -> bool {
 }
 
 fn load_app_icon() -> TaoIcon {
-    let width = env!("SHOWEL_ICON_WIDTH")
+    let width = env!("SHOVEL_ICON_WIDTH")
         .parse::<u32>()
         .expect("invalid icon width");
-    let height = env!("SHOWEL_ICON_HEIGHT")
+    let height = env!("SHOVEL_ICON_HEIGHT")
         .parse::<u32>()
         .expect("invalid icon height");
 
@@ -153,7 +153,7 @@ fn install_crash_reporter() {
             None => report,
         };
 
-        show_error_dialog("Showel failed to start", &description);
+        show_error_dialog("Shovel failed to start", &description);
     }));
 }
 
@@ -172,7 +172,7 @@ fn build_panic_report(info: &PanicHookInfo<'_>) -> String {
     let backtrace = Backtrace::force_capture();
 
     format!(
-        "Showel panicked.\n\nMessage: {}\nLocation: {location}\n\nBacktrace:\n{backtrace}",
+        "Shovel panicked.\n\nMessage: {}\nLocation: {location}\n\nBacktrace:\n{backtrace}",
         panic_message(info)
     )
 }
@@ -189,7 +189,7 @@ fn panic_message(info: &PanicHookInfo<'_>) -> String {
 
 fn write_crash_report(report: &str) -> Option<PathBuf> {
     let mut log_dir = std::env::temp_dir();
-    log_dir.push("showel");
+    log_dir.push("shovel");
     fs::create_dir_all(&log_dir).ok()?;
 
     let timestamp = SystemTime::now()

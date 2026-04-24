@@ -126,9 +126,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Path release-assets -Force | Out-Null
-          Copy-Item target/release/app.exe release-assets/showel-windows-x86_64.exe
+          Copy-Item target/release/app.exe release-assets/shovel-windows-x86_64.exe
           if (Test-Path target/release/app.pdb) {
-            Copy-Item target/release/app.pdb release-assets/showel-windows-x86_64.pdb
+            Copy-Item target/release/app.pdb release-assets/shovel-windows-x86_64.pdb
           }
 
       - name: Upload MSI Artifact
@@ -159,5 +159,5 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.release_tag }}
           files: |
-            release-assets/showel-windows-x86_64.exe
-            release-assets/showel-windows-x86_64.pdb
+            release-assets/shovel-windows-x86_64.exe
+            release-assets/shovel-windows-x86_64.pdb
