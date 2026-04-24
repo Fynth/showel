@@ -143,6 +143,9 @@ pub fn update_active_tab_sql(
 ) {
     tabs.with_mut(|all_tabs| {
         if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) {
+            if tab.sql != sql {
+                tab.show_execution_plan = false;
+            }
             tab.sql = sql;
             tab.status = status.clone();
             tab.result = None;
@@ -154,6 +157,27 @@ pub fn update_active_tab_sql(
             tab.tab_kind = WorkspaceTabKind::Query;
             tab.is_loading_more = false;
             tab.pending_table_changes = PendingTableChanges::default();
+        }
+    });
+}
+
+fn sync_tab_sql_draft(tab: &mut QueryTabState, sql: &str) {
+    if tab.sql == sql {
+        return;
+    }
+
+    tab.sql = sql.to_string();
+    tab.show_execution_plan = false;
+}
+
+pub fn sync_active_tab_sql_draft(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    sql: String,
+) {
+    tabs.with_mut(|all_tabs| {
+        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) {
+            sync_tab_sql_draft(tab, &sql);
         }
     });
 }
@@ -212,6 +236,38 @@ pub fn set_active_tab_status(
     });
 }
 
+fn toggle_cached_execution_plan(tab: &mut QueryTabState, sql: &str) -> bool {
+    if tab.show_execution_plan && tab.execution_plan.is_some() {
+        tab.show_execution_plan = false;
+        return true;
+    }
+
+    let normalized_sql = sql.trim();
+    let can_reopen_cached_plan = tab.execution_plan.as_ref().is_some_and(|plan| {
+        !normalized_sql.is_empty() && plan.explained_sql.trim() == normalized_sql
+    });
+    if can_reopen_cached_plan {
+        tab.show_execution_plan = true;
+        return true;
+    }
+
+    false
+}
+
+pub fn toggle_execution_plan_for_tab(
+    mut tabs: Signal<Vec<QueryTabState>>,
+    active_tab_id: u64,
+    sql: &str,
+) -> bool {
+    let mut handled = false;
+    tabs.with_mut(|all_tabs| {
+        if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) {
+            handled = toggle_cached_execution_plan(tab, sql);
+        }
+    });
+    handled
+}
+
 pub fn replace_active_tab_sql(
     mut tabs: Signal<Vec<QueryTabState>>,
     active_tab_id: u64,
@@ -220,6 +276,9 @@ pub fn replace_active_tab_sql(
 ) {
     tabs.with_mut(|all_tabs| {
         if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == active_tab_id) {
+            if tab.sql != sql {
+                tab.show_execution_plan = false;
+            }
             tab.sql = sql;
             tab.status = status.clone();
         }
@@ -323,6 +382,7 @@ pub fn run_query_for_tab(
             tab.preview_source = None;
             tab.is_loading_more = false;
             tab.pending_table_changes = PendingTableChanges::default();
+            tab.show_execution_plan = false;
         }
     });
 
@@ -1033,7 +1093,31 @@ pub fn clear_active_tab_filter(mut tabs: Signal<Vec<QueryTabState>>, active_tab_
 mod tests {
     use super::{
         format_loaded_rows_from_source_status, format_loaded_rows_status, rows_toolbar_summary,
+        sync_tab_sql_draft, toggle_cached_execution_plan,
     };
+    use models::{ExecutionPlan, PendingTableChanges, QueryTabState, WorkspaceTabKind};
+
+    fn query_tab(sql: &str) -> QueryTabState {
+        QueryTabState {
+            id: 1,
+            session_id: 7,
+            title: "Query 1".to_string(),
+            sql: sql.to_string(),
+            status: "Ready".to_string(),
+            result: None,
+            current_offset: 0,
+            page_size: 100,
+            last_run_sql: None,
+            preview_source: None,
+            filter: None,
+            sort: None,
+            tab_kind: WorkspaceTabKind::Query,
+            is_loading_more: false,
+            pending_table_changes: PendingTableChanges::default(),
+            execution_plan: None,
+            show_execution_plan: false,
+        }
+    }
 
     #[test]
     fn formats_empty_result_status_without_invalid_range() {
@@ -1047,5 +1131,49 @@ mod tests {
     #[test]
     fn formats_empty_result_toolbar_summary_without_invalid_range() {
         assert_eq!(rows_toolbar_summary(0, 0, 100), "0 rows · page size 100");
+    }
+
+    #[test]
+    fn second_explain_click_hides_visible_execution_plan() {
+        let mut tab = query_tab("select 1");
+        tab.execution_plan = Some(ExecutionPlan::new("select 1"));
+        tab.show_execution_plan = true;
+
+        assert!(toggle_cached_execution_plan(&mut tab, "select 1"));
+        assert!(!tab.show_execution_plan);
+    }
+
+    #[test]
+    fn explain_click_reopens_cached_plan_for_same_sql() {
+        let mut tab = query_tab("select 1");
+        tab.execution_plan = Some(ExecutionPlan::new("select 1"));
+        tab.show_execution_plan = false;
+
+        assert!(toggle_cached_execution_plan(&mut tab, "select 1"));
+        assert!(tab.show_execution_plan);
+    }
+
+    #[test]
+    fn explain_click_does_not_reopen_cached_plan_for_different_sql() {
+        let mut tab = query_tab("select 1");
+        tab.execution_plan = Some(ExecutionPlan::new("select 1"));
+        tab.show_execution_plan = false;
+
+        assert!(!toggle_cached_execution_plan(&mut tab, "select 2"));
+        assert!(!tab.show_execution_plan);
+    }
+
+    #[test]
+    fn syncing_editor_draft_updates_sql_and_hides_plan_without_resetting_result_state() {
+        let mut tab = query_tab("select 1");
+        tab.execution_plan = Some(ExecutionPlan::new("select 1"));
+        tab.show_execution_plan = true;
+        tab.status = "Loaded 1 rows".to_string();
+
+        sync_tab_sql_draft(&mut tab, "select 2");
+
+        assert_eq!(tab.sql, "select 2");
+        assert!(!tab.show_execution_plan);
+        assert_eq!(tab.status, "Loaded 1 rows");
     }
 }

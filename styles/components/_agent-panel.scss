@@ -44,10 +44,13 @@
 .agent-panel__header-copy {
   grid-column: 2;
   min-width: 0;
+  width: min(100%, 240px);
+  max-width: 100%;
   flex-direction: column;
   align-items: center;
   gap: $spacing-2xs;
   text-align: center;
+  overflow: hidden;
 }
 
 .agent-panel__header-actions {
@@ -174,16 +177,31 @@
 }
 
 .agent-panel__title {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
   font-size: $font-size-lg;
   font-weight: 600;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-panel__meta,
 .agent-panel__hint {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
   color: var(--color-text-muted);
   font-size: $font-size-sm;
   line-height: 1.45;
+}
+
+.agent-panel__meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-panel__badge {
@@ -232,34 +250,38 @@
 }
 
 .agent-panel__mode-switch {
-  width: min(100%, 430px);
+  width: fit-content;
+  max-width: 100%;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: $spacing-sm;
+  grid-template-columns: repeat(2, minmax(124px, 138px));
+  gap: $spacing-xs;
   justify-content: center;
 }
 
 .agent-panel__mode-button {
+  width: 100%;
   height: auto;
-  min-height: 62px;
-  padding: $spacing-sm;
+  min-height: 44px;
+  padding: 2px $spacing-sm;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
   text-align: center;
 }
 
 .agent-panel__mode-name {
   font-weight: 600;
+  line-height: 1;
 }
 
 .agent-panel__mode-kind {
   color: var(--color-text-muted);
-  font-size: $font-size-xs;
+  font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  line-height: 1;
 }
 
 .agent-panel__section,

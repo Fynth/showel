@@ -148,6 +148,17 @@ fn parse_sqlite_detail(detail: &str) -> ExecutionPlanNode {
     let upper = detail.to_ascii_uppercase();
 
     if upper.starts_with("SCAN ") {
+        let source = detail["SCAN ".len()..].trim();
+        if is_sqlite_values_clause_scan(&upper) {
+            let mut node = ExecutionPlanNode::new("Constant Rows")
+                .with_detail("source", "VALUES clause")
+                .with_raw_text(detail);
+            if let Some(rows) = parse_sqlite_constant_row_count(source) {
+                node = node.with_rows(rows);
+            }
+            return node;
+        }
+
         let table = detail["SCAN ".len()..].trim();
         let table_name = extract_first_identifier(table);
         return ExecutionPlanNode::new("Scan")
@@ -202,6 +213,22 @@ fn parse_sqlite_detail(detail: &str) -> ExecutionPlanNode {
 /// Extract the first whitespace-delimited identifier from a string.
 fn extract_first_identifier(s: &str) -> Option<&str> {
     s.split_whitespace().next().filter(|word| !word.is_empty())
+}
+
+fn parse_sqlite_constant_row_count(source: &str) -> Option<u64> {
+    let token = source.split_whitespace().next()?;
+    let digits = token
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    digits.parse::<u64>().ok()
+}
+
+fn is_sqlite_values_clause_scan(upper: &str) -> bool {
+    upper.ends_with(" VALUES CLAUSE")
+        || upper.ends_with(" CONSTANT")
+        || upper.ends_with(" CONSTANT ROW")
+        || upper.ends_with(" CONSTANT ROWS")
 }
 
 // ---------------------------------------------------------------------------
@@ -892,6 +919,15 @@ mod tests {
     fn sqlite_detail_parsing() {
         let node = parse_sqlite_detail("SCAN users");
         assert_eq!(node.operation, "Scan");
+
+        let node = parse_sqlite_detail("SCAN 3-ROW VALUES CLAUSE");
+        assert_eq!(node.operation, "Constant Rows");
+        assert_eq!(node.estimated_rows, Some(3));
+        assert!(
+            node.details
+                .iter()
+                .any(|(k, v)| k == "source" && v == "VALUES clause")
+        );
 
         let node = parse_sqlite_detail("SEARCH posts USING INDEX idx_user (user_id=?)");
         assert_eq!(node.operation, "Search");

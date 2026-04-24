@@ -1,12 +1,10 @@
+use super::components::{ExplorerConnectionSection, replace_messages};
+use crate::app_state::APP_UI_SETTINGS;
 use dioxus::prelude::*;
 use models::{
     AcpPanelState, AcpUiMessage, ChatThreadSummary, WorkspaceToolDock, WorkspaceToolLayout,
     WorkspaceToolPanel,
 };
-use std::path::Path;
-
-use super::components::{ExplorerConnectionSection, replace_messages};
-use crate::app_state::APP_UI_SETTINGS;
 
 pub const SIDEBAR_MIN_WIDTH: f64 = 240.0;
 pub const SIDEBAR_MAX_WIDTH: f64 = 560.0;
@@ -291,21 +289,6 @@ fn compact_chat_title(text: &str, max_chars: usize) -> String {
     }
 }
 
-pub fn launch_uses_opencode(state: &AcpPanelState) -> bool {
-    let command = state.launch.command.trim();
-    if command.is_empty() {
-        return true;
-    }
-
-    Path::new(command)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(|value| {
-            value.eq_ignore_ascii_case("opencode") || value.eq_ignore_ascii_case("opencode.exe")
-        })
-        .unwrap_or(false)
-}
-
 pub fn derive_chat_thread_title(
     current_title: Option<&str>,
     messages: &[AcpUiMessage],
@@ -378,7 +361,7 @@ pub fn tool_panel_class(panel: WorkspaceToolPanel) -> &'static str {
 mod tests {
     use super::{
         derive_chat_thread_title, format_explorer_error, is_low_signal_explorer_status,
-        launch_uses_opencode, reset_panel_for_thread, should_render_explorer_status,
+        reset_panel_for_thread, should_render_explorer_status,
     };
     use models::{AcpLaunchRequest, AcpOllamaConfig, AcpPanelState, AcpUiMessage};
 
@@ -407,42 +390,6 @@ mod tests {
 
         reset_panel_for_thread(&mut state, "New chat · SQLite", Vec::<AcpUiMessage>::new());
         assert_eq!(state.status, "Connect an agent to continue.");
-    }
-
-    #[test]
-    fn empty_launch_defaults_to_opencode_autostart() {
-        let state = AcpPanelState::new(
-            AcpLaunchRequest {
-                command: String::new(),
-                args: String::new(),
-                cwd: ".".to_string(),
-            },
-            AcpOllamaConfig {
-                base_url: String::new(),
-                model: String::new(),
-                api_key: String::new(),
-            },
-        );
-
-        assert!(launch_uses_opencode(&state));
-    }
-
-    #[test]
-    fn custom_launch_does_not_autostart_opencode() {
-        let state = AcpPanelState::new(
-            AcpLaunchRequest {
-                command: "/usr/bin/custom-acp".to_string(),
-                args: String::new(),
-                cwd: ".".to_string(),
-            },
-            AcpOllamaConfig {
-                base_url: String::new(),
-                model: String::new(),
-                api_key: String::new(),
-            },
-        );
-
-        assert!(!launch_uses_opencode(&state));
     }
 
     #[test]

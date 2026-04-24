@@ -91,7 +91,16 @@ fn ExplorerToolPanel(
             class: "workspace__panel",
             div {
                 class: "workspace__panel-header",
-                h2 { class: "workspace__section-title", "Explorer" }
+                div {
+                    class: "workspace__panel-header-row",
+                    h2 { class: "workspace__section-title", "Explorer" }
+                    IconButton {
+                        icon: ActionIcon::Refresh,
+                        label: "Refresh connections".to_string(),
+                        small: true,
+                        onclick: move |_| tree_reload += 1,
+                    }
+                }
                 if should_render_explorer_status(&tree_status()) {
                     p { class: "workspace__hint", "{tree_status()}" }
                 }
@@ -762,7 +771,6 @@ pub fn Workspace() -> Element {
         chat_threads,
         active_chat_thread_id,
         chat_revision,
-        chat_threads_loaded,
         history,
         next_history_id,
         saved_queries,
@@ -781,7 +789,6 @@ pub fn Workspace() -> Element {
         chat_threads,
         active_chat_thread_id,
         chat_revision,
-        chat_threads_loaded,
         tabs,
         active_tab_id,
         connection_label: connection_label.clone(),

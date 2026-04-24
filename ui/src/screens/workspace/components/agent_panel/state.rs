@@ -188,6 +188,10 @@ pub(crate) fn push_message_with_artifact(
 }
 
 pub(crate) fn replace_messages(state: &mut AcpPanelState, messages: Vec<AcpUiMessage>) {
+    let messages = messages
+        .into_iter()
+        .filter(|message| !matches!(message.kind, AcpMessageKind::Thought))
+        .collect::<Vec<_>>();
     state.next_message_id = next_message_id(&messages);
     state.messages = messages;
 }
@@ -235,8 +239,10 @@ fn unix_timestamp() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_acp_events, prompt_finished_status};
-    use models::{AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpOllamaConfig, AcpPanelState};
+    use super::{apply_acp_events, prompt_finished_status, replace_messages};
+    use models::{
+        AcpEvent, AcpLaunchRequest, AcpMessageKind, AcpOllamaConfig, AcpPanelState, AcpUiMessage,
+    };
 
     fn test_state() -> AcpPanelState {
         AcpPanelState::new(
@@ -296,5 +302,33 @@ mod tests {
         assert!(state.messages.is_empty());
         assert!(!state.suppress_transcript);
         assert!(state.hidden_agent_response.is_empty());
+    }
+
+    #[test]
+    fn replace_messages_drops_stale_working_entries() {
+        let mut state = test_state();
+
+        replace_messages(
+            &mut state,
+            vec![
+                AcpUiMessage {
+                    id: 1,
+                    kind: AcpMessageKind::Thought,
+                    text: String::new(),
+                    created_at: 1,
+                    artifact: None,
+                },
+                AcpUiMessage {
+                    id: 2,
+                    kind: AcpMessageKind::Agent,
+                    text: "SELECT 1".to_string(),
+                    created_at: 2,
+                    artifact: None,
+                },
+            ],
+        );
+
+        assert_eq!(state.messages.len(), 1);
+        assert!(matches!(state.messages[0].kind, AcpMessageKind::Agent));
     }
 }

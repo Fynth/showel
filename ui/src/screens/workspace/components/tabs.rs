@@ -6,7 +6,7 @@ use crate::{
     screens::workspace::actions::{
         new_query_tab, open_structure_tab, read_only_mode_block_status, read_only_mode_enabled,
         refresh_tab_result, replace_active_tab_sql, run_explain_for_tab, run_query_for_tab,
-        set_active_tab_status, tab_connection_or_error,
+        set_active_tab_status, tab_connection_or_error, toggle_execution_plan_for_tab,
     },
 };
 use dioxus::prelude::*;
@@ -386,10 +386,20 @@ pub fn TabsManager(
                         icon: ActionIcon::Explain,
                         label: "Explain Plan".to_string(),
                         onclick: {
-                            let current_tab = tab.clone();
                             move |_| {
                                 let current_id = active_tab_id();
+                                let Some(current_tab) = tabs
+                                    .read()
+                                    .iter()
+                                    .find(|tab| tab.id == current_id)
+                                    .cloned()
+                                else {
+                                    return;
+                                };
                                 let sql = current_tab.sql.trim().to_string();
+                                if toggle_execution_plan_for_tab(tabs, current_id, &sql) {
+                                    return;
+                                }
                                 if sql.is_empty() {
                                     tabs.with_mut(|all_tabs| {
                                         if let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) {

@@ -5,7 +5,7 @@ mod selection;
 
 use crate::app_state::APP_UI_SETTINGS;
 use crate::codestral::CodeStralClient;
-use crate::screens::workspace::actions::replace_active_tab_sql;
+use crate::screens::workspace::actions::{replace_active_tab_sql, sync_active_tab_sql_draft};
 use crate::screens::workspace::components::explorer::ExplorerConnectionSection;
 use dioxus::prelude::*;
 use models::{ExplorerNodeKind, QueryTabState};
@@ -379,7 +379,7 @@ pub fn SqlEditor(
                 return;
             }
 
-            replace_active_tab_sql(tabs, active_tab_id_value, next_sql, "Ready".to_string());
+            sync_active_tab_sql_draft(tabs, active_tab_id_value, next_sql);
         });
     });
 
@@ -555,7 +555,18 @@ pub fn SqlEditor(
                 cols: "80",
                 spellcheck: "false",
 
-                oninput: move |_| {
+                oninput: move |event| {
+                    let next_sql = event.value();
+                    let draft_changed = {
+                        let current_sql = draft_sql.peek();
+                        current_sql.as_str() != next_sql.as_str()
+                    };
+                    if draft_changed {
+                        // Keep the render snapshot aligned with the live textarea so the
+                        // highlight layer never wakes up with stale SQL after the typing debounce.
+                        draft_sql.set(next_sql.clone());
+                        sync_active_tab_sql_draft(tabs, active_tab_id_value, next_sql);
+                    }
                     let already_typing = {
                         let typing = is_typing.peek();
                         *typing

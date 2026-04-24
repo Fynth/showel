@@ -244,8 +244,14 @@ pub(super) fn insert_sql_into_editor(
         "SQL inserted from ACP agent".to_string(),
     );
     panel_state.with_mut(|state| {
+        state.busy = false;
         state.pending_sql_insert = false;
+        state.suppress_transcript = false;
+        state.hidden_agent_response.clear();
         state.status = "Inserted agent SQL into the active editor.".to_string();
+        state
+            .messages
+            .retain(|message| !matches!(message.kind, AcpMessageKind::Thought));
     });
 }
 
