@@ -25,6 +25,7 @@ pub(crate) fn default_acp_panel_state() -> AcpPanelState {
             command: std::env::var("SHOVEL_ACP_COMMAND").unwrap_or_default(),
             args: std::env::var("SHOVEL_ACP_ARGS").unwrap_or_default(),
             cwd,
+            env: Vec::new(),
         },
         AcpOllamaConfig {
             base_url: std::env::var("SHOVEL_OLLAMA_BASE_URL")
@@ -250,6 +251,7 @@ mod tests {
                 command: String::new(),
                 args: String::new(),
                 cwd: ".".to_string(),
+                env: Vec::new(),
             },
             AcpOllamaConfig {
                 base_url: String::new(),

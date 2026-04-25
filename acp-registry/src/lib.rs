@@ -249,6 +249,7 @@ pub async fn install_acp_registry_agent(
         command: command_path.display().to_string(),
         args: join_args(&target.args),
         cwd,
+        env: Vec::new(),
     })
 }
 

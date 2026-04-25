@@ -135,6 +135,31 @@ impl Default for CodeStralSettings {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct DeepSeekSettings {
+    pub enabled: bool,
+    #[serde(skip_serializing)]
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+    pub thinking_enabled: bool,
+    pub reasoning_effort: String,
+}
+
+impl Default for DeepSeekSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_key: String::new(),
+            base_url: "https://api.deepseek.com".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            thinking_enabled: true,
+            reasoning_effort: "medium".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppUiSettings {
     pub theme: AppThemePreference,
     pub ai_features_enabled: bool,
@@ -149,6 +174,7 @@ pub struct AppUiSettings {
     pub default_page_size: u32,
     pub tool_panel_layout: WorkspaceToolLayout,
     pub codestral: CodeStralSettings,
+    pub deepseek: DeepSeekSettings,
 }
 
 impl Default for AppUiSettings {
@@ -167,6 +193,7 @@ impl Default for AppUiSettings {
             default_page_size: 100,
             tool_panel_layout: WorkspaceToolLayout::default(),
             codestral: CodeStralSettings::default(),
+            deepseek: DeepSeekSettings::default(),
         }
     }
 }
@@ -274,6 +301,17 @@ mod tests {
     }
 
     #[test]
+    fn deepseek_api_key_is_not_serialized_to_plaintext_settings() {
+        let mut settings = AppUiSettings::default();
+        settings.deepseek.api_key = "deepseek-secret".to_string();
+
+        let serialized = serde_json::to_string(&settings).expect("settings should serialize");
+
+        assert!(!serialized.contains("deepseek-secret"));
+        assert!(!serialized.contains("\"api_key\""));
+    }
+
+    #[test]
     fn legacy_codestral_api_key_still_deserializes_for_migration() {
         let settings: AppUiSettings = serde_json::from_str(
             r#"{
@@ -301,5 +339,38 @@ mod tests {
         .expect("legacy settings fixture should deserialize");
 
         assert_eq!(settings.codestral.api_key, "legacy-secret");
+    }
+
+    #[test]
+    fn legacy_deepseek_api_key_still_deserializes_for_migration() {
+        let settings: AppUiSettings = serde_json::from_str(
+            r#"{
+                "theme":"Dark",
+                "ai_features_enabled":true,
+                "restore_session_on_launch":true,
+                "show_saved_queries":true,
+                "show_connections":false,
+                "show_explorer":true,
+                "show_history":false,
+                "show_sql_editor":false,
+                "show_agent_panel":false,
+                "default_page_size":100,
+                "tool_panel_layout":{
+                    "sidebar":["Connections","Explorer","SavedQueries","History"],
+                    "inspector":["Agent"]
+                },
+                "deepseek":{
+                    "enabled":true,
+                    "api_key":"legacy-deepseek-secret",
+                    "base_url":"https://api.deepseek.com",
+                    "model":"deepseek-v4-pro",
+                    "thinking_enabled":true,
+                    "reasoning_effort":"high"
+                }
+            }"#,
+        )
+        .expect("legacy settings fixture should deserialize");
+
+        assert_eq!(settings.deepseek.api_key, "legacy-deepseek-secret");
     }
 }

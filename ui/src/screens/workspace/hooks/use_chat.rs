@@ -38,17 +38,13 @@ pub fn use_chat_state(connection_label: String) -> ChatState {
     > = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
 
     let persisted_history = use_resource(move || async move {
-        let cached = {
-            let cache = HISTORY_CACHE.lock().unwrap();
-            cache.clone()
-        };
+        let cached = { HISTORY_CACHE.lock().ok().and_then(|cache| cache.clone()) };
         if let Some(data) = cached {
             return data;
         }
 
         let data = services::load_query_history().await.unwrap_or_default();
-        {
-            let mut cache = HISTORY_CACHE.lock().unwrap();
+        if let Ok(mut cache) = HISTORY_CACHE.lock() {
             *cache = Some(data.clone());
         }
         data
@@ -56,16 +52,17 @@ pub fn use_chat_state(connection_label: String) -> ChatState {
 
     let persisted_saved_queries = use_resource(move || async move {
         let cached = {
-            let cache = SAVED_QUERIES_CACHE.lock().unwrap();
-            cache.clone()
+            SAVED_QUERIES_CACHE
+                .lock()
+                .ok()
+                .and_then(|cache| cache.clone())
         };
         if let Some(data) = cached {
             return data;
         }
 
         let data = services::load_saved_queries().await.unwrap_or_default();
-        {
-            let mut cache = SAVED_QUERIES_CACHE.lock().unwrap();
+        if let Ok(mut cache) = SAVED_QUERIES_CACHE.lock() {
             *cache = Some(data.clone());
         }
         data

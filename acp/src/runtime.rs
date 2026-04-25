@@ -816,7 +816,7 @@ async fn run_acp_worker(
         }
     };
 
-    let mut child = match spawn_acp_child(command, &args, &cwd).await {
+    let mut child = match spawn_acp_child(command, &args, &cwd, &request.env).await {
         Ok(child) => child,
         Err(err) => {
             let _ = ready_tx.send(Err(format!("Failed to start ACP agent: {err}")));
@@ -1005,6 +1005,7 @@ async fn spawn_acp_child(
     command: &str,
     args: &[String],
     cwd: &PathBuf,
+    env: &[(String, String)],
 ) -> Result<Child, std::io::Error> {
     const TEXT_FILE_BUSY_RETRIES: usize = 6;
     const TEXT_FILE_BUSY_DELAY_MS: u64 = 150;
@@ -1014,6 +1015,7 @@ async fn spawn_acp_child(
         let mut child_command = tokio::process::Command::new(command);
         child_command
             .args(args)
+            .envs(env.iter().map(|(key, value)| (key, value)))
             .current_dir(cwd)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

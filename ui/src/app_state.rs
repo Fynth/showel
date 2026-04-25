@@ -185,6 +185,45 @@ pub fn set_codestral_model(model: String) {
     });
 }
 
+pub fn set_deepseek_enabled(enabled: bool) {
+    update_ui_settings(|current| {
+        current.deepseek.enabled = enabled;
+    });
+}
+
+pub fn set_deepseek_api_key(api_key: String) {
+    update_ui_settings(|current| {
+        current.deepseek.api_key = api_key;
+        if current.deepseek.api_key.trim().is_empty() {
+            current.deepseek.enabled = false;
+        }
+    });
+}
+
+pub fn set_deepseek_base_url(base_url: String) {
+    update_ui_settings(|current| {
+        current.deepseek.base_url = base_url;
+    });
+}
+
+pub fn set_deepseek_model(model: String) {
+    update_ui_settings(|current| {
+        current.deepseek.model = model;
+    });
+}
+
+pub fn set_deepseek_thinking_enabled(enabled: bool) {
+    update_ui_settings(|current| {
+        current.deepseek.thinking_enabled = enabled;
+    });
+}
+
+pub fn set_deepseek_reasoning_effort(reasoning_effort: String) {
+    update_ui_settings(|current| {
+        current.deepseek.reasoning_effort = reasoning_effort;
+    });
+}
+
 fn sync_runtime_ui_settings(settings: &AppUiSettings) {
     *APP_THEME.write() = settings.theme.css_class().to_string();
     *APP_AI_FEATURES_ENABLED.write() = settings.ai_features_enabled;

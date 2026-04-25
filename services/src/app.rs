@@ -24,16 +24,18 @@ pub async fn load_app_startup_settings() -> Result<AppStartupSettings, String> {
     let mut ui_settings = storage::load_app_ui_settings().await?;
     let sql_format_settings = storage::load_sql_format_settings().await?;
 
-    let secure_api_key = storage::load_codestral_api_key().await?;
-    if secure_api_key.trim().is_empty() {
-        let legacy_api_key = ui_settings.codestral.api_key.trim().to_string();
-        if !legacy_api_key.is_empty() {
-            storage::save_codestral_api_key(legacy_api_key.clone()).await?;
-            ui_settings.codestral.api_key = legacy_api_key;
-        }
-    } else {
-        ui_settings.codestral.api_key = secure_api_key;
-    }
+    hydrate_secret(
+        &mut ui_settings.codestral.api_key,
+        storage::load_codestral_api_key().await?,
+        storage::save_codestral_api_key,
+    )
+    .await?;
+    hydrate_secret(
+        &mut ui_settings.deepseek.api_key,
+        storage::load_deepseek_api_key().await?,
+        storage::save_deepseek_api_key,
+    )
+    .await?;
 
     Ok(AppStartupSettings {
         ui_settings,
@@ -42,7 +44,8 @@ pub async fn load_app_startup_settings() -> Result<AppStartupSettings, String> {
 }
 
 pub async fn save_app_ui_settings_with_secrets(settings: AppUiSettings) -> Result<(), String> {
-    let api_key = settings.codestral.api_key.clone();
+    let codestral_api_key = settings.codestral.api_key.clone();
+    let deepseek_api_key = settings.deepseek.api_key.clone();
 
     storage::save_app_ui_settings(settings)
         .await
@@ -50,9 +53,43 @@ pub async fn save_app_ui_settings_with_secrets(settings: AppUiSettings) -> Resul
             format!("failed to save UI settings metadata before storing secure secrets: {err}")
         })?;
 
-    storage::save_codestral_api_key(api_key)
-        .await
-        .map_err(|err| format!("saved UI settings metadata, but secure storage had issues: {err}"))
+    let mut secret_errors = Vec::new();
+    if let Err(err) = storage::save_codestral_api_key(codestral_api_key).await {
+        secret_errors.push(format!("CodeStral: {err}"));
+    }
+    if let Err(err) = storage::save_deepseek_api_key(deepseek_api_key).await {
+        secret_errors.push(format!("DeepSeek: {err}"));
+    }
+
+    if secret_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "saved UI settings metadata, but secure storage had issues: {}",
+            secret_errors.join("; ")
+        ))
+    }
+}
+
+async fn hydrate_secret<Fut>(
+    target: &mut String,
+    secure_value: String,
+    save_legacy: impl Fn(String) -> Fut,
+) -> Result<(), String>
+where
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    if secure_value.trim().is_empty() {
+        let legacy_value = target.trim().to_string();
+        if !legacy_value.is_empty() {
+            save_legacy(legacy_value.clone()).await?;
+            *target = legacy_value;
+        }
+    } else {
+        *target = secure_value;
+    }
+
+    Ok(())
 }
 
 pub async fn restore_saved_sessions() -> Result<SessionRestoreResult, String> {

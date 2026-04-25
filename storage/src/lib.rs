@@ -20,8 +20,8 @@ pub use query_history::QueryHistoryStore;
 pub use saved_queries::{delete_saved_query, load_saved_queries, save_saved_query};
 pub use semantic_cache::{CacheStats, SemanticCacheStore};
 pub use settings::{
-    load_app_ui_settings, load_codestral_api_key, load_sql_format_settings, save_app_ui_settings,
-    save_codestral_api_key, save_sql_format_settings,
+    load_app_ui_settings, load_codestral_api_key, load_deepseek_api_key, load_sql_format_settings,
+    save_app_ui_settings, save_codestral_api_key, save_deepseek_api_key, save_sql_format_settings,
 };
 
 pub fn acp_workspace_root() -> Result<std::path::PathBuf, String> {

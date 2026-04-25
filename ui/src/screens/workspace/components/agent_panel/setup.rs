@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use models::{AcpMessageKind, AcpPanelState};
+use models::{AcpMessageKind, AcpPanelState, DeepSeekSettings};
 
 use super::messages::acp_registry_preparing_text;
 use super::state::{apply_connected, push_message};
@@ -85,8 +85,88 @@ pub(crate) async fn ensure_opencode_connected(
     .await
 }
 
+pub(crate) async fn ensure_default_sql_agent_connected(
+    panel_state: Signal<AcpPanelState>,
+    chat_revision: Signal<u64>,
+    deepseek: DeepSeekSettings,
+) -> Result<(), String> {
+    if panel_state().connected {
+        return Ok(());
+    }
+
+    if panel_state().busy {
+        let status = panel_state().status.trim().to_string();
+        return Err(if status.is_empty() {
+            "ACP agent is busy.".to_string()
+        } else {
+            status
+        });
+    }
+
+    if deepseek.enabled && !deepseek.api_key.trim().is_empty() {
+        connect_embedded_deepseek(panel_state, chat_revision, deepseek).await
+    } else {
+        ensure_opencode_connected(panel_state, chat_revision).await
+    }
+}
+
+pub(crate) async fn connect_embedded_deepseek(
+    mut panel_state: Signal<AcpPanelState>,
+    mut chat_revision: Signal<u64>,
+    deepseek: DeepSeekSettings,
+) -> Result<(), String> {
+    let cwd = panel_state().launch.cwd.clone();
+    panel_state.with_mut(|state| {
+        state.busy = true;
+        state.status = format!("Connecting to DeepSeek model {}...", deepseek.model.trim());
+    });
+
+    let launch = match acp::build_embedded_deepseek_launch(cwd, deepseek.clone()) {
+        Ok(launch) => launch,
+        Err(err) => {
+            panel_state.with_mut(|state| {
+                state.busy = false;
+                state.status = err.clone();
+                push_message(state, AcpMessageKind::Error, err.clone());
+            });
+            chat_revision += 1;
+            return Err(err);
+        }
+    };
+
+    panel_state.with_mut(|state| {
+        state.launch = launch.clone();
+        state.busy = true;
+        state.status = format!(
+            "Launching embedded DeepSeek ACP bridge for {}...",
+            deepseek.model
+        );
+    });
+
+    match acp::connect_acp_agent(launch).await {
+        Ok(connection) => {
+            panel_state.with_mut(|state| {
+                apply_connected(state, connection);
+            });
+            Ok(())
+        }
+        Err(err) => {
+            panel_state.with_mut(|state| {
+                state.busy = false;
+                state.connected = false;
+                state.connection = None;
+                state.status = err.clone();
+                push_message(state, AcpMessageKind::Error, err.clone());
+            });
+            chat_revision += 1;
+            Err(err)
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum AgentSetupMode {
+    DeepSeek,
     Ollama,
     OpenCode,
     Codex,
@@ -94,10 +174,17 @@ pub(super) enum AgentSetupMode {
 }
 
 impl AgentSetupMode {
-    pub(super) const ALL: [Self; 4] = [Self::Ollama, Self::OpenCode, Self::Codex, Self::Custom];
+    pub(super) const ALL: [Self; 5] = [
+        Self::DeepSeek,
+        Self::Ollama,
+        Self::OpenCode,
+        Self::Codex,
+        Self::Custom,
+    ];
 
     pub(super) fn label(self) -> &'static str {
         match self {
+            Self::DeepSeek => "DeepSeek",
             Self::Ollama => "Ollama",
             Self::OpenCode => "OpenCode",
             Self::Codex => "Codex",
@@ -107,6 +194,7 @@ impl AgentSetupMode {
 
     pub(super) fn meta(self) -> &'static str {
         match self {
+            Self::DeepSeek => "API key",
             Self::Ollama => "Embedded",
             Self::OpenCode | Self::Codex => "Registry",
             Self::Custom => "stdio",
@@ -117,7 +205,7 @@ impl AgentSetupMode {
         match self {
             Self::OpenCode => Some(OPENCODE_REGISTRY_AGENT_ID),
             Self::Codex => Some(CODEX_REGISTRY_AGENT_ID),
-            Self::Ollama | Self::Custom => None,
+            Self::DeepSeek | Self::Ollama | Self::Custom => None,
         }
     }
 
@@ -125,7 +213,7 @@ impl AgentSetupMode {
         match self {
             Self::OpenCode => Some("OpenCode"),
             Self::Codex => Some("Codex CLI"),
-            Self::Ollama | Self::Custom => None,
+            Self::DeepSeek | Self::Ollama | Self::Custom => None,
         }
     }
 
@@ -133,7 +221,7 @@ impl AgentSetupMode {
         match self {
             Self::OpenCode => Some("OpenCode agent."),
             Self::Codex => Some("Codex CLI agent."),
-            Self::Ollama | Self::Custom => None,
+            Self::DeepSeek | Self::Ollama | Self::Custom => None,
         }
     }
 }

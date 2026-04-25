@@ -18,22 +18,8 @@ fn redact_sql(sql: &str) -> String {
                         let line_lower = line.to_lowercase();
                         if line_lower.contains(sensitive) {
                             if let Some(eq_pos) = line.find('=') {
-                                let (before, after) = line.split_at(eq_pos + 1);
-                                let after_trimmed = after.trim_start();
-                                if after_trimmed.starts_with('\'') || after_trimmed.starts_with('"')
-                                {
-                                    let _quote_char = after_trimmed.chars().next().unwrap();
-                                    format!("{} [REDACTED]", before.trim_end())
-                                } else {
-                                    let value_end = after_trimmed
-                                        .find(|c: char| !c.is_alphanumeric() && c != '_')
-                                        .unwrap_or(after_trimmed.len());
-                                    format!(
-                                        "{}{} [REDACTED]",
-                                        before.trim_end(),
-                                        &after_trimmed[..value_end]
-                                    )
-                                }
+                                let (before, _) = line.split_at(eq_pos + 1);
+                                format!("{} [REDACTED]", before.trim_end())
                             } else {
                                 line.to_string()
                             }
@@ -632,9 +618,24 @@ pub fn run_table_preview_for_tab(
 const MAX_ACCUMULATED_ROWS: usize = 10_000;
 
 fn append_query_page(existing_page: &mut models::QueryPage, next_page: models::QueryPage) {
+    let next_editable = next_page.editable;
+
     existing_page.rows.extend(next_page.rows);
     existing_page.has_next = next_page.has_next;
     existing_page.has_previous = existing_page.has_previous || next_page.has_previous;
+
+    existing_page.editable = match (existing_page.editable.take(), next_editable) {
+        (Some(mut existing_editable), Some(next_editable))
+            if existing_editable.source == next_editable.source =>
+        {
+            existing_editable
+                .row_locators
+                .extend(next_editable.row_locators);
+            Some(existing_editable)
+        }
+        (None, None) => None,
+        _ => None,
+    };
 
     // Cap accumulated rows to prevent unbounded memory growth and DOM freeze.
     if existing_page.rows.len() > MAX_ACCUMULATED_ROWS {
@@ -642,20 +643,20 @@ fn append_query_page(existing_page: &mut models::QueryPage, next_page: models::Q
         existing_page.rows.drain(..excess);
         existing_page.offset += excess as u64;
         if let Some(editable) = existing_page.editable.as_mut() {
-            editable.row_locators.drain(..excess);
+            if editable.row_locators.len() >= excess {
+                editable.row_locators.drain(..excess);
+            } else {
+                existing_page.editable = None;
+            }
         }
     }
 
-    match (existing_page.editable.as_mut(), next_page.editable) {
-        (Some(existing_editable), Some(next_editable)) => {
-            existing_editable
-                .row_locators
-                .extend(next_editable.row_locators);
-        }
-        (None, Some(next_editable)) => {
-            existing_page.editable = Some(next_editable);
-        }
-        _ => {}
+    if existing_page
+        .editable
+        .as_ref()
+        .is_some_and(|editable| editable.row_locators.len() != existing_page.rows.len())
+    {
+        existing_page.editable = None;
     }
 }
 
@@ -1092,10 +1093,13 @@ pub fn clear_active_tab_filter(mut tabs: Signal<Vec<QueryTabState>>, active_tab_
 #[cfg(test)]
 mod tests {
     use super::{
-        format_loaded_rows_from_source_status, format_loaded_rows_status, rows_toolbar_summary,
-        sync_tab_sql_draft, toggle_cached_execution_plan,
+        append_query_page, format_loaded_rows_from_source_status, format_loaded_rows_status,
+        redact_sql, rows_toolbar_summary, sync_tab_sql_draft, toggle_cached_execution_plan,
     };
-    use models::{ExecutionPlan, PendingTableChanges, QueryTabState, WorkspaceTabKind};
+    use models::{
+        EditableTableContext, ExecutionPlan, PendingTableChanges, QueryPage, QueryTabState,
+        TablePreviewSource, WorkspaceTabKind,
+    };
 
     fn query_tab(sql: &str) -> QueryTabState {
         QueryTabState {
@@ -1116,6 +1120,36 @@ mod tests {
             pending_table_changes: PendingTableChanges::default(),
             execution_plan: None,
             show_execution_plan: false,
+        }
+    }
+
+    fn test_source() -> TablePreviewSource {
+        TablePreviewSource {
+            schema: None,
+            table_name: "products".to_string(),
+            qualified_name: "products".to_string(),
+        }
+    }
+
+    fn query_page(offset: u64, row_count: usize, has_next: bool) -> QueryPage {
+        let rows = (0..row_count)
+            .map(|index| vec![(offset + index as u64).to_string()])
+            .collect::<Vec<_>>();
+        let row_locators = (0..row_count)
+            .map(|index| format!("row-{}", offset + index as u64))
+            .collect::<Vec<_>>();
+
+        QueryPage {
+            columns: vec!["id".to_string()],
+            rows,
+            editable: Some(EditableTableContext {
+                source: test_source(),
+                row_locators,
+            }),
+            offset,
+            page_size: row_count as u32,
+            has_previous: offset > 0,
+            has_next,
         }
     }
 
@@ -1175,5 +1209,47 @@ mod tests {
         assert_eq!(tab.sql, "select 2");
         assert!(!tab.show_execution_plan);
         assert_eq!(tab.status, "Loaded 1 rows");
+    }
+
+    #[test]
+    fn append_query_page_caps_rows_and_keeps_edit_locators_aligned() {
+        let mut existing = query_page(0, 100, true);
+        let next = query_page(100, 11_000, false);
+
+        append_query_page(&mut existing, next);
+
+        assert_eq!(existing.rows.len(), 10_000);
+        assert_eq!(existing.offset, 1_100);
+        assert_eq!(existing.rows.first().unwrap()[0], "1100");
+        assert_eq!(existing.rows.last().unwrap()[0], "11099");
+        assert_eq!(
+            existing.editable.as_ref().unwrap().row_locators.len(),
+            10_000
+        );
+        assert_eq!(
+            existing.editable.as_ref().unwrap().row_locators.first(),
+            Some(&"row-1100".to_string())
+        );
+        assert!(!existing.has_next);
+    }
+
+    #[test]
+    fn redacts_unquoted_secret_values_without_leaking_prefix() {
+        let sql = "set password=abc123;\nselect 1;";
+
+        let redacted = redact_sql(sql);
+
+        assert_eq!(redacted, "set password= [REDACTED]\nselect 1;");
+        assert!(!redacted.contains("abc123"));
+    }
+
+    #[test]
+    fn redacts_quoted_secret_values_without_unwrapping_quote() {
+        let sql = "alter user app with password = 'abc123';";
+
+        let redacted = redact_sql(sql);
+
+        assert_eq!(redacted, "alter user app with password = [REDACTED]");
+        assert!(!redacted.contains("abc123"));
     }
 }

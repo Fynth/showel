@@ -18,7 +18,7 @@ use rfd::AsyncFileDialog;
 
 use super::{
     ActionIcon, ExecutionPlanView, ExplorerConnectionSection, IconButton, ResultTable, SqlEditor,
-    ensure_opencode_connected, send_sql_generation_request,
+    ensure_default_sql_agent_connected, send_sql_generation_request,
 };
 
 const EDITOR_MIN_HEIGHT: f64 = 160.0;
@@ -81,6 +81,7 @@ pub fn TabsManager(
     let mut editor_resize = use_signal(|| None::<EditorResizeState>);
     let mut show_generate_sql_window = use_signal(|| false);
     let mut generate_sql_prompt = use_signal(String::new);
+    let mut generate_sql_input_revision = use_signal(|| 0_u64);
     let mut renaming_tab_id = use_signal(|| None::<u64>);
     let mut rename_value = use_signal(String::new);
     let active_tab = use_memo(move || {
@@ -101,6 +102,7 @@ pub fn TabsManager(
     let active_actionable_source = active_tab.read().as_ref().and_then(actionable_table_source);
     let generate_sql_busy = acp_panel_state().busy;
     let generate_sql_prompt_empty = generate_sql_prompt().trim().is_empty();
+    let generate_sql_input_key = format!("generate-sql-{}", generate_sql_input_revision());
     let read_only_mode = read_only_mode_enabled();
 
     rsx! {
@@ -167,9 +169,11 @@ pub fn TabsManager(
                                     onkeydown: move |event| {
                                         if event.key() == Key::Enter {
                                             let new_title = rename_value().trim().to_string();
-                                            if !new_title.is_empty() {
+                                            if !new_title.is_empty()
+                                                && let Some(tab_id) = renaming_tab_id()
+                                            {
                                                 tabs.with_mut(|all_tabs| {
-                                                    if let Some(tab) = all_tabs.iter_mut().find(|t| t.id == renaming_tab_id().unwrap()) {
+                                                    if let Some(tab) = all_tabs.iter_mut().find(|t| t.id == tab_id) {
                                                         tab.title = new_title;
                                                     }
                                                 });
@@ -181,9 +185,11 @@ pub fn TabsManager(
                                     },
                                     onblur: move |_| {
                                         let new_title = rename_value().trim().to_string();
-                                        if !new_title.is_empty() {
+                                        if !new_title.is_empty()
+                                            && let Some(tab_id) = renaming_tab_id()
+                                        {
                                             tabs.with_mut(|all_tabs| {
-                                                if let Some(tab) = all_tabs.iter_mut().find(|t| t.id == renaming_tab_id().unwrap()) {
+                                                if let Some(tab) = all_tabs.iter_mut().find(|t| t.id == tab_id) {
                                                     tab.title = new_title;
                                                 }
                                             });
@@ -364,6 +370,7 @@ pub fn TabsManager(
                                 show_generate_sql_window.set(false);
                             } else {
                                 generate_sql_prompt.set(String::new());
+                                generate_sql_input_revision += 1;
                                 show_generate_sql_window.set(true);
                             }
                         },
@@ -406,6 +413,14 @@ pub fn TabsManager(
                                             tab.status = "Enter a query to explain".to_string();
                                         }
                                     });
+                                    return;
+                                }
+                                if !query::is_read_only_sql(&sql) {
+                                    set_active_tab_status(
+                                        tabs,
+                                        current_id,
+                                        "Explain Plan is available only for read-only SQL.".to_string(),
+                                    );
                                     return;
                                 }
                                 let Some(connection) =
@@ -496,7 +511,7 @@ pub fn TabsManager(
                                         h3 { class: "editor__format-settings-title", "Generate SQL" }
                                         p {
                                             class: "editor__format-settings-hint",
-                                            "Describe the query you want. OpenCode will generate SQL and insert it into the active editor."
+                                            "Describe the query you want. The configured AI agent will generate SQL and insert it into the active editor."
                                         }
                                     }
                                     button {
@@ -508,9 +523,10 @@ pub fn TabsManager(
                                 div { class: "field",
                                     span { class: "field__label", "Query description" }
                                     textarea {
+                                        key: "{generate_sql_input_key}",
                                         class: "input editor__generate-sql-input",
                                         placeholder: "For example: show failed payments from the last 7 days grouped by provider",
-                                        value: "{generate_sql_prompt}",
+                                        initial_value: "{generate_sql_prompt}",
                                         oninput: move |event| generate_sql_prompt.set(event.value()),
                                         onkeydown: move |event| {
                                             if event.key() != Key::Enter
@@ -582,11 +598,19 @@ pub fn TabsManager(
                                 }
                             }
                         }
-                    } else if tab.show_execution_plan && tab.execution_plan.is_some() {
-                        ExecutionPlanView {
-                            plan: tab.execution_plan.clone().unwrap(),
-                            tabs,
-                            active_tab_id,
+                    } else if tab.show_execution_plan {
+                        if let Some(plan) = tab.execution_plan.clone() {
+                            ExecutionPlanView {
+                                plan,
+                                tabs,
+                                active_tab_id,
+                            }
+                        } else {
+                            ResultTable {
+                                result: tab.result.clone(),
+                                tabs,
+                                active_tab_id,
+                            }
                         }
                     } else {
                         ResultTable {
@@ -846,11 +870,14 @@ fn submit_generated_sql_request(
     set_active_tab_status(
         tabs,
         current_tab.id,
-        "Generating SQL with OpenCode...".to_string(),
+        "Generating SQL with the configured AI agent...".to_string(),
     );
 
     spawn(async move {
-        if let Err(err) = ensure_opencode_connected(acp_panel_state, chat_revision).await {
+        let deepseek = crate::app_state::APP_UI_SETTINGS().deepseek;
+        if let Err(err) =
+            ensure_default_sql_agent_connected(acp_panel_state, chat_revision, deepseek).await
+        {
             set_active_tab_status(tabs, current_tab.id, format!("Generate SQL error: {err}"));
             return;
         }

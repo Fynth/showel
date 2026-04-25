@@ -22,9 +22,11 @@ pub(super) fn AgentComposer(
     reset_key: String,
 ) -> Element {
     let mut prompt_draft = use_signal(String::new);
+    let mut prompt_reset_revision = use_signal(|| 0_u64);
+    let reset_effect_key = reset_key.clone();
 
     use_effect(move || {
-        let _ = reset_key.as_str();
+        let _ = reset_effect_key.as_str();
         prompt_draft.set(String::new());
     });
 
@@ -39,6 +41,7 @@ pub(super) fn AgentComposer(
     let explain_plan_label = connection_label.clone();
     let explain_sql_label = connection_label.clone();
     let fix_sql_label = connection_label.clone();
+    let prompt_textarea_key = format!("{reset_key}-{}", prompt_reset_revision());
 
     rsx! {
         div { class: "agent-panel__composer",
@@ -85,9 +88,10 @@ pub(super) fn AgentComposer(
                 }
             }
             textarea {
+                key: "{prompt_textarea_key}",
                 class: "input agent-panel__prompt",
                 rows: 5,
-                value: "{prompt_draft}",
+                initial_value: "{prompt_draft}",
                 placeholder: "For example: show active users created today",
                 oninput: move |event| prompt_draft.set(event.value()),
                 onkeydown: move |event| {
@@ -97,6 +101,12 @@ pub(super) fn AgentComposer(
                         return;
                     }
                     event.prevent_default();
+                    let prompt = prompt_draft();
+                    if prompt.trim().is_empty() || panel_state().busy {
+                        return;
+                    }
+                    prompt_draft.set(String::new());
+                    prompt_reset_revision += 1;
                     send_chat_prompt_request(
                         panel_state,
                         tabs,
@@ -104,7 +114,7 @@ pub(super) fn AgentComposer(
                         enter_chat_label.clone(),
                         chat_revision,
                         allow_agent_db_read(),
-                        prompt_draft(),
+                        prompt,
                         prompt_draft,
                     );
                 }
@@ -160,6 +170,12 @@ pub(super) fn AgentComposer(
                     class: "button button--ghost button--small",
                     disabled: busy || prompt_is_empty,
                     onclick: move |_| {
+                        let prompt = prompt_draft();
+                        if prompt.trim().is_empty() || panel_state().busy {
+                            return;
+                        }
+                        prompt_draft.set(String::new());
+                        prompt_reset_revision += 1;
                         send_sql_generation_request(
                             panel_state,
                             tabs,
@@ -167,7 +183,7 @@ pub(super) fn AgentComposer(
                             generate_sql_label.clone(),
                             chat_revision,
                             allow_agent_db_read(),
-                            prompt_draft(),
+                            prompt,
                             Some(prompt_draft),
                             true,
                         );
@@ -178,6 +194,12 @@ pub(super) fn AgentComposer(
                     class: "button button--primary button--small",
                     disabled: busy || prompt_is_empty,
                     onclick: move |_| {
+                        let prompt = prompt_draft();
+                        if prompt.trim().is_empty() || panel_state().busy {
+                            return;
+                        }
+                        prompt_draft.set(String::new());
+                        prompt_reset_revision += 1;
                         send_chat_prompt_request(
                             panel_state,
                             tabs,
@@ -185,7 +207,7 @@ pub(super) fn AgentComposer(
                             chat_label.clone(),
                             chat_revision,
                             allow_agent_db_read(),
-                            prompt_draft(),
+                            prompt,
                             prompt_draft,
                         );
                     },

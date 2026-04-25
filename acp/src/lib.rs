@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod context;
+pub mod deepseek;
 #[cfg(feature = "embedding")]
 pub mod embedding;
 pub mod introspection;
@@ -14,6 +15,9 @@ pub use agents::{
     SpecialistResponse, SqlExpert, UserIntent,
 };
 pub use context::{build_acp_database_context, warm_acp_database_schema_context};
+pub use deepseek::{
+    EmbeddedDeepSeekAgentConfig, build_embedded_deepseek_launch, run_embedded_deepseek_agent,
+};
 #[cfg(feature = "embedding")]
 pub use embedding::{
     EMBEDDING_DIM, EmbeddingModel, LazyEmbeddingModel, MODEL_FILENAME, cosine_similarity,

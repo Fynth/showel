@@ -16,7 +16,7 @@ mod tabs;
 
 pub(crate) use agent_panel::{
     AcpAgentPanel, AgentSqlExecutionMode, apply_acp_events, default_acp_panel_state,
-    ensure_opencode_connected, execute_agent_sql_request, extract_sql_candidate,
+    ensure_default_sql_agent_connected, execute_agent_sql_request, extract_sql_candidate,
     preferred_sql_target_tab_id, replace_messages, send_sql_generation_request,
 };
 pub use execution_plan::ExecutionPlanView;

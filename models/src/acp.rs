@@ -5,6 +5,7 @@ pub struct AcpLaunchRequest {
     pub command: String,
     pub args: String,
     pub cwd: String,
+    pub env: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

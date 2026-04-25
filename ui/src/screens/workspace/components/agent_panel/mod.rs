@@ -10,6 +10,11 @@ mod state;
 use dioxus::prelude::*;
 use models::{AcpMessageKind, AcpPanelState, ChatArtifact, ChatThreadSummary, QueryTabState};
 
+use crate::app_state::{
+    APP_UI_SETTINGS, set_deepseek_api_key, set_deepseek_base_url, set_deepseek_enabled,
+    set_deepseek_model, set_deepseek_reasoning_effort, set_deepseek_thinking_enabled,
+};
+
 use super::{ActionIcon, IconButton};
 
 use self::{
@@ -23,14 +28,14 @@ use self::{
     prompt::insert_sql_into_editor,
     registry_card::RegistryAgentCard,
     requests::can_execute_agent_sql,
-    setup::{AgentSetupMode, setup_mode_button_class},
+    setup::{AgentSetupMode, connect_embedded_deepseek, setup_mode_button_class},
     state::{message_kind_class, message_kind_label, permission_button_class, push_message},
 };
 
 pub(crate) use self::{
     prompt::{extract_sql_candidate, preferred_sql_target_tab_id},
     requests::{execute_agent_sql_request, send_sql_generation_request},
-    setup::ensure_opencode_connected,
+    setup::ensure_default_sql_agent_connected,
     state::{apply_acp_events, default_acp_panel_state, replace_messages},
 };
 
@@ -63,7 +68,7 @@ pub fn AcpAgentPanel(
     let thread_title = compact_header_title(&thread_title);
     let thread_meta = build_thread_meta(&thread_connection_name, &state);
     let chat_label = sql_connection_label.clone();
-    let mut setup_mode = use_signal(|| AgentSetupMode::Ollama);
+    let mut setup_mode = use_signal(|| AgentSetupMode::DeepSeek);
     let mut show_dialogs = use_signal(|| false);
     let mut registry_busy = use_signal(|| false);
     let mut registry_status = use_signal(String::new);
@@ -80,6 +85,7 @@ pub fn AcpAgentPanel(
                 .and_then(|agents| agents.iter().find(|agent| agent.id == agent_id))
                 .cloned()
         });
+    let deepseek_settings = APP_UI_SETTINGS().deepseek;
     let visible_messages = state
         .messages
         .clone()
@@ -712,6 +718,118 @@ pub fn AcpAgentPanel(
                     }
 
                     {match setup_mode() {
+                        AgentSetupMode::DeepSeek => rsx! {
+                            div { class: "agent-panel__section",
+                                div { class: "agent-panel__section-header",
+                                    div { class: "agent-panel__section-copy",
+                                        h4 { class: "agent-panel__section-title", "Built-in DeepSeek ACP" }
+                                        p { class: "agent-panel__hint", "Cloud model via DeepSeek API key. Uses Shovel database context and SQL workflows." }
+                                    }
+                                    span { class: "agent-panel__badge", "API key" }
+                                }
+                                label {
+                                    class: "settings-modal__toggle",
+                                    input {
+                                        r#type: "checkbox",
+                                        checked: deepseek_settings.enabled,
+                                        disabled: deepseek_settings.api_key.trim().is_empty(),
+                                        oninput: move |event| {
+                                            set_deepseek_enabled(event.checked());
+                                        },
+                                    }
+                                    span { "Use DeepSeek for automatic SQL agent actions" }
+                                }
+                                div { class: "agent-panel__field-grid",
+                                    div { class: "field",
+                                        label { class: "field__label", "Base URL" }
+                                        input {
+                                            class: "input",
+                                            value: "{deepseek_settings.base_url}",
+                                            placeholder: "https://api.deepseek.com",
+                                            oninput: move |event| {
+                                                set_deepseek_base_url(event.value());
+                                            }
+                                        }
+                                    }
+                                    div { class: "field",
+                                        label { class: "field__label", "Model" }
+                                        input {
+                                            class: "input",
+                                            value: "{deepseek_settings.model}",
+                                            placeholder: "deepseek-v4-pro",
+                                            oninput: move |event| {
+                                                set_deepseek_model(event.value());
+                                            }
+                                        }
+                                    }
+                                }
+                                div { class: "field",
+                                    label { class: "field__label", "API key" }
+                                    input {
+                                        class: "input",
+                                        r#type: "password",
+                                        value: "{deepseek_settings.api_key}",
+                                        placeholder: "sk-...",
+                                        oninput: move |event| {
+                                            set_deepseek_api_key(event.value());
+                                        }
+                                    }
+                                }
+                                div { class: "agent-panel__field-grid",
+                                    div { class: "field",
+                                        label { class: "field__label", "Reasoning effort" }
+                                        select {
+                                            class: "input",
+                                            value: "{deepseek_settings.reasoning_effort}",
+                                            oninput: move |event| {
+                                                set_deepseek_reasoning_effort(event.value());
+                                            },
+                                            option { value: "low", "low" }
+                                            option { value: "medium", "medium" }
+                                            option { value: "high", "high" }
+                                        }
+                                    }
+                                    label {
+                                        class: "settings-modal__toggle",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: deepseek_settings.thinking_enabled,
+                                            oninput: move |event| {
+                                                set_deepseek_thinking_enabled(event.checked());
+                                            },
+                                        }
+                                        span { "Thinking mode" }
+                                    }
+                                }
+                                button {
+                                    class: "button button--primary button--small",
+                                    disabled: state.busy
+                                        || deepseek_settings.api_key.trim().is_empty()
+                                        || deepseek_settings.model.trim().is_empty(),
+                                    onclick: move |_| {
+                                        let deepseek = APP_UI_SETTINGS().deepseek;
+                                        spawn(async move {
+                                            if let Err(err) = connect_embedded_deepseek(
+                                                panel_state,
+                                                chat_revision,
+                                                deepseek,
+                                            ).await {
+                                                panel_state.with_mut(|state| {
+                                                    state.status = err;
+                                                });
+                                            }
+                                        });
+                                    },
+                                    "Connect DeepSeek"
+                                }
+                                if deepseek_settings.api_key.trim().is_empty() {
+                                    p {
+                                        class: "agent-panel__hint",
+                                        "Add a DeepSeek API key here or in Settings to enable this bridge."
+                                    }
+                                }
+                            }
+                        },
                         AgentSetupMode::Ollama => rsx! {
                             div { class: "agent-panel__section",
                                 div { class: "agent-panel__section-header",
@@ -960,7 +1078,8 @@ pub fn AcpAgentPanel(
                                     class: "button button--primary",
                                     disabled: state.busy || state.launch.command.trim().is_empty(),
                                     onclick: move |_| {
-                                        let launch = panel_state().launch.clone();
+                                        let mut launch = panel_state().launch.clone();
+                                        launch.env.clear();
                                         panel_state.with_mut(|state| {
                                             state.busy = true;
                                             state.status = "Connecting to ACP agent...".to_string();

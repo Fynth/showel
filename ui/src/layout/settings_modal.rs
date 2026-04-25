@@ -2,10 +2,11 @@ use crate::{
     app_state::{
         APP_SHOW_SETTINGS_MODAL, APP_SQL_FORMAT_SETTINGS, APP_UI_SETTINGS, close_settings_modal,
         reset_ui_settings, set_ai_features_enabled, set_codestral_api_key, set_codestral_enabled,
-        set_codestral_model, set_default_page_size, set_read_only_mode,
-        set_restore_session_on_launch, set_show_agent_panel, set_show_connections,
-        set_show_explorer, set_show_history, set_show_saved_queries, set_show_sql_editor,
-        set_theme_preference,
+        set_codestral_model, set_deepseek_api_key, set_deepseek_base_url, set_deepseek_enabled,
+        set_deepseek_model, set_deepseek_reasoning_effort, set_deepseek_thinking_enabled,
+        set_default_page_size, set_read_only_mode, set_restore_session_on_launch,
+        set_show_agent_panel, set_show_connections, set_show_explorer, set_show_history,
+        set_show_saved_queries, set_show_sql_editor, set_theme_preference,
     },
     screens::SqlFormatSettingsFields,
 };
@@ -84,6 +85,106 @@ pub fn SettingsModal() -> Element {
                                     set_theme_preference(AppThemePreference::Light);
                                 },
                                 "Light"
+                            }
+                        }
+                    }
+
+                    section {
+                        class: "settings-modal__section",
+                        div {
+                            class: "settings-modal__section-header",
+                            h3 { class: "settings-modal__section-title", "DeepSeek Agent" }
+                            p {
+                                class: "settings-modal__section-hint",
+                                "Primary API-key agent for database chat, SQL generation and SQL fixes."
+                            }
+                        }
+                        label {
+                            class: "settings-modal__toggle",
+                            input {
+                                r#type: "checkbox",
+                                checked: settings.deepseek.enabled,
+                                disabled: settings.deepseek.api_key.is_empty(),
+                                oninput: move |event| {
+                                    set_deepseek_enabled(event.checked());
+                                },
+                            }
+                            span { "Use DeepSeek as the default embedded SQL agent" }
+                        }
+                        div {
+                            class: "settings-modal__grid",
+                            div {
+                                class: "field",
+                                span { class: "field__label", "API Key" }
+                                input {
+                                    class: "input",
+                                    r#type: "password",
+                                    placeholder: "sk-...",
+                                    value: "{settings.deepseek.api_key}",
+                                    oninput: move |event| {
+                                        set_deepseek_api_key(event.value());
+                                    },
+                                }
+                            }
+                            div {
+                                class: "field",
+                                span { class: "field__label", "Base URL" }
+                                input {
+                                    class: "input",
+                                    placeholder: "https://api.deepseek.com",
+                                    value: "{settings.deepseek.base_url}",
+                                    oninput: move |event| {
+                                        set_deepseek_base_url(event.value());
+                                    },
+                                }
+                            }
+                            div {
+                                class: "field",
+                                span { class: "field__label", "Model" }
+                                input {
+                                    class: "input",
+                                    placeholder: "deepseek-v4-pro",
+                                    value: "{settings.deepseek.model}",
+                                    oninput: move |event| {
+                                        set_deepseek_model(event.value());
+                                    },
+                                }
+                            }
+                            div {
+                                class: "field",
+                                span { class: "field__label", "Reasoning effort" }
+                                select {
+                                    class: "input",
+                                    value: "{settings.deepseek.reasoning_effort}",
+                                    oninput: move |event| {
+                                        set_deepseek_reasoning_effort(event.value());
+                                    },
+                                    option { value: "low", "low" }
+                                    option { value: "medium", "medium" }
+                                    option { value: "high", "high" }
+                                }
+                            }
+                        }
+                        label {
+                            class: "settings-modal__toggle",
+                            input {
+                                r#type: "checkbox",
+                                checked: settings.deepseek.thinking_enabled,
+                                oninput: move |event| {
+                                    set_deepseek_thinking_enabled(event.checked());
+                                },
+                            }
+                            span { "Enable DeepSeek thinking mode when the selected model supports it" }
+                        }
+                        if settings.deepseek.api_key.is_empty() {
+                            p {
+                                class: "settings-modal__section-hint",
+                                "Enter a DeepSeek API key to enable the embedded DeepSeek agent. Get your key from "
+                                a {
+                                    href: "https://platform.deepseek.com/api_keys",
+                                    target: "_blank",
+                                    "platform.deepseek.com"
+                                }
                             }
                         }
                     }

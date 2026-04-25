@@ -14,9 +14,12 @@ pub fn use_explorer_state() -> ExplorerState {
     let mut tree_status = use_signal(|| "Loading explorer...".to_string());
     let mut tree_sections = use_signal(Vec::<ExplorerConnectionSection>::new);
     let tree_reload = use_signal(|| 0_u64);
+    let mut last_handled_reload_tick = use_signal(|| 0_u64);
 
     use_effect(move || {
         let reload_tick = tree_reload();
+        let force_reload =
+            should_force_explorer_reload(reload_tick, *last_handled_reload_tick.peek());
         let explorer_visible = APP_SHOW_EXPLORER();
         let (sessions, active_session_id) = {
             let app_state = APP_STATE.read();
@@ -60,9 +63,13 @@ pub fn use_explorer_state() -> ExplorerState {
                 .collect::<Vec<_>>();
 
             tree_status.set("Loading explorer...".to_string());
+            if force_reload {
+                last_handled_reload_tick.set(reload_tick);
+            }
             let active_section = load_explorer_section(
                 sessions[active_index].clone(),
                 active_session_id.or(Some(sessions[active_index].id)),
+                !force_reload,
             )
             .await;
             let active_failed = active_section.status.starts_with("Error:");
@@ -81,5 +88,22 @@ pub fn use_explorer_state() -> ExplorerState {
         tree_status,
         tree_sections,
         tree_reload,
+    }
+}
+
+fn should_force_explorer_reload(reload_tick: u64, last_handled_reload_tick: u64) -> bool {
+    reload_tick != last_handled_reload_tick
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_force_explorer_reload;
+
+    #[test]
+    fn manual_reload_tick_bypasses_explorer_cache_once() {
+        assert!(!should_force_explorer_reload(0, 0));
+        assert!(should_force_explorer_reload(1, 0));
+        assert!(!should_force_explorer_reload(1, 1));
+        assert!(should_force_explorer_reload(2, 1));
     }
 }

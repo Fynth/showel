@@ -4,7 +4,8 @@ use sqlx::Row;
 
 /// Execute an EXPLAIN query and return a parsed execution plan.
 ///
-/// For SQLite, runs `EXPLAIN QUERY PLAN {sql}`.
+/// For SQLite, runs `EXPLAIN QUERY PLAN {sql}` and normalizes already-prefixed
+/// `EXPLAIN ...` input to avoid generating nested EXPLAIN statements.
 /// For PostgreSQL, runs `EXPLAIN (FORMAT JSON, VERBOSE{, ANALYZE}) {sql}`.
 /// For MySQL, runs `EXPLAIN FORMAT=JSON {sql}`.
 /// For ClickHouse, runs `EXPLAIN {sql}`.
@@ -35,7 +36,7 @@ async fn execute_sqlite_explain(
     pool: &sqlx::SqlitePool,
     sql: &str,
 ) -> Result<ExecutionPlan, DatabaseError> {
-    let explain_sql = format!("EXPLAIN QUERY PLAN {sql}");
+    let explain_sql = sqlite_explain_query_plan_sql(sql);
     let rows = sqlx::query(&explain_sql)
         .fetch_all(pool)
         .await
@@ -57,6 +58,40 @@ async fn execute_sqlite_explain(
     plan.root_nodes = root_nodes;
     plan.raw_text = raw_lines;
     Ok(plan)
+}
+
+fn sqlite_explain_query_plan_sql(sql: &str) -> String {
+    let trimmed = sql.trim();
+    let Some(after_explain) = strip_leading_sql_keyword(trimmed, "explain") else {
+        return format!("EXPLAIN QUERY PLAN {trimmed}");
+    };
+
+    if let Some(after_query) = strip_leading_sql_keyword(after_explain, "query")
+        && strip_leading_sql_keyword(after_query, "plan").is_some()
+    {
+        return trimmed.to_string();
+    }
+
+    format!("EXPLAIN QUERY PLAN {}", after_explain.trim())
+}
+
+fn strip_leading_sql_keyword<'a>(sql: &'a str, keyword: &str) -> Option<&'a str> {
+    let trimmed = sql.trim_start();
+    let prefix = trimmed.get(..keyword.len())?;
+    if !prefix.eq_ignore_ascii_case(keyword) {
+        return None;
+    }
+
+    let rest = &trimmed[keyword.len()..];
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+
+    Some(rest.trim_start())
 }
 
 /// Build a tree from SQLite EXPLAIN QUERY PLAN rows.
@@ -941,6 +976,43 @@ mod tests {
 
         let node = parse_sqlite_detail("COMPOUND SUBQUERIES 1 AND 2 USING TEMP TABLE (UNION)");
         assert_eq!(node.operation, "Compound Subqueries");
+    }
+
+    #[test]
+    fn sqlite_explain_sql_does_not_double_prefix_existing_explain() {
+        assert_eq!(
+            sqlite_explain_query_plan_sql("select * from users"),
+            "EXPLAIN QUERY PLAN select * from users"
+        );
+        assert_eq!(
+            sqlite_explain_query_plan_sql("EXPLAIN QUERY PLAN select * from users"),
+            "EXPLAIN QUERY PLAN select * from users"
+        );
+        assert_eq!(
+            sqlite_explain_query_plan_sql("EXPLAIN select * from users"),
+            "EXPLAIN QUERY PLAN select * from users"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_execute_explain_accepts_existing_explain_statement() {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        sqlx::query("create table users (id integer primary key, name text)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let plan = execute_explain(
+            DatabaseConnection::Sqlite(pool),
+            "EXPLAIN select * from users",
+            false,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(plan.root_nodes.len(), 1);
+        assert_eq!(plan.root_nodes[0].operation, "Scan");
+        assert_eq!(plan.root_nodes[0].target.as_deref(), Some("users"));
     }
 
     #[test]

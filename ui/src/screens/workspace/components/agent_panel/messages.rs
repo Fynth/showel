@@ -445,6 +445,7 @@ mod tests {
                 command: String::new(),
                 args: String::new(),
                 cwd: ".".to_string(),
+                env: Vec::new(),
             },
             AcpOllamaConfig {
                 base_url: String::new(),
@@ -468,6 +469,7 @@ mod tests {
                 command: String::new(),
                 args: String::new(),
                 cwd: ".".to_string(),
+                env: Vec::new(),
             },
             AcpOllamaConfig {
                 base_url: String::new(),
@@ -491,6 +493,7 @@ mod tests {
                 command: String::new(),
                 args: String::new(),
                 cwd: ".".to_string(),
+                env: Vec::new(),
             },
             AcpOllamaConfig {
                 base_url: String::new(),

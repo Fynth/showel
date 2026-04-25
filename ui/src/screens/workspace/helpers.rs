@@ -109,6 +109,7 @@ pub fn workspace_resize_script(
 pub async fn load_explorer_section(
     session: models::ConnectionSession,
     active_session_id: Option<u64>,
+    use_cache: bool,
 ) -> ExplorerConnectionSection {
     let kind_label = match session.kind {
         models::DatabaseKind::Sqlite => "SQLite".to_string(),
@@ -117,8 +118,8 @@ pub async fn load_explorer_section(
         models::DatabaseKind::ClickHouse => "ClickHouse".to_string(),
     };
 
-    // Проверяем кэш сначала
-    if let Some(cached) = crate::app_state::get_cached_explorer(session.id).await
+    if use_cache
+        && let Some(cached) = crate::app_state::get_cached_explorer(session.id).await
         && let Some(section) = cached.into_iter().next()
     {
         return ExplorerConnectionSection {
@@ -380,6 +381,7 @@ mod tests {
                 command: String::new(),
                 args: String::new(),
                 cwd: ".".to_string(),
+                env: Vec::new(),
             },
             AcpOllamaConfig {
                 base_url: String::new(),

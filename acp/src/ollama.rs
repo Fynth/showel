@@ -518,6 +518,7 @@ pub fn build_embedded_ollama_launch(
         command,
         args: shell_join(&args),
         cwd,
+        env: Vec::new(),
     })
 }
 

@@ -31,7 +31,7 @@ impl SemanticCache {
     ///
     /// # Arguments
     /// * `embedding_model` - Optional embedding model for generating embeddings.
-    ///                       If None, cache operations will fail gracefully.
+    ///   If None, cache operations will fail gracefully.
     ///
     /// # Returns
     /// * `Ok(SemanticCache)` - New cache instance with background cleanup task started
@@ -335,10 +335,10 @@ impl SemanticCache {
 impl Drop for SemanticCache {
     fn drop(&mut self) {
         // Try to abort the cleanup task if it's still running
-        if let Ok(mut guard) = self.cleanup_handle.try_write() {
-            if let Some(handle) = guard.take() {
-                handle.abort();
-            }
+        if let Ok(mut guard) = self.cleanup_handle.try_write()
+            && let Some(handle) = guard.take()
+        {
+            handle.abort();
         }
     }
 }
