@@ -6,7 +6,7 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
-acp.workspace = true
+acp-core.workspace = true
 dioxus.workspace = true
 regex = "1"
 rfd.workspace = true

@@ -1719,7 +1719,7 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
             let column_values = columns
                 .iter()
                 .cloned()
-                .zip(row.values.into_iter())
+                .zip(row.values)
                 .filter_map(|(column_name, value)| value.map(|value| (column_name, value)))
                 .collect::<Vec<_>>();
 

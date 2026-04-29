@@ -1,0 +1,13 @@
+[package]
+name = "acp-agent"
+version = "0.1.0"
+description = "Embedded ACP agent binary — deepseek and ollama entrypoints"
+edition = "2024"
+
+[[bin]]
+name = "acp-agent"
+path = "src/main.rs"
+
+[dependencies]
+acp.workspace = true
+tokio.workspace = true

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "acp",
+    "acp-core",
     "acp-registry",
     "app",
     "connection",
@@ -25,6 +26,7 @@ models = { path = "models" }
 database = { path = "database" }
 services = { path = "services" }
 acp = { path = "acp" }
+acp-core = { path = "acp-core" }
 acp-registry = { path = "acp-registry" }
 connection = { path = "connection" }
 connection-ssh = { path = "connection-ssh" }

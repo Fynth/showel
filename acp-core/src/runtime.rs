@@ -1063,22 +1063,25 @@ fn is_opencode_command(executable: &str) -> bool {
 }
 
 fn opencode_runtime_environment() -> Option<[(&'static str, PathBuf); 3]> {
-    let runtime_root = storage::acp_agent_runtime_root("opencode")
-        .or_else(|_| {
+    let runtime_root = {
+        let base = dirs::data_local_dir()
+            .unwrap_or_else(|| std::env::temp_dir())
+            .join("shovel")
+            .join("acp")
+            .join("runtime")
+            .join("opencode");
+        if std::fs::create_dir_all(&base).is_ok() {
+            base
+        } else {
             let fallback = std::env::temp_dir()
                 .join("shovel")
                 .join("acp")
                 .join("runtime")
                 .join("opencode");
-            if let Err(err) = std::fs::create_dir_all(&fallback) {
-                return Err(format!(
-                    "failed to create fallback ACP runtime root {}: {err}",
-                    fallback.display()
-                ));
-            }
-            Ok(fallback)
-        })
-        .ok()?;
+            std::fs::create_dir_all(&fallback).ok()?;
+            fallback
+        }
+    };
 
     let data_home = runtime_root.join("xdg-data");
     let state_home = runtime_root.join("xdg-state");

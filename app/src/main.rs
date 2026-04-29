@@ -3,7 +3,7 @@
     windows_subsystem = "windows"
 )]
 
-use acp::{
+use acp_core::{
     EmbeddedDeepSeekAgentConfig, EmbeddedOllamaAgentConfig, run_embedded_deepseek_agent,
     run_embedded_ollama_agent,
 };

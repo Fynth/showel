@@ -6,6 +6,7 @@ version = 4
 name = "acp"
 version = "0.1.0"
 dependencies = [
+ "acp-core",
  "acp-registry",
  "agent-client-protocol",
  "async-trait",
@@ -24,6 +25,28 @@ dependencies = [
  "shlex",
  "sqlx",
  "storage",
+ "tokenizers",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "acp-core"
+version = "0.1.0"
+dependencies = [
+ "acp-registry",
+ "agent-client-protocol",
+ "async-trait",
+ "dirs",
+ "futures-util",
+ "models",
+ "ndarray 0.16.1",
+ "ort",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shlex",
  "tokenizers",
  "tokio",
  "tokio-util",
@@ -211,7 +234,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 name = "app"
 version = "0.1.0"
 dependencies = [
- "acp",
+ "acp-core",
  "dioxus",
  "grass",
  "image",

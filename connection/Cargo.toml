@@ -7,9 +7,16 @@ edition = "2024"
 [dependencies]
 connection-ssh.workspace = true
 database.workspace = true
-driver-clickhouse.workspace = true
-driver-mysql.workspace = true
-driver-postgres.workspace = true
-driver-sqlite.workspace = true
+driver-clickhouse = { workspace = true, optional = true }
+driver-mysql = { workspace = true, optional = true }
+driver-postgres = { workspace = true, optional = true }
+driver-sqlite = { workspace = true, optional = true }
 models.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, optional = true }
+
+[features]
+default = ["sqlite", "postgres", "mysql", "clickhouse"]
+sqlite = ["driver-sqlite"]
+postgres = ["driver-postgres"]
+mysql = ["driver-mysql"]
+clickhouse = ["driver-clickhouse", "reqwest"]

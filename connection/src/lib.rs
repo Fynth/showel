@@ -1,14 +1,25 @@
 //! Database connection orchestration and SSH tunnel lifecycle management for Shovel.
 
 use connection_ssh::{OpenedSshTunnel, open_ssh_tunnel, register_ssh_tunnel};
+#[cfg(any(
+    feature = "sqlite",
+    feature = "postgres",
+    feature = "mysql",
+    feature = "clickhouse"
+))]
 use database::DatabaseDriver;
+#[cfg(feature = "clickhouse")]
 use driver_clickhouse::ClickHouseDriver;
+#[cfg(feature = "mysql")]
 use driver_mysql::{MySqlConfig, MySqlDriver};
+#[cfg(feature = "postgres")]
 use driver_postgres::{PgConfig, PgDriver};
+#[cfg(feature = "sqlite")]
 use driver_sqlite::SqliteDriver;
 use models::{
     ClickHouseFormData, ConnectionRequest, DatabaseConnection, DatabaseError, SshTunnelConfig,
 };
+#[cfg(feature = "clickhouse")]
 use reqwest::Url;
 
 /// Releases an SSH tunnel that was previously opened for a connection
@@ -162,12 +173,14 @@ pub async fn connect_to_db(
     let session_key = request.identity_key();
 
     match request {
+        #[cfg(feature = "sqlite")]
         ConnectionRequest::Sqlite(data) => {
             let pool = SqliteDriver::connect(data.path)
                 .await
                 .map_err(DatabaseError::Sqlite)?;
             Ok(DatabaseConnection::Sqlite(pool))
         }
+        #[cfg(feature = "postgres")]
         ConnectionRequest::Postgres(mut data) => {
             let resolved = resolve_ssh_tunnel(
                 &data.ssh_tunnel,
@@ -201,6 +214,7 @@ pub async fn connect_to_db(
             finalize_tunnel(&session_key, resolved, &result);
             result
         }
+        #[cfg(feature = "mysql")]
         ConnectionRequest::MySql(mut data) => {
             let (host_for_tunnel, embedded_port) = split_mysql_host_and_port(&data.host);
             let effective_port =
@@ -238,6 +252,7 @@ pub async fn connect_to_db(
             finalize_tunnel(&session_key, resolved, &result);
             result
         }
+        #[cfg(feature = "clickhouse")]
         ConnectionRequest::ClickHouse(mut data) => {
             let resolved = if let Some(config) = data.ssh_tunnel.as_ref() {
                 if !config.is_configured() {
@@ -276,19 +291,26 @@ pub async fn connect_to_db(
             finalize_tunnel(&session_key, resolved, &result);
             result
         }
+        #[allow(unreachable_patterns)]
+        _ => Err(DatabaseError::UnsupportedDriver(
+            "this database driver is not compiled in".to_string(),
+        )),
     }
 }
 
+#[cfg(feature = "postgres")]
 fn looks_like_postgres_dsn(value: &str) -> bool {
     let value = value.trim().to_ascii_lowercase();
     value.starts_with("postgres://") || value.starts_with("postgresql://")
 }
 
+#[cfg(feature = "mysql")]
 fn looks_like_mysql_dsn(value: &str) -> bool {
     let value = value.trim().to_ascii_lowercase();
     value.starts_with("mysql://") || value.starts_with("mariadb://")
 }
 
+#[cfg(feature = "mysql")]
 fn split_mysql_host_and_port(value: &str) -> (String, Option<u16>) {
     let value = value.trim();
     if value.is_empty() {
@@ -323,6 +345,7 @@ fn split_mysql_host_and_port(value: &str) -> (String, Option<u16>) {
     (value.to_string(), None)
 }
 
+#[cfg(feature = "clickhouse")]
 #[derive(Debug)]
 struct ClickHouseTarget {
     remote_host: String,
@@ -330,6 +353,7 @@ struct ClickHouseTarget {
     scheme: Option<String>,
 }
 
+#[cfg(feature = "clickhouse")]
 impl ClickHouseTarget {
     fn connect_host(&self, local_port: u16) -> String {
         match self.scheme.as_deref() {
@@ -339,6 +363,7 @@ impl ClickHouseTarget {
     }
 }
 
+#[cfg(feature = "clickhouse")]
 fn parse_clickhouse_target(data: &ClickHouseFormData) -> Result<ClickHouseTarget, DatabaseError> {
     let host = data.host.trim();
     if host.is_empty() {
@@ -382,18 +407,21 @@ mod tests {
 
     // ── looks_like_postgres_dsn ──────────────────────────────────────
 
+    #[cfg(feature = "postgres")]
     #[test]
     fn postgres_dsn_detects_postgres_scheme() {
         assert!(looks_like_postgres_dsn("postgres://user@host/db"));
         assert!(looks_like_postgres_dsn("POSTGRES://user@host/db"));
     }
 
+    #[cfg(feature = "postgres")]
     #[test]
     fn postgres_dsn_detects_postgresql_scheme() {
         assert!(looks_like_postgres_dsn("postgresql://user@host/db"));
         assert!(looks_like_postgres_dsn("PostgreSQL://user@host/db"));
     }
 
+    #[cfg(feature = "postgres")]
     #[test]
     fn postgres_dsn_rejects_non_dsn() {
         assert!(!looks_like_postgres_dsn("localhost"));
@@ -401,6 +429,7 @@ mod tests {
         assert!(!looks_like_postgres_dsn(""));
     }
 
+    #[cfg(feature = "postgres")]
     #[test]
     fn postgres_dsn_ignores_leading_whitespace() {
         assert!(looks_like_postgres_dsn("  postgres://host/db"));
@@ -408,18 +437,21 @@ mod tests {
 
     // ── looks_like_mysql_dsn ─────────────────────────────────────────
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn mysql_dsn_detects_mysql_scheme() {
         assert!(looks_like_mysql_dsn("mysql://user@host/db"));
         assert!(looks_like_mysql_dsn("MYSQL://user@host/db"));
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn mysql_dsn_detects_mariadb_scheme() {
         assert!(looks_like_mysql_dsn("mariadb://user@host/db"));
         assert!(looks_like_mysql_dsn("MariaDB://user@host/db"));
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn mysql_dsn_rejects_non_dsn() {
         assert!(!looks_like_mysql_dsn("localhost"));
@@ -429,6 +461,7 @@ mod tests {
 
     // ── split_mysql_host_and_port ────────────────────────────────────
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn split_mysql_host_and_port_standard() {
         assert_eq!(
@@ -437,6 +470,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn split_mysql_host_and_port_no_port() {
         assert_eq!(
@@ -445,6 +479,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn split_mysql_host_and_port_ipv6_with_port() {
         assert_eq!(
@@ -453,6 +488,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn split_mysql_host_and_port_ipv6_without_port() {
         assert_eq!(
@@ -461,12 +497,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn split_mysql_host_and_port_empty() {
         assert_eq!(split_mysql_host_and_port(""), (String::new(), None));
         assert_eq!(split_mysql_host_and_port("  "), (String::new(), None));
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn split_mysql_host_and_port_multiple_colons() {
         // IPv6 without brackets – too many colons, treated as opaque
@@ -475,6 +513,7 @@ mod tests {
         assert_eq!(port, None);
     }
 
+    #[cfg(feature = "mysql")]
     #[test]
     fn split_mysql_host_and_port_invalid_port() {
         assert_eq!(
