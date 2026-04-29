@@ -1,6 +1,7 @@
 [package]
 name = "acp-registry"
 version = "0.1.0"
+description = "ACP registry fetch, install, and merge logic"
 edition = "2024"
 
 [dependencies]

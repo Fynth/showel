@@ -33,7 +33,9 @@ pub(super) fn AgentComposer(
     let prompt_is_empty = prompt_draft().trim().is_empty();
     let active_sql = active_editor_sql(tabs, active_tab_id());
     let has_active_sql = active_sql.is_some();
-    let has_explainable_sql = active_sql.as_deref().is_some_and(query::is_read_only_sql);
+    let has_explainable_sql = active_sql
+        .as_deref()
+        .is_some_and(services::is_read_only_sql);
     let has_active_error = active_editor_error(tabs, active_tab_id()).is_some();
     let enter_chat_label = connection_label.clone();
     let generate_sql_label = connection_label.clone();

@@ -215,6 +215,7 @@ dependencies = [
  "dioxus",
  "grass",
  "image",
+ "regex",
  "rfd",
  "ui",
  "winres",
@@ -2369,6 +2370,7 @@ dependencies = [
 name = "explorer"
 version = "0.1.0"
 dependencies = [
+ "database",
  "driver-clickhouse",
  "models",
  "serde_json",
@@ -5174,44 +5176,18 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 name = "query"
 version = "0.1.0"
 dependencies = [
- "query-core",
- "query-format",
- "query-io",
-]
-
-[[package]]
-name = "query-core"
-version = "0.1.0"
-dependencies = [
  "bigdecimal",
- "driver-clickhouse",
- "models",
- "serde_json",
- "sqlx",
- "time",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "query-format"
-version = "0.1.0"
-dependencies = [
- "models",
- "sqlformat",
-]
-
-[[package]]
-name = "query-io"
-version = "0.1.0"
-dependencies = [
  "csv",
+ "database",
  "driver-clickhouse",
  "models",
  "rust_xlsxwriter",
  "serde_json",
+ "sqlformat",
  "sqlx",
+ "time",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -6493,6 +6469,7 @@ dependencies = [
  "models",
  "serde",
  "serde_json",
+ "sha2",
  "sqlite-vec",
  "sqlx",
  "tokio",
@@ -7269,23 +7246,19 @@ dependencies = [
 name = "ui"
 version = "0.1.0"
 dependencies = [
- "acp",
  "ammonia",
  "arboard",
- "connection",
  "dioxus",
- "explorer",
  "futures-util",
  "models",
  "pulldown-cmark",
- "query",
  "reqwest",
  "rfd",
  "serde",
  "serde_json",
  "services",
- "storage",
  "tokio",
+ "tokio-util",
  "tree-sitter-highlight",
  "tree-sitter-sequel",
 ]

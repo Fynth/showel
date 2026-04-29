@@ -29,6 +29,14 @@ pub fn ensure_vec_extension_initialized() {
     });
 }
 
+/// Load all chat threads, ordered by most recently updated first.
+///
+/// Each returned [`ChatThreadSummary`] includes the thread metadata plus a
+/// preview of the last message in the thread.
+///
+/// # Errors
+///
+/// Returns an error string if the database query fails.
 pub async fn load_chat_threads() -> Result<Vec<ChatThreadSummary>, String> {
     let pool = chat_pool().await?;
     let rows = sqlx::query(
@@ -60,6 +68,19 @@ pub async fn load_chat_threads() -> Result<Vec<ChatThreadSummary>, String> {
     rows.into_iter().map(row_to_thread_summary).collect()
 }
 
+/// Create a new chat thread and return its summary.
+///
+/// If `title` is `None` or empty, the title defaults to `"New chat"`.
+/// The `connection_name` is normalized before storage.
+///
+/// # Arguments
+///
+/// * `connection_name` - The name of the database connection this thread is associated with.
+/// * `title` - An optional title for the thread.
+///
+/// # Errors
+///
+/// Returns an error string if the database insert fails.
 pub async fn create_chat_thread(
     connection_name: String,
     title: Option<String>,
@@ -96,6 +117,18 @@ pub async fn create_chat_thread(
     })
 }
 
+/// Delete a chat thread and all its messages.
+///
+/// This is a cascading delete: removing the thread row also removes
+/// associated messages thanks to the foreign-key schema.
+///
+/// # Arguments
+///
+/// * `thread_id` - The database ID of the thread to delete.
+///
+/// # Errors
+///
+/// Returns an error string if the database delete fails.
 pub async fn delete_chat_thread(thread_id: i64) -> Result<(), String> {
     let pool = chat_pool().await?;
     sqlx::query("delete from chat_threads where id = ?1")
@@ -106,6 +139,16 @@ pub async fn delete_chat_thread(thread_id: i64) -> Result<(), String> {
     Ok(())
 }
 
+/// Load all messages for a chat thread, ordered by position.
+///
+/// # Arguments
+///
+/// * `thread_id` - The database ID of the thread whose messages to load.
+///
+/// # Returns
+///
+/// A vector of [`AcpUiMessage`] values in positional order, or an error string
+/// if the database query fails.
 pub async fn load_chat_thread_messages(thread_id: i64) -> Result<Vec<AcpUiMessage>, String> {
     let pool = chat_pool().await?;
     let rows = sqlx::query(
@@ -124,6 +167,27 @@ pub async fn load_chat_thread_messages(thread_id: i64) -> Result<Vec<AcpUiMessag
     rows.into_iter().map(row_to_message).collect()
 }
 
+/// Atomically replace all messages in a chat thread and update its metadata.
+///
+/// This runs inside a single SQLite transaction: existing messages are deleted,
+/// new messages are inserted with sequential positions, and the thread's title,
+/// connection name, and `updated_at` timestamp are refreshed.
+///
+/// # Arguments
+///
+/// * `thread_id` - The database ID of the thread to update.
+/// * `title` - The new title for the thread (normalized before storage).
+/// * `connection_name` - The connection name to associate (normalized before storage).
+/// * `messages` - The complete set of messages to store, in display order.
+///
+/// # Returns
+///
+/// A [`ChatThreadSummary`] reflecting the updated thread state.
+///
+/// # Errors
+///
+/// Returns an error string if any database operation fails or the transaction
+/// cannot be committed.
 pub async fn save_chat_thread_snapshot(
     thread_id: i64,
     title: String,
@@ -218,6 +282,19 @@ pub async fn save_chat_thread_snapshot(
     })
 }
 
+/// Full-text search across chat messages using FTS5.
+///
+/// Returns distinct threads whose messages match the FTS5 query string.
+/// Results are ordered by most recently updated thread first.
+///
+/// # Arguments
+///
+/// * `query` - An FTS5 match expression (e.g. `"SELECT"` or `"schema AND table"`).
+/// * `limit` - Maximum number of thread summaries to return.
+///
+/// # Errors
+///
+/// Returns an error string if the FTS5 query fails.
 pub async fn search_chat_messages(
     query: &str,
     limit: usize,
@@ -258,6 +335,19 @@ pub async fn search_chat_messages(
     rows.into_iter().map(row_to_thread_summary).collect()
 }
 
+/// Find chat threads that contain SQL draft artifacts.
+///
+/// Scans messages of kind `tool` whose serialized artifact JSON contains
+/// `"SqlDraft"`, returning the owning threads ordered by most recently
+/// updated first.
+///
+/// # Arguments
+///
+/// * `limit` - Maximum number of thread summaries to return.
+///
+/// # Errors
+///
+/// Returns an error string if the database query fails.
 pub async fn search_chat_sql_artifacts(limit: usize) -> Result<Vec<ChatThreadSummary>, String> {
     let pool = chat_pool().await?;
 

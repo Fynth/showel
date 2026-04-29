@@ -77,5 +77,23 @@ fn write_secret_store(store: &PersistedSecretStore) -> Result<(), String> {
             .map_err(|err| format!("failed to protect {}: {err}", path.display()))?;
     }
 
+    #[cfg(windows)]
+    {
+        // On Windows, %LOCALAPPDATA% is already user-scoped, but we additionally
+        // hide the file from casual enumeration by setting the hidden attribute.
+        use std::os::windows::fs::MetadataExt;
+        if let Ok(metadata) = fs::metadata(&path) {
+            let attributes = metadata.file_attributes();
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+            if attributes & FILE_ATTRIBUTE_HIDDEN == 0 {
+                // Best-effort: if we can't set the hidden bit, the file is still
+                // protected by the user-scoped directory.
+                let _ = std::process::Command::new("attrib")
+                    .args(["+H", &path.to_string_lossy().to_string()])
+                    .output();
+            }
+        }
+    }
+
     Ok(())
 }

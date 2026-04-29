@@ -9,7 +9,7 @@ pub(crate) fn default_acp_panel_state() -> AcpPanelState {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or_else(|| {
-            storage::acp_workspace_root()
+            services::acp_workspace_root()
                 .ok()
                 .map(|path| path.display().to_string())
         })

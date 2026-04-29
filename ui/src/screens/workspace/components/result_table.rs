@@ -1627,7 +1627,7 @@ fn insert_empty_row(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Signal<
     };
 
     spawn(async move {
-        match query::next_table_primary_key_id(connection, editable.source.clone()).await {
+        match services::next_table_primary_key_id(connection, editable.source.clone()).await {
             Ok(Some((column_name, remote_next_id))) => {
                 tabs.with_mut(|all_tabs| {
                     let Some(tab) = all_tabs.iter_mut().find(|tab| tab.id == current_id) else {
@@ -1723,7 +1723,7 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
                 .filter_map(|(column_name, value)| value.map(|value| (column_name, value)))
                 .collect::<Vec<_>>();
 
-            if let Err(err) = query::insert_table_row_with_values(
+            if let Err(err) = services::insert_table_row_with_values(
                 connection.clone(),
                 editable.source.clone(),
                 column_values,
@@ -1736,7 +1736,7 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
         }
 
         for change in pending_changes.updated_cells {
-            if let Err(err) = query::update_table_cell(
+            if let Err(err) = services::update_table_cell(
                 connection.clone(),
                 editable.source.clone(),
                 change.locator,
@@ -1751,9 +1751,12 @@ fn apply_pending_changes(mut tabs: Signal<Vec<QueryTabState>>, active_tab_id: Si
         }
 
         for delete in pending_changes.deleted_rows {
-            if let Err(err) =
-                query::delete_table_row(connection.clone(), editable.source.clone(), delete.locator)
-                    .await
+            if let Err(err) = services::delete_table_row(
+                connection.clone(),
+                editable.source.clone(),
+                delete.locator,
+            )
+            .await
             {
                 set_active_tab_status(tabs, current_id, format_row_edit_error("Row delete", err));
                 return;

@@ -1,4 +1,5 @@
-use driver_clickhouse::execute_text_query;
+use database::DatabaseDriver;
+use driver_clickhouse::ClickHouseDriver;
 use models::{DatabaseConnection, DatabaseError, TablePreviewSource};
 
 use super::{
@@ -76,9 +77,7 @@ pub async fn create_table(
                 config.effective_database(),
             );
             let sql = format!("create table {qualified_name} {columns_sql} {engine}");
-            execute_text_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            ClickHouseDriver.execute_text_query(&config, &sql).await?;
             Ok(())
         }
     }
@@ -116,9 +115,7 @@ pub async fn drop_table(
             Ok(())
         }
         DatabaseConnection::ClickHouse(config) => {
-            execute_text_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            ClickHouseDriver.execute_text_query(&config, &sql).await?;
             Ok(())
         }
     }
@@ -157,9 +154,7 @@ pub async fn truncate_table(
         }
         DatabaseConnection::ClickHouse(config) => {
             let sql = format!("truncate table {qualified_name}");
-            execute_text_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            ClickHouseDriver.execute_text_query(&config, &sql).await?;
             Ok(())
         }
     }
@@ -273,17 +268,17 @@ pub async fn duplicate_table(
                     .await?;
             let create_sql =
                 rewrite_create_table_statement(&create_statement, &target_qualified_name)?;
-            execute_text_query(&config, &create_sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            ClickHouseDriver
+                .execute_text_query(&config, &create_sql)
+                .await?;
 
             if copy_data {
                 let insert_sql = format!(
                     "insert into {target_qualified_name} select * from {source_qualified_name}"
                 );
-                execute_text_query(&config, &insert_sql)
-                    .await
-                    .map_err(DatabaseError::ClickHouse)?;
+                ClickHouseDriver
+                    .execute_text_query(&config, &insert_sql)
+                    .await?;
             }
 
             Ok(())

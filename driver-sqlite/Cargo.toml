@@ -1,6 +1,7 @@
 [package]
 name = "driver-sqlite"
 version = "0.1.0"
+description = "SQLite database driver (via sqlx with bundled libsqlite3)"
 edition = "2024"
 
 [dependencies]

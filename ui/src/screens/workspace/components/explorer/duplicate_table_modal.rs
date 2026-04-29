@@ -189,7 +189,7 @@ pub(super) fn DuplicateTableModal(
                                 duplicate_inflight.set(true);
 
                                 spawn(async move {
-                                    let result = query::duplicate_table(
+                                    let result = services::duplicate_table(
                                         connection,
                                         source.clone(),
                                         next_table_name.clone(),

@@ -1,6 +1,7 @@
 [package]
 name = "driver-mysql"
 version = "0.1.0"
+description = "MySQL database driver (via sqlx)"
 edition = "2024"
 
 [dependencies]

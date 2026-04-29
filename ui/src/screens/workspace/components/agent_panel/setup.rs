@@ -19,7 +19,7 @@ async fn connect_registry_agent(
         state.status = acp_registry_preparing_text(agent_name);
     });
 
-    let launch = match acp::install_acp_registry_agent(agent_id.to_string(), cwd).await {
+    let launch = match services::install_acp_registry_agent(agent_id.to_string(), cwd).await {
         Ok(launch) => launch,
         Err(err) => {
             panel_state.with_mut(|state| {
@@ -38,7 +38,7 @@ async fn connect_registry_agent(
         state.status = format!("Connecting to {agent_name}...");
     });
 
-    match acp::connect_acp_agent(launch).await {
+    match services::connect_acp_agent(launch).await {
         Ok(connection) => {
             panel_state.with_mut(|state| {
                 apply_connected(state, connection);
@@ -121,7 +121,7 @@ pub(crate) async fn connect_embedded_deepseek(
         state.status = format!("Connecting to DeepSeek model {}...", deepseek.model.trim());
     });
 
-    let launch = match acp::build_embedded_deepseek_launch(cwd, deepseek.clone()) {
+    let launch = match services::build_embedded_deepseek_launch(cwd, deepseek.clone()) {
         Ok(launch) => launch,
         Err(err) => {
             panel_state.with_mut(|state| {
@@ -143,7 +143,7 @@ pub(crate) async fn connect_embedded_deepseek(
         );
     });
 
-    match acp::connect_acp_agent(launch).await {
+    match services::connect_acp_agent(launch).await {
         Ok(connection) => {
             panel_state.with_mut(|state| {
                 apply_connected(state, connection);

@@ -1,6 +1,7 @@
 [package]
 name = "driver-clickhouse"
 version = "0.1.0"
+description = "ClickHouse database driver (HTTP-based)"
 edition = "2024"
 
 [dependencies]

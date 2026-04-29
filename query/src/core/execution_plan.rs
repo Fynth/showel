@@ -1,4 +1,5 @@
-use driver_clickhouse::execute_text_query;
+use database::DatabaseDriver;
+use driver_clickhouse::ClickHouseDriver;
 use models::{DatabaseConnection, DatabaseError, ExecutionPlan, ExecutionPlanNode};
 use sqlx::Row;
 
@@ -746,9 +747,9 @@ async fn execute_clickhouse_explain(
     sql: &str,
 ) -> Result<ExecutionPlan, DatabaseError> {
     let explain_sql = format!("EXPLAIN {sql}");
-    let raw_text = execute_text_query(config, &explain_sql)
-        .await
-        .map_err(DatabaseError::ClickHouse)?;
+    let raw_text = ClickHouseDriver
+        .execute_text_query(config, &explain_sql)
+        .await?;
 
     let raw_lines: Vec<String> = raw_text.lines().map(String::from).collect();
     let root_nodes = parse_clickhouse_plan_text(&raw_text);

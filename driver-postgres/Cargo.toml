@@ -1,6 +1,7 @@
 [package]
 name = "driver-postgres"
 version = "0.1.0"
+description = "PostgreSQL database driver (via sqlx)"
 edition = "2024"
 
 [dependencies]

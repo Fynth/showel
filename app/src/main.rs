@@ -40,6 +40,12 @@ const APP_ICON_RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app_icon.
 const APP_CSS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/app.css"));
 
 fn main() {
+    // Ensure crash backtraces are always captured, even without RUST_BACKTRACE=1.
+    // SAFETY: called at program entry, before any threads are spawned.
+    unsafe {
+        std::env::set_var("RUST_BACKTRACE", "full");
+    }
+
     if let Some(result) = try_run_embedded_acp_agent() {
         if let Err(err) = result {
             eprintln!("{err}");
@@ -195,13 +201,37 @@ fn write_crash_report(report: &str) -> Option<PathBuf> {
     log_dir.push("shovel");
     fs::create_dir_all(&log_dir).ok()?;
 
+    // Use the process start time as fallback, so concurrent panics produce
+    // distinct log file names.
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
-        .unwrap_or(0);
+        .unwrap_or_else(|_| {
+            // System clock is before 1970; fall back to a pseudo-random suffix.
+            std::process::id() as u64
+        });
     let path = log_dir.join(format!("crash-{timestamp}.log"));
-    fs::write(&path, report).ok()?;
+    fs::write(&path, sanitize_crash_report(report)).ok()?;
     Some(path)
+}
+
+/// Redact sensitive credentials from a crash report before writing it to disk.
+///
+/// Strips:
+/// - `password=...` key-value pairs
+/// - `://user:password@host` URL credentials
+fn sanitize_crash_report(report: &str) -> String {
+    // Replace `password=<value>` (case-insensitive key, captures until whitespace/quote/end)
+    let re_password =
+        regex::Regex::new(r"(?i)(password\s*=\s*)(\S+)").expect("failed to compile password regex");
+    let report = re_password.replace_all(report, "${1}***REDACTED***");
+
+    // Replace `://user:secret@host` patterns in URLs
+    let re_url_creds = regex::Regex::new(r"(://[^:?\s@]+:)([^@?\s]+)(@)")
+        .expect("failed to compile URL creds regex");
+    let report = re_url_creds.replace_all(&report, "${1}***REDACTED***${3}");
+
+    report.into_owned()
 }
 
 fn show_error_dialog(title: &str, description: &str) {

@@ -13,9 +13,6 @@ members = [
     "explorer",
     "models",
     "query",
-    "query-core",
-    "query-format",
-    "query-io",
     "services",
     "storage",
     "ui",
@@ -37,9 +34,6 @@ driver-postgres = { path = "driver-postgres" }
 driver-sqlite = { path = "driver-sqlite" }
 explorer = { path = "explorer" }
 query = { path = "query" }
-query-core = { path = "query-core" }
-query-format = { path = "query-format" }
-query-io = { path = "query-io" }
 storage = { path = "storage" }
 
 dioxus = "0.7.3"

@@ -76,6 +76,15 @@ struct LegacySessionState {
     active_connection_name: Option<String>,
 }
 
+/// Load all saved connections from disk, hydrating secrets from the keyring.
+///
+/// Reads `saved_connections.json` and resolves each connection's password
+/// (or other secret) from the system keyring or the fallback secret store.
+/// Supports legacy formats and migrates them forward automatically.
+///
+/// # Errors
+///
+/// Returns an error string if the file cannot be read or parsed.
 pub async fn load_saved_connections() -> Result<Vec<SavedConnection>, String> {
     let path = saved_connections_path();
     let Some(content) = read_text_file(&path).await? else {
@@ -101,6 +110,19 @@ pub async fn load_saved_connections() -> Result<Vec<SavedConnection>, String> {
         .collect())
 }
 
+/// Persist a [`ConnectionRequest`] as a saved connection.
+///
+/// The request is upserted into the saved-connections list (keyed by
+/// identity key). The list is capped at [`MAX_SAVED_CONNECTIONS`] entries.
+/// Connection secrets are stored in the system keyring.
+///
+/// # Arguments
+///
+/// * `request` - The connection request to save.
+///
+/// # Errors
+///
+/// Returns an error string if writing the JSON file or the keyring entry fails.
 pub async fn save_connection_request(request: ConnectionRequest) -> Result<(), String> {
     let mut saved_connections = load_saved_connections().await.unwrap_or_default();
     let previous_connections = saved_connections.clone();
@@ -109,6 +131,20 @@ pub async fn save_connection_request(request: ConnectionRequest) -> Result<(), S
     persist_saved_connections(&saved_connections, &previous_connections).await
 }
 
+/// Replace an existing saved connection identified by its previous identity key.
+///
+/// This is used when editing a connection: the old entry (matched by
+/// `previous_identity_key`) is removed and the new `request` takes its place.
+/// If no entry with the given key exists, the new request is simply appended.
+///
+/// # Arguments
+///
+/// * `previous_identity_key` - The identity key of the connection to replace.
+/// * `request` - The new connection request to store.
+///
+/// # Errors
+///
+/// Returns an error string if writing the JSON file or the keyring entry fails.
 pub async fn replace_connection_request(
     previous_identity_key: String,
     request: ConnectionRequest,
@@ -124,16 +160,51 @@ pub async fn replace_connection_request(
     persist_saved_connections(&saved_connections, &previous_connections).await
 }
 
+/// Load recent query history from the SQLite-backed store.
+///
+/// Initializes the [`QueryHistoryStore`] schema (creating tables and
+/// migrating legacy JSON data if needed), then returns the 20 most
+/// recent history items.
+///
+/// # Errors
+///
+/// Returns an error string if schema initialization or the query fails.
 pub async fn load_query_history() -> Result<Vec<QueryHistoryItem>, String> {
     crate::query_history::QueryHistoryStore::init().await?;
     crate::query_history::QueryHistoryStore::load(20).await
 }
 
+/// Append a single [`QueryHistoryItem`] to the query history store.
+///
+/// Initializes the schema if needed, inserts the item, and trims the
+/// store to the configured maximum size.
+///
+/// # Arguments
+///
+/// * `item` - The history item to persist.
+///
+/// # Errors
+///
+/// Returns an error string if the insert fails.
 pub async fn append_query_history(item: QueryHistoryItem) -> Result<(), String> {
     crate::query_history::QueryHistoryStore::init().await?;
     crate::query_history::QueryHistoryStore::save(&item).await
 }
 
+/// Persist the current session state to disk asynchronously.
+///
+/// Writes `session_state.json` with the list of open connections and
+/// the name of the currently active connection (if any). Secrets for
+/// each connection are stored in the keyring.
+///
+/// # Arguments
+///
+/// * `open_requests` - All currently open connection requests.
+/// * `active_connection_name` - The name of the active connection tab, if any.
+///
+/// # Errors
+///
+/// Returns an error string if writing the file or any keyring entry fails.
 pub async fn save_session_state(
     open_requests: Vec<ConnectionRequest>,
     active_connection_name: Option<String>,
@@ -145,6 +216,19 @@ pub async fn save_session_state(
         .and_then(|_| finalize_secret_errors("session state", secret_errors))
 }
 
+/// Load the persisted session state asynchronously.
+///
+/// Reads `session_state.json` and hydrates each connection's secret from
+/// the keyring. Supports both the current and legacy session-state formats.
+///
+/// # Returns
+///
+/// A tuple of `(open_requests, active_connection_name)`. If no session file
+/// exists, both values are empty / `None`.
+///
+/// # Errors
+///
+/// Returns an error string if the file cannot be read or parsed.
 pub async fn load_session_state() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
     let state = read_session_state_async(session_state_path()).await?;
     let active_connection_name =
@@ -153,6 +237,20 @@ pub async fn load_session_state() -> Result<(Vec<ConnectionRequest>, Option<Stri
     Ok((open_requests, active_connection_name))
 }
 
+/// Persist the current session state to disk synchronously.
+///
+/// Synchronous variant of [`save_session_state`]. Writes `session_state.json`
+/// with the list of open connections and the name of the currently active
+/// connection (if any). Secrets for each connection are stored in the keyring.
+///
+/// # Arguments
+///
+/// * `open_requests` - All currently open connection requests.
+/// * `active_connection_name` - The name of the active connection tab, if any.
+///
+/// # Errors
+///
+/// Returns an error string if writing the file or any keyring entry fails.
 pub fn save_session_state_sync(
     open_requests: Vec<ConnectionRequest>,
     active_connection_name: Option<String>,
@@ -163,6 +261,20 @@ pub fn save_session_state_sync(
         .and_then(|_| finalize_secret_errors("session state", secret_errors))
 }
 
+/// Load the persisted session state synchronously.
+///
+/// Synchronous variant of [`load_session_state`]. Reads `session_state.json`
+/// and hydrates each connection's secret from the keyring. Supports both the
+/// current and legacy session-state formats.
+///
+/// # Returns
+///
+/// A tuple of `(open_requests, active_connection_name)`. If no session file
+/// exists, both values are empty / `None`.
+///
+/// # Errors
+///
+/// Returns an error string if the file cannot be read or parsed.
 pub fn load_session_state_sync() -> Result<(Vec<ConnectionRequest>, Option<String>), String> {
     let state = read_session_state_sync(session_state_path())?;
     let active_connection_name =
@@ -423,13 +535,14 @@ fn secret_entry(connection_name: &str) -> Result<Entry, String> {
 }
 
 fn secret_key(connection_name: &str) -> String {
-    let mut hash = 0xcbf29ce484222325_u64;
-    for byte in connection_name.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
+    use sha2::{Digest, Sha256};
 
-    format!("connection-{hash:016x}")
+    let mut hasher = Sha256::new();
+    hasher.update(connection_name.as_bytes());
+    let result = hasher.finalize();
+    // Use first 6 bytes (48 bits → 12 hex chars), enough for keyring uniqueness
+    let short = u64::from_be_bytes(result[..8].try_into().unwrap()) & 0xffffffffffff;
+    format!("connection-{short:012x}")
 }
 
 fn persisted_request_without_password(request: &PersistedConnectionRequest) -> ConnectionRequest {

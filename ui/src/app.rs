@@ -176,7 +176,8 @@ pub fn App() -> Element {
                         class: "app__tooltip-layer",
                         div {
                             class: "app__tooltip",
-                            style: format!("left: {:.0}px; top: {:.0}px;", tooltip.x, tooltip.y),
+                            left: "{tooltip.x:.0}px",
+                            top: "{tooltip.y:.0}px",
                             "{tooltip.label}"
                         }
                     }

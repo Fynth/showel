@@ -1,8 +1,0 @@
-[package]
-name = "query-format"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-models.workspace = true
-sqlformat = "0.5.0"

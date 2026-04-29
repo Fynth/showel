@@ -5,8 +5,10 @@ use models::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 // Explorer cache: session_id -> sections (valid for 5 minutes)
 const EXPLORER_CACHE_TTL: Duration = Duration::from_secs(300);
@@ -76,6 +78,8 @@ pub static APP_SHOW_SETTINGS_MODAL: GlobalSignal<bool> = Signal::global(|| false
 pub static APP_TOOLTIP: GlobalSignal<Option<AppTooltip>> = Signal::global(|| None);
 pub static APP_TOAST: GlobalSignal<Vec<AppToast>> = Signal::global(Vec::new);
 static NEXT_TOAST_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static TOAST_CANCEL_TOKENS: std::sync::LazyLock<Mutex<HashMap<u64, CancellationToken>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn replace_ui_settings(settings: AppUiSettings) {
     *APP_UI_SETTINGS.write() = settings.clone();
@@ -93,6 +97,11 @@ pub fn update_ui_settings(update: impl FnOnce(&mut AppUiSettings)) {
 
 pub fn reset_ui_settings() {
     replace_ui_settings(AppUiSettings::default());
+    // Purge API keys from keyring so they don't resurrect on next load.
+    spawn(async move {
+        let _ = services::save_codestral_api_key(String::new()).await;
+        let _ = services::save_deepseek_api_key(String::new()).await;
+    });
 }
 
 pub fn set_theme_preference(theme: AppThemePreference) {
@@ -263,13 +272,30 @@ pub fn show_toast(message: impl Into<String>, kind: ToastKind) {
         toasts.push(toast);
     });
     let toast_id = id;
+    let cancel_token = CancellationToken::new();
+    {
+        let mut tokens = TOAST_CANCEL_TOKENS
+            .lock()
+            .expect("TOAST_CANCEL_TOKENS lock poisoned");
+        tokens.insert(toast_id, cancel_token.clone());
+    }
     spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        dismiss_toast(toast_id);
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                dismiss_toast(toast_id);
+            }
+            _ = cancel_token.cancelled() => {}
+        }
     });
 }
 
 pub fn dismiss_toast(id: u64) {
+    // Cancel any in-flight auto-dismiss timer for this toast.
+    if let Ok(mut tokens) = TOAST_CANCEL_TOKENS.lock() {
+        if let Some(token) = tokens.remove(&id) {
+            token.cancel();
+        }
+    }
     APP_TOAST.with_mut(|toasts| {
         toasts.retain(|t| t.id != id);
     });
@@ -369,7 +395,7 @@ pub fn remove_session(session_id: u64) {
         }
 
         for key in removed_keys {
-            connection::release_ssh_tunnel(&key);
+            services::release_ssh_tunnel(&key);
         }
     });
     persist_session_state();
@@ -391,7 +417,7 @@ pub fn restore_connection_sessions(
 
     // Release SSH tunnels outside the lock to avoid potential deadlocks
     for key in existing_keys {
-        connection::release_ssh_tunnel(&key);
+        services::release_ssh_tunnel(&key);
     }
 
     // Now replace sessions atomically
@@ -447,30 +473,49 @@ fn persist_session_state() {
         (requests, active)
     };
 
-    match services::save_session_state_sync(open_requests, active_connection_name) {
-        Ok(()) => {
-            if let Ok(mut last_error) = LAST_SESSION_PERSIST_ERROR.lock() {
-                *last_error = None;
-            }
-        }
-        Err(err) => {
-            eprintln!("Failed to persist session state: {}", err);
-            let should_toast = if let Ok(mut last_error) = LAST_SESSION_PERSIST_ERROR.lock() {
-                if last_error.as_ref() == Some(&err) {
-                    false
-                } else {
-                    *last_error = Some(err.clone());
-                    true
-                }
-            } else {
-                true
-            };
+    // Offload synchronous file I/O to a blocking thread so we don't stall the
+    // Dioxus render thread.
+    spawn(async move {
+        let result = tokio::task::spawn_blocking(move || {
+            services::save_session_state_sync(open_requests, active_connection_name)
+        })
+        .await;
 
-            if should_toast {
-                toast_error(format!("Failed to save session state: {err}"));
+        match result {
+            Ok(Ok(())) => {
+                if let Ok(mut last_error) = LAST_SESSION_PERSIST_ERROR.lock() {
+                    *last_error = None;
+                }
+            }
+            Ok(Err(err)) => {
+                eprintln!("Failed to persist session state: {}", err);
+                let should_toast = if let Ok(mut last_error) = LAST_SESSION_PERSIST_ERROR.lock() {
+                    if last_error.as_ref() == Some(&err) {
+                        false
+                    } else {
+                        *last_error = Some(err.clone());
+                        true
+                    }
+                } else {
+                    true
+                };
+
+                if should_toast {
+                    toast_error(format!("Failed to save session state: {err}"));
+                }
+            }
+            Err(join_err) => {
+                let err = join_err.to_string();
+                eprintln!("Failed to persist session state: {}", err);
+                if let Ok(mut last_error) = LAST_SESSION_PERSIST_ERROR.lock() {
+                    if last_error.as_ref() != Some(&err) {
+                        *last_error = Some(err.clone());
+                        toast_error(format!("Failed to save session state: {err}"));
+                    }
+                }
             }
         }
-    }
+    });
 }
 
 // Explorer cache functions

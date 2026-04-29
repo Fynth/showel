@@ -399,7 +399,7 @@ fn ExplorerObjectRow(
                                         table_mutation_inflight
                                             .set(Some(TableMutationKind::Truncate));
                                         let result =
-                                            query::truncate_table(connection, source.clone()).await;
+                                            services::truncate_table(connection, source.clone()).await;
                                         table_mutation_inflight.set(None);
 
                                         match result {
@@ -492,7 +492,7 @@ fn ExplorerObjectRow(
                                     };
 
                                     table_mutation_inflight.set(Some(TableMutationKind::Drop));
-                                    let result = query::drop_table(connection, source.clone()).await;
+                                    let result = services::drop_table(connection, source.clone()).await;
                                     table_mutation_inflight.set(None);
 
                                     match result {

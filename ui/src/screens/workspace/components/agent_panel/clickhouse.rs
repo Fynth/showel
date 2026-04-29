@@ -1,6 +1,6 @@
-use explorer::load_connection_tree;
 use models::{DatabaseConnection, ExplorerNode, TablePreviewSource};
-use query::preview_source_for_sql;
+use services::load_connection_tree;
+use services::preview_source_for_sql;
 use std::collections::BTreeSet;
 
 #[derive(Clone)]

@@ -1,6 +1,7 @@
 [package]
 name = "database"
 version = "0.1.0"
+description = "Common database driver traits and error types"
 edition = "2024"
 
 [dependencies]

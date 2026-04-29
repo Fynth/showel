@@ -1,6 +1,7 @@
 [package]
 name = "connection-ssh"
 version = "0.1.0"
+description = "SSH tunnel implementation for database connections"
 edition = "2024"
 
 [dependencies]

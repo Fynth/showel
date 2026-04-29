@@ -304,7 +304,7 @@ pub fn EditConnectionModal(
                         save_inflight.set(true);
 
                         spawn(async move {
-                            match storage::replace_connection_request(previous_identity_key, next_request)
+                            match services::replace_connection_request(previous_identity_key, next_request)
                                 .await
                             {
                                 Ok(()) => {

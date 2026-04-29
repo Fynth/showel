@@ -472,7 +472,7 @@ pub(super) fn CreateTableModal(
                                             return;
                                         };
 
-                                        let result = query::create_table(
+                                        let result = services::create_table(
                                             connection,
                                             schema,
                                             table_name,

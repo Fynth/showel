@@ -182,6 +182,23 @@ impl ClickHouseFormData {
     }
 }
 
+/// Column metadata returned by ClickHouse JSONCompact format.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ClickHouseJsonMeta {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub data_type: String,
+}
+
+/// A parsed ClickHouse JSON response.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ClickHouseJsonResponse {
+    #[serde(default)]
+    pub meta: Vec<ClickHouseJsonMeta>,
+    #[serde(default)]
+    pub data: Vec<Vec<serde_json::Value>>,
+}
+
 impl fmt::Display for DatabaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

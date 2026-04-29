@@ -33,9 +33,8 @@ The root `Cargo.toml` defines a multi-crate workspace. The important crates are:
 - `storage`: local persistence for settings, sessions, saved connections, query history, saved queries, chat DB
 - `connection`: DB connection orchestration and SSH tunnel lifecycle
 - `connection-ssh`: SSH tunnel implementation
-- `database`: common driver traits and error types
+- `database`: common driver traits (the `DatabaseDriver` trait) and error types
 - `driver-sqlite`, `driver-postgres`, `driver-mysql`, `driver-clickhouse`: backend-specific drivers
-- `drivers`: shared driver-facing types
 - `explorer`: schema/database tree loading and table metadata
 - `query-core`: core query execution and table-edit logic
 - `query-format`: SQL formatting

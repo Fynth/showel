@@ -1,9 +1,22 @@
 [package]
 name = "query"
 version = "0.1.0"
+description = "Query execution, formatting, and import/export"
 edition = "2024"
 
 [dependencies]
-query-core.workspace = true
-query-format.workspace = true
-query-io.workspace = true
+bigdecimal = "0.4.7"
+csv = "1.4.0"
+database.workspace = true
+driver-clickhouse.workspace = true
+models.workspace = true
+rust_xlsxwriter = "0.94.0"
+serde_json.workspace = true
+sqlformat = "0.5.0"
+sqlx = { workspace = true, features = ["sqlite", "postgres", "mysql", "uuid", "time", "json", "bigdecimal"] }
+time = "0.3.41"
+tokio.workspace = true
+uuid = "1.17.0"
+
+[dev-dependencies]
+tokio.workspace = true

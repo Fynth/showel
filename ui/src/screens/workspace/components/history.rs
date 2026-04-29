@@ -229,8 +229,8 @@ pub fn QueryHistoryPanel(
             if query.trim().is_empty() {
                 return Vec::new();
             }
-            let _ = storage::QueryHistoryStore::init().await;
-            storage::QueryHistoryStore::search(&query)
+            let _ = services::QueryHistoryStore::init().await;
+            services::QueryHistoryStore::search(&query)
                 .await
                 .unwrap_or_default()
         }

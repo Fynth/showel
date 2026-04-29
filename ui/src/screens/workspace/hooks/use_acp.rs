@@ -244,7 +244,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                     if let Some((sql, pending_sql_insert)) = pending_hidden_agent_sql {
                         acp_panel_state.with_mut(|state| state.hidden_agent_response.clear());
 
-                        if query::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
+                        if services::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
                             execute_agent_sql_request(
                                 acp_panel_state,
                                 tabs,
@@ -280,7 +280,7 @@ pub fn use_acp_state(inputs: AcpStateInputs) -> AcpState {
                     } else if let Some((message_id, sql, pending_sql_insert)) = pending_agent_sql {
                         handled_agent_sql_message_id.set(message_id);
 
-                        if query::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
+                        if services::is_read_only_sql(&sql) && allow_agent_read_sql_run() {
                             execute_agent_sql_request(
                                 acp_panel_state,
                                 tabs,

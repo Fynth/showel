@@ -572,9 +572,7 @@ fn mysql_cell_to_string(row: &sqlx::mysql::MySqlRow, idx: usize) -> String {
     format!("<unsupported:{}>", row.columns()[idx].type_info().name())
 }
 
-pub(super) fn clickhouse_rows_to_page(
-    response: driver_clickhouse::ClickHouseJsonResponse,
-) -> QueryPage {
+pub(super) fn clickhouse_rows_to_page(response: models::ClickHouseJsonResponse) -> QueryPage {
     QueryPage {
         columns: response
             .meta
@@ -599,7 +597,7 @@ pub(super) fn clickhouse_rows_to_page(
 }
 
 pub(super) fn clickhouse_rows_to_paginated_page(
-    mut response: driver_clickhouse::ClickHouseJsonResponse,
+    mut response: models::ClickHouseJsonResponse,
     page_size: u32,
     offset: u64,
 ) -> QueryPage {

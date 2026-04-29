@@ -415,7 +415,7 @@ pub fn TabsManager(
                                     });
                                     return;
                                 }
-                                if !query::is_read_only_sql(&sql) {
+                                if !services::is_read_only_sql(&sql) {
                                     set_active_tab_status(
                                         tabs,
                                         current_id,
@@ -674,18 +674,18 @@ fn export_active_page(
         );
 
         let export_result = match format {
-            ExportFormat::Csv => query::export_query_page_csv(page, path.clone()).await,
-            ExportFormat::Json => query::export_query_page_json(page, path.clone()).await,
-            ExportFormat::Xlsx => query::export_query_page_xlsx(page, path.clone()).await,
-            ExportFormat::Xml => query::export_query_page_xml(page, path.clone()).await,
-            ExportFormat::Html => query::export_query_page_html(page, path.clone()).await,
+            ExportFormat::Csv => services::export_query_page_csv(page, path.clone()).await,
+            ExportFormat::Json => services::export_query_page_json(page, path.clone()).await,
+            ExportFormat::Xlsx => services::export_query_page_xlsx(page, path.clone()).await,
+            ExportFormat::Xml => services::export_query_page_xml(page, path.clone()).await,
+            ExportFormat::Html => services::export_query_page_html(page, path.clone()).await,
             ExportFormat::SqlDump => {
                 let table_name = current_tab
                     .preview_source
                     .as_ref()
                     .map(|s| s.table_name.clone())
                     .unwrap_or_else(|| "exported_table".to_string());
-                query::export_query_page_sql_dump(page, path.clone(), table_name).await
+                services::export_query_page_sql_dump(page, path.clone(), table_name).await
             }
         };
 
@@ -759,7 +759,7 @@ fn import_csv_into_active_table(tabs: Signal<Vec<QueryTabState>>, current_tab: Q
             format!("Importing {}...", path.to_string_lossy()),
         );
 
-        match query::import_csv_into_table(connection, source.clone(), path).await {
+        match services::import_csv_into_table(connection, source.clone(), path).await {
             Ok(rows) => {
                 set_active_tab_status(
                     tabs,
@@ -836,7 +836,7 @@ fn format_active_sql(
         .read()
         .session(current_tab.session_id)
         .map(|session| session.kind);
-    let formatted = query::format_sql(session_kind, sql, &format_settings);
+    let formatted = services::format_sql(session_kind, sql, &format_settings);
     replace_active_tab_sql(tabs, current_tab.id, formatted, "SQL formatted".to_string());
 }
 
@@ -932,6 +932,6 @@ fn actionable_table_source(tab: &QueryTabState) -> Option<TablePreviewSource> {
     tab.preview_source.clone().or_else(|| {
         tab.last_run_sql
             .as_deref()
-            .and_then(query::preview_source_for_sql)
+            .and_then(services::preview_source_for_sql)
     })
 }

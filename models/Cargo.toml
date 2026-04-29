@@ -1,12 +1,13 @@
 [package]
 name = "models"
 version = "0.1.0"
+description = "Shared domain models and persisted settings types for Shovel"
 edition = "2024"
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 sqlx = { workspace = true, features = ["sqlite", "postgres", "mysql"] }
 url = "2.5.7"
 
 [dev-dependencies]
-serde_json.workspace = true

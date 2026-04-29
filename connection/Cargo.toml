@@ -1,6 +1,7 @@
 [package]
 name = "connection"
 version = "0.1.0"
+description = "Database connection orchestration and SSH tunnel lifecycle management"
 edition = "2024"
 
 [dependencies]

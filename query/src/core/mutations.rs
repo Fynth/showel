@@ -1,4 +1,5 @@
-use driver_clickhouse::{execute_json_query, execute_text_query};
+use database::DatabaseDriver;
+use driver_clickhouse::ClickHouseDriver;
 use models::{DatabaseConnection, DatabaseError, TablePreviewSource};
 use sqlx::Row;
 
@@ -109,9 +110,7 @@ pub async fn update_table_cell(
                 source.qualified_name, column, value_literal, where_clause
             );
 
-            execute_text_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            ClickHouseDriver.execute_text_query(&config, &sql).await?;
             Ok(())
         }
     }
@@ -185,9 +184,7 @@ pub async fn insert_table_row_with_values(
         DatabaseConnection::ClickHouse(config) => {
             let sql = build_insert_row_sql(&source, &column_values, quote_identifier_clickhouse);
 
-            execute_text_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            ClickHouseDriver.execute_text_query(&config, &sql).await?;
             Ok(())
         }
     }
@@ -308,17 +305,28 @@ pub async fn next_table_primary_key_id(
                 "SELECT toString(COALESCE(MAX({}), 0) + 1) AS next_id FROM {}",
                 column, source.qualified_name
             );
-            let response = execute_json_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            let response = ClickHouseDriver.execute_json_query(&config, &sql).await?;
 
             if let Some(row) = response.data.first()
                 && let Some(val) = row.first()
             {
                 let next_id = match val {
-                    serde_json::Value::String(s) => s.parse::<i64>().unwrap_or(1),
-                    serde_json::Value::Number(n) => n.as_i64().unwrap_or(1),
-                    _ => 1,
+                    serde_json::Value::String(s) => s.parse::<i64>().map_err(|e| {
+                        DatabaseError::ClickHouse(format!(
+                            "next_table_primary_key_id: failed to parse string '{s}' as i64: {e}"
+                        ))
+                    })?,
+                    serde_json::Value::Number(n) => n.as_i64().ok_or_else(|| {
+                        DatabaseError::ClickHouse(format!(
+                            "next_table_primary_key_id: number is not a valid i64: {n}"
+                        ))
+                    })?,
+                    other => {
+                        return Err(DatabaseError::ClickHouse(format!(
+                            "next_table_primary_key_id: unexpected value type {:?}",
+                            other
+                        )));
+                    }
                 };
                 Ok(Some((pk_columns[0].clone(), next_id)))
             } else {
@@ -415,9 +423,7 @@ pub async fn delete_table_row(
                 source.qualified_name, where_clause
             );
 
-            execute_text_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            ClickHouseDriver.execute_text_query(&config, &sql).await?;
             Ok(())
         }
     }

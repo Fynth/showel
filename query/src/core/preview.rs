@@ -1,4 +1,5 @@
-use driver_clickhouse::execute_json_query;
+use database::DatabaseDriver;
+use driver_clickhouse::ClickHouseDriver;
 use models::{
     DatabaseConnection, DatabaseError, QueryFilter, QueryOutput, QuerySort, TablePreviewSource,
 };
@@ -133,9 +134,7 @@ pub async fn load_table_preview_page(
                     sort.as_ref(),
                     CLICKHOUSE_DIALECT,
                 );
-                let response = execute_json_query(&config, &sql)
-                    .await
-                    .map_err(DatabaseError::ClickHouse)?;
+                let response = ClickHouseDriver.execute_json_query(&config, &sql).await?;
 
                 let pk_count = pk_columns.len();
                 let row_locators: Vec<String> = response
@@ -153,9 +152,7 @@ pub async fn load_table_preview_page(
                     sort.as_ref(),
                     CLICKHOUSE_DIALECT,
                 );
-                let response = execute_json_query(&config, &sql)
-                    .await
-                    .map_err(DatabaseError::ClickHouse)?;
+                let response = ClickHouseDriver.execute_json_query(&config, &sql).await?;
                 (response, vec![])
             };
 

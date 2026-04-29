@@ -76,7 +76,7 @@ pub(super) fn send_chat_prompt_request(
     spawn(async move {
         let (contextual_prompt, routing_context) = match connection {
             Some(connection) => {
-                match acp::build_acp_database_context(
+                match services::build_acp_database_context(
                     connection,
                     connection_label.clone(),
                     focus_source,
@@ -193,7 +193,7 @@ pub(crate) fn send_sql_generation_request(
     spawn(async move {
         let (prompt, routing_context) = match connection {
             Some(connection) => {
-                match acp::build_acp_database_context(
+                match services::build_acp_database_context(
                     connection,
                     connection_label.clone(),
                     focus_source,
@@ -319,7 +319,7 @@ pub(super) fn send_sql_plan_request(
         return;
     }
 
-    if !query::is_read_only_sql(&active_sql) {
+    if !services::is_read_only_sql(&active_sql) {
         panel_state.with_mut(|state| {
             state.status = "Explain Plan is available only for read-only SQL.".to_string();
             push_message(
@@ -363,7 +363,7 @@ pub(super) fn send_sql_plan_request(
     });
 
     spawn(async move {
-        let plan_output = match query::execute_query_page(
+        let plan_output = match services::execute_query_page(
             connection.clone(),
             explain_sql.clone(),
             100,
@@ -388,7 +388,7 @@ pub(super) fn send_sql_plan_request(
         let explain_plan = describe_query_output("Explain plan result", &plan_output);
 
         let (prompt, routing_context) = if allow_db_read {
-            match acp::build_acp_database_context(
+            match services::build_acp_database_context(
                 connection,
                 connection_label.clone(),
                 focus_source,
@@ -514,7 +514,7 @@ pub(super) fn send_sql_explanation_request(
 
     spawn(async move {
         let (prompt, routing_context) = match connection {
-            Some(connection) => match acp::build_acp_database_context(
+            Some(connection) => match services::build_acp_database_context(
                 connection,
                 connection_label.clone(),
                 focus_source,
@@ -645,7 +645,7 @@ pub(super) fn send_sql_error_fix_request(
 
     spawn(async move {
         let (prompt, routing_context) = match connection {
-            Some(connection) => match acp::build_acp_database_context(
+            Some(connection) => match services::build_acp_database_context(
                 connection,
                 connection_label.clone(),
                 focus_source,
@@ -855,7 +855,7 @@ pub(super) fn can_execute_agent_sql(
     allow_read_sql_run: bool,
     allow_write_sql_run: bool,
 ) -> bool {
-    if query::is_read_only_sql(sql) {
+    if services::is_read_only_sql(sql) {
         allow_read_sql_run
     } else {
         allow_write_sql_run

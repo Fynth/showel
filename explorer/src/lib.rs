@@ -1,4 +1,5 @@
-use driver_clickhouse::{execute_json_query, execute_text_query};
+use database::DatabaseDriver;
+use driver_clickhouse::ClickHouseDriver;
 use models::{DatabaseConnection, DatabaseError, ExplorerNode, ExplorerNodeKind, QueryOutput};
 use sqlx::Row;
 
@@ -41,9 +42,9 @@ pub async fn describe_table(
                 clickhouse_string_literal(&schema_name),
                 clickhouse_string_literal(&table)
             );
-            let overview = execute_json_query(&config, &overview_sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            let overview = ClickHouseDriver
+                .execute_json_query(&config, &overview_sql)
+                .await?;
             if let Some(row) = overview.data.first() {
                 let engine = clickhouse_value_to_string(row.first());
                 let partition_key = clickhouse_value_to_string(row.get(1));
@@ -78,9 +79,9 @@ pub async fn describe_table(
                     quote_clickhouse_identifier(&table)
                 )
             };
-            let create_statement = execute_text_query(&config, &create_sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            let create_statement = ClickHouseDriver
+                .execute_text_query(&config, &create_sql)
+                .await?;
             rows.push(structure_row(
                 "table",
                 table.clone(),
@@ -107,9 +108,9 @@ pub async fn describe_table(
                 clickhouse_string_literal(&schema_name),
                 clickhouse_string_literal(&table)
             );
-            let columns = execute_json_query(&config, &columns_sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            let columns = ClickHouseDriver
+                .execute_json_query(&config, &columns_sql)
+                .await?;
             for row in columns.data {
                 let column_name = clickhouse_value_to_string(row.first());
                 let column_type = clickhouse_value_to_string(row.get(1));
@@ -159,9 +160,7 @@ pub async fn load_table_columns(
                 clickhouse_string_literal(&schema_name),
                 clickhouse_string_literal(&table)
             );
-            let response = execute_json_query(&config, &sql)
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
+            let response = ClickHouseDriver.execute_json_query(&config, &sql).await?;
 
             Ok(response
                 .data
@@ -180,17 +179,17 @@ pub async fn load_connection_tree(
         DatabaseConnection::Postgres(pool) => load_connection_tree_postgres(&pool).await,
         DatabaseConnection::MySql(pool) => load_connection_tree_mysql(&pool).await,
         DatabaseConnection::ClickHouse(config) => {
-            let response = execute_json_query(
-                &config,
-                r#"
+            let response = ClickHouseDriver
+                .execute_json_query(
+                    &config,
+                    r#"
                 select database, name, engine, create_table_query
                 from system.tables
                 where database not in ('system', 'INFORMATION_SCHEMA', 'information_schema')
                 order by database, name
                 "#,
-            )
-            .await
-            .map_err(DatabaseError::ClickHouse)?;
+                )
+                .await?;
 
             let mut grouped: std::collections::BTreeMap<String, Vec<ExplorerNode>> =
                 std::collections::BTreeMap::new();

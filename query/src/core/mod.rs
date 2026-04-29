@@ -6,7 +6,8 @@ mod mutations;
 mod preview;
 mod rows;
 
-use driver_clickhouse::{execute_json_query, execute_text_query};
+use database::DatabaseDriver;
+use driver_clickhouse::ClickHouseDriver;
 use models::{
     DatabaseConnection, DatabaseError, QueryFilter, QueryOutput, QuerySort, TablePreviewSource,
 };
@@ -86,215 +87,274 @@ pub async fn execute_query_page(
     filter: Option<QueryFilter>,
     sort: Option<QuerySort>,
 ) -> Result<QueryOutput, DatabaseError> {
-    let normalized = sql.trim().to_lowercase();
-
     match connection {
         DatabaseConnection::Sqlite(pool) => {
-            if let Some(plan) = editable_select_plan(&sql) {
-                let query = build_editable_paginated_query(
-                    &plan,
-                    page_size,
-                    offset,
-                    "rowid",
-                    filter.as_ref(),
-                    sort.as_ref(),
-                    SQLITE_DIALECT,
-                );
-                let rows = sqlx::query(&query)
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::Sqlite)?;
-                Ok(QueryOutput::Table(sqlite_preview_rows_to_paginated_page(
-                    rows,
-                    plan.source,
-                    page_size,
-                    offset,
-                )))
-            } else if is_paginated_query(&normalized) {
-                let rows = sqlx::query(&build_paginated_query(
-                    &sql,
-                    page_size,
-                    offset,
-                    filter.as_ref(),
-                    sort.as_ref(),
-                    SQLITE_DIALECT,
-                ))
-                .fetch_all(&pool)
-                .await
-                .map_err(DatabaseError::Sqlite)?;
-                Ok(QueryOutput::Table(sqlite_rows_to_paginated_page(
-                    rows, page_size, offset,
-                )))
-            } else if is_tabular_query(&normalized) {
-                let rows = sqlx::query(&sql)
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::Sqlite)?;
-                Ok(QueryOutput::Table(sqlite_rows_to_page(rows)))
-            } else {
-                let result = sqlx::query(&sql)
-                    .execute(&pool)
-                    .await
-                    .map_err(DatabaseError::Sqlite)?;
-                Ok(QueryOutput::AffectedRows(result.rows_affected()))
-            }
+            execute_sqlite_query_page(&sql, &pool, page_size, offset, filter, sort).await
         }
         DatabaseConnection::Postgres(pool) => {
-            if let Some(plan) = editable_select_plan(&sql) {
-                let query = build_editable_paginated_query(
-                    &plan,
-                    page_size,
-                    offset,
-                    "ctid::text",
-                    filter.as_ref(),
-                    sort.as_ref(),
-                    POSTGRES_DIALECT,
-                );
-                let rows = sqlx::query(&query)
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::Postgres)?;
-                Ok(QueryOutput::Table(postgres_preview_rows_to_paginated_page(
-                    rows,
-                    plan.source,
-                    page_size,
-                    offset,
-                )))
-            } else if is_paginated_query(&normalized) {
-                let rows = sqlx::query(&build_paginated_query(
-                    &sql,
-                    page_size,
-                    offset,
-                    filter.as_ref(),
-                    sort.as_ref(),
-                    POSTGRES_DIALECT,
-                ))
-                .fetch_all(&pool)
-                .await
-                .map_err(DatabaseError::Postgres)?;
-                Ok(QueryOutput::Table(postgres_rows_to_paginated_page(
-                    rows, page_size, offset,
-                )))
-            } else if is_tabular_query(&normalized) {
-                let rows = sqlx::query(&sql)
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::Postgres)?;
-                Ok(QueryOutput::Table(postgres_rows_to_page(rows)))
-            } else {
-                let result = sqlx::query(&sql)
-                    .execute(&pool)
-                    .await
-                    .map_err(DatabaseError::Postgres)?;
-                Ok(QueryOutput::AffectedRows(result.rows_affected()))
-            }
+            execute_postgres_query_page(&sql, &pool, page_size, offset, filter, sort).await
         }
         DatabaseConnection::MySql(pool) => {
-            if let Some(plan) = editable_select_plan(&sql) {
-                let schema_name =
-                    mysql_effective_schema_name(&pool, plan.source.schema.as_deref()).await?;
-                let primary_key_columns =
-                    mysql_primary_key_columns(&pool, &schema_name, &plan.source.table_name).await?;
+            execute_mysql_query_page(&sql, &pool, page_size, offset, filter, sort).await
+        }
+        DatabaseConnection::ClickHouse(config) => {
+            execute_clickhouse_query_page(&sql, &config, page_size, offset, filter, sort).await
+        }
+    }
+}
 
-                if primary_key_columns.is_empty() {
-                    let rows = sqlx::query(&build_paginated_query(
-                        &sql,
-                        page_size,
-                        offset,
-                        filter.as_ref(),
-                        sort.as_ref(),
-                        MYSQL_DIALECT,
-                    ))
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::MySql)?;
-                    Ok(QueryOutput::Table(mysql_rows_to_paginated_page(
-                        rows, page_size, offset,
-                    )))
-                } else {
-                    let locator_expr = mysql_locator_expression(&primary_key_columns);
-                    let mut plan = plan;
-                    plan.source.schema = Some(schema_name);
-                    let query = build_editable_paginated_query(
-                        &plan,
-                        page_size,
-                        offset,
-                        &locator_expr,
-                        filter.as_ref(),
-                        sort.as_ref(),
-                        MYSQL_DIALECT,
-                    );
-                    let rows = sqlx::query(&query)
-                        .fetch_all(&pool)
-                        .await
-                        .map_err(DatabaseError::MySql)?;
-                    Ok(QueryOutput::Table(mysql_preview_rows_to_paginated_page(
-                        rows,
-                        plan.source,
-                        page_size,
-                        offset,
-                    )))
-                }
-            } else if is_paginated_query(&normalized) {
-                let rows = sqlx::query(&build_paginated_query(
-                    &sql,
+async fn execute_sqlite_query_page(
+    sql: &str,
+    pool: &sqlx::SqlitePool,
+    page_size: u32,
+    offset: u64,
+    filter: Option<QueryFilter>,
+    sort: Option<QuerySort>,
+) -> Result<QueryOutput, DatabaseError> {
+    let normalized = sql.trim().to_lowercase();
+
+    if let Some(plan) = editable_select_plan(sql) {
+        let query = build_editable_paginated_query(
+            &plan,
+            page_size,
+            offset,
+            "rowid",
+            filter.as_ref(),
+            sort.as_ref(),
+            SQLITE_DIALECT,
+        );
+        let rows = sqlx::query(&query)
+            .fetch_all(pool)
+            .await
+            .map_err(DatabaseError::Sqlite)?;
+        return Ok(QueryOutput::Table(sqlite_preview_rows_to_paginated_page(
+            rows,
+            plan.source,
+            page_size,
+            offset,
+        )));
+    }
+
+    if is_paginated_query(&normalized) {
+        let rows = sqlx::query(&build_paginated_query(
+            sql,
+            page_size,
+            offset,
+            filter.as_ref(),
+            sort.as_ref(),
+            SQLITE_DIALECT,
+        ))
+        .fetch_all(pool)
+        .await
+        .map_err(DatabaseError::Sqlite)?;
+        return Ok(QueryOutput::Table(sqlite_rows_to_paginated_page(
+            rows, page_size, offset,
+        )));
+    }
+
+    if is_tabular_query(&normalized) {
+        let rows = sqlx::query(sql)
+            .fetch_all(pool)
+            .await
+            .map_err(DatabaseError::Sqlite)?;
+        return Ok(QueryOutput::Table(sqlite_rows_to_page(rows)));
+    }
+
+    let result = sqlx::query(sql)
+        .execute(pool)
+        .await
+        .map_err(DatabaseError::Sqlite)?;
+    Ok(QueryOutput::AffectedRows(result.rows_affected()))
+}
+
+async fn execute_postgres_query_page(
+    sql: &str,
+    pool: &sqlx::PgPool,
+    page_size: u32,
+    offset: u64,
+    filter: Option<QueryFilter>,
+    sort: Option<QuerySort>,
+) -> Result<QueryOutput, DatabaseError> {
+    let normalized = sql.trim().to_lowercase();
+
+    if let Some(plan) = editable_select_plan(sql) {
+        let query = build_editable_paginated_query(
+            &plan,
+            page_size,
+            offset,
+            "ctid::text",
+            filter.as_ref(),
+            sort.as_ref(),
+            POSTGRES_DIALECT,
+        );
+        let rows = sqlx::query(&query)
+            .fetch_all(pool)
+            .await
+            .map_err(DatabaseError::Postgres)?;
+        return Ok(QueryOutput::Table(postgres_preview_rows_to_paginated_page(
+            rows,
+            plan.source,
+            page_size,
+            offset,
+        )));
+    }
+
+    if is_paginated_query(&normalized) {
+        let rows = sqlx::query(&build_paginated_query(
+            sql,
+            page_size,
+            offset,
+            filter.as_ref(),
+            sort.as_ref(),
+            POSTGRES_DIALECT,
+        ))
+        .fetch_all(pool)
+        .await
+        .map_err(DatabaseError::Postgres)?;
+        return Ok(QueryOutput::Table(postgres_rows_to_paginated_page(
+            rows, page_size, offset,
+        )));
+    }
+
+    if is_tabular_query(&normalized) {
+        let rows = sqlx::query(sql)
+            .fetch_all(pool)
+            .await
+            .map_err(DatabaseError::Postgres)?;
+        return Ok(QueryOutput::Table(postgres_rows_to_page(rows)));
+    }
+
+    let result = sqlx::query(sql)
+        .execute(pool)
+        .await
+        .map_err(DatabaseError::Postgres)?;
+    Ok(QueryOutput::AffectedRows(result.rows_affected()))
+}
+
+async fn execute_mysql_query_page(
+    sql: &str,
+    pool: &sqlx::MySqlPool,
+    page_size: u32,
+    offset: u64,
+    filter: Option<QueryFilter>,
+    sort: Option<QuerySort>,
+) -> Result<QueryOutput, DatabaseError> {
+    let normalized = sql.trim().to_lowercase();
+
+    if let Some(plan) = editable_select_plan(sql) {
+        let schema_name = mysql_effective_schema_name(pool, plan.source.schema.as_deref()).await?;
+        let primary_key_columns =
+            mysql_primary_key_columns(pool, &schema_name, &plan.source.table_name).await?;
+
+        if primary_key_columns.is_empty() {
+            let rows = sqlx::query(&build_paginated_query(
+                sql,
+                page_size,
+                offset,
+                filter.as_ref(),
+                sort.as_ref(),
+                MYSQL_DIALECT,
+            ))
+            .fetch_all(pool)
+            .await
+            .map_err(DatabaseError::MySql)?;
+            return Ok(QueryOutput::Table(mysql_rows_to_paginated_page(
+                rows, page_size, offset,
+            )));
+        }
+
+        let locator_expr = mysql_locator_expression(&primary_key_columns);
+        let mut plan = plan;
+        plan.source.schema = Some(schema_name);
+        let query = build_editable_paginated_query(
+            &plan,
+            page_size,
+            offset,
+            &locator_expr,
+            filter.as_ref(),
+            sort.as_ref(),
+            MYSQL_DIALECT,
+        );
+        let rows = sqlx::query(&query)
+            .fetch_all(pool)
+            .await
+            .map_err(DatabaseError::MySql)?;
+        return Ok(QueryOutput::Table(mysql_preview_rows_to_paginated_page(
+            rows,
+            plan.source,
+            page_size,
+            offset,
+        )));
+    }
+
+    if is_paginated_query(&normalized) {
+        let rows = sqlx::query(&build_paginated_query(
+            sql,
+            page_size,
+            offset,
+            filter.as_ref(),
+            sort.as_ref(),
+            MYSQL_DIALECT,
+        ))
+        .fetch_all(pool)
+        .await
+        .map_err(DatabaseError::MySql)?;
+        return Ok(QueryOutput::Table(mysql_rows_to_paginated_page(
+            rows, page_size, offset,
+        )));
+    }
+
+    if is_tabular_query(&normalized) {
+        let rows = sqlx::query(sql)
+            .fetch_all(pool)
+            .await
+            .map_err(DatabaseError::MySql)?;
+        return Ok(QueryOutput::Table(mysql_rows_to_page(rows)));
+    }
+
+    let result = sqlx::query(sql)
+        .execute(pool)
+        .await
+        .map_err(DatabaseError::MySql)?;
+    Ok(QueryOutput::AffectedRows(result.rows_affected()))
+}
+
+async fn execute_clickhouse_query_page(
+    sql: &str,
+    config: &models::ClickHouseFormData,
+    page_size: u32,
+    offset: u64,
+    filter: Option<QueryFilter>,
+    sort: Option<QuerySort>,
+) -> Result<QueryOutput, DatabaseError> {
+    let normalized = sql.trim().to_lowercase();
+
+    if is_paginated_query(&normalized) {
+        let response = ClickHouseDriver
+            .execute_json_query(
+                config,
+                &build_paginated_query(
+                    sql,
                     page_size,
                     offset,
                     filter.as_ref(),
                     sort.as_ref(),
-                    MYSQL_DIALECT,
-                ))
-                .fetch_all(&pool)
-                .await
-                .map_err(DatabaseError::MySql)?;
-                Ok(QueryOutput::Table(mysql_rows_to_paginated_page(
-                    rows, page_size, offset,
-                )))
-            } else if is_tabular_query(&normalized) {
-                let rows = sqlx::query(&sql)
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(DatabaseError::MySql)?;
-                Ok(QueryOutput::Table(mysql_rows_to_page(rows)))
-            } else {
-                let result = sqlx::query(&sql)
-                    .execute(&pool)
-                    .await
-                    .map_err(DatabaseError::MySql)?;
-                Ok(QueryOutput::AffectedRows(result.rows_affected()))
-            }
-        }
-        DatabaseConnection::ClickHouse(config) => {
-            if is_paginated_query(&normalized) {
-                let response = execute_json_query(
-                    &config,
-                    &build_paginated_query(
-                        &sql,
-                        page_size,
-                        offset,
-                        filter.as_ref(),
-                        sort.as_ref(),
-                        CLICKHOUSE_DIALECT,
-                    ),
-                )
-                .await
-                .map_err(DatabaseError::ClickHouse)?;
-                Ok(QueryOutput::Table(clickhouse_rows_to_paginated_page(
-                    response, page_size, offset,
-                )))
-            } else if is_tabular_query(&normalized) {
-                let response = execute_json_query(&config, &sql)
-                    .await
-                    .map_err(DatabaseError::ClickHouse)?;
-                Ok(QueryOutput::Table(clickhouse_rows_to_page(response)))
-            } else {
-                driver_clickhouse::execute_text_query(&config, &sql)
-                    .await
-                    .map_err(DatabaseError::ClickHouse)?;
-                Ok(QueryOutput::AffectedRows(0))
-            }
-        }
+                    CLICKHOUSE_DIALECT,
+                ),
+            )
+            .await?;
+        return Ok(QueryOutput::Table(clickhouse_rows_to_paginated_page(
+            response, page_size, offset,
+        )));
     }
+
+    if is_tabular_query(&normalized) {
+        let response = ClickHouseDriver.execute_json_query(config, sql).await?;
+        return Ok(QueryOutput::Table(clickhouse_rows_to_page(response)));
+    }
+
+    ClickHouseDriver.execute_text_query(config, sql).await?;
+    Ok(QueryOutput::AffectedRows(0))
 }
 
 fn is_tabular_query(sql: &str) -> bool {
@@ -524,9 +584,7 @@ async fn load_clickhouse_create_statement(
         quote_identifier_clickhouse(schema_name),
         quote_identifier_clickhouse(table_name),
     );
-    execute_text_query(config, &sql)
-        .await
-        .map_err(DatabaseError::ClickHouse)
+    ClickHouseDriver.execute_text_query(config, &sql).await
 }
 
 fn rewrite_create_table_statement(
@@ -1129,9 +1187,9 @@ async fn clickhouse_get_primary_key_columns(
         sql_literal(schema_name),
         sql_literal(table_name)
     );
-    let primary_key_expression = execute_json_query(config, &primary_key_expression_sql)
-        .await
-        .map_err(DatabaseError::ClickHouse)?
+    let primary_key_expression = ClickHouseDriver
+        .execute_json_query(config, &primary_key_expression_sql)
+        .await?
         .data
         .into_iter()
         .next()
@@ -1146,9 +1204,9 @@ async fn clickhouse_get_primary_key_columns(
         sql_literal(schema_name),
         sql_literal(table_name)
     );
-    let response = execute_json_query(config, &columns_sql)
-        .await
-        .map_err(DatabaseError::ClickHouse)?;
+    let response = ClickHouseDriver
+        .execute_json_query(config, &columns_sql)
+        .await?;
 
     let mut pk_columns = Vec::new();
     for row in response.data {

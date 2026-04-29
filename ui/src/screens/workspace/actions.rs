@@ -60,7 +60,7 @@ pub fn read_only_mode_enabled() -> bool {
 }
 
 pub fn read_only_mode_blocks_sql(sql: &str) -> bool {
-    read_only_mode_enabled() && !query::is_read_only_sql(sql)
+    read_only_mode_enabled() && !services::is_read_only_sql(sql)
 }
 
 pub fn read_only_mode_block_status(action: &str) -> String {
@@ -293,7 +293,7 @@ pub fn open_structure_tab(
     active_tab_id.set(tab_id);
 
     spawn(async move {
-        match explorer::describe_table(connection, source.schema.clone(), source.table_name.clone())
+        match services::describe_table(connection, source.schema.clone(), source.table_name.clone())
             .await
         {
             Ok(output) => {
@@ -376,7 +376,7 @@ pub fn run_query_for_tab(
 
     spawn(async move {
         let start_time = Instant::now();
-        match query::execute_query_page(connection, sql.clone(), page_size, offset, filter, sort)
+        match services::execute_query_page(connection, sql.clone(), page_size, offset, filter, sort)
             .await
         {
             Ok(output) => {
@@ -429,7 +429,7 @@ pub fn run_query_for_tab(
                             items.truncate(20);
                         }
                     });
-                    let _ = storage::append_query_history(history_item).await;
+                    let _ = services::append_query_history(history_item).await;
                 }
             }
             Err(err) => {
@@ -467,7 +467,7 @@ pub fn run_query_for_tab(
                             items.truncate(20);
                         }
                     });
-                    let _ = storage::append_query_history(history_item).await;
+                    let _ = services::append_query_history(history_item).await;
                 }
             }
         }
@@ -497,7 +497,7 @@ pub fn run_explain_for_tab(
     });
 
     spawn(async move {
-        match query::execute_explain(connection, &sql, false).await {
+        match services::execute_explain(connection, &sql, false).await {
             Ok(plan) => {
                 let node_count = plan.flattened_with_depth().len();
                 tabs.with_mut(|all_tabs| {
@@ -564,7 +564,7 @@ pub fn run_table_preview_for_tab(
     });
 
     spawn(async move {
-        match query::load_table_preview_page(
+        match services::load_table_preview_page(
             connection,
             source.clone(),
             page_size,
@@ -693,7 +693,7 @@ pub fn append_next_tab_page(mut tabs: Signal<Vec<QueryTabState>>, current_tab: Q
 
     spawn(async move {
         let next_page_result = if let Some(source) = expected_preview_source.clone() {
-            query::load_table_preview_page(
+            services::load_table_preview_page(
                 connection,
                 source,
                 current_tab.page_size,
@@ -703,7 +703,7 @@ pub fn append_next_tab_page(mut tabs: Signal<Vec<QueryTabState>>, current_tab: Q
             )
             .await
         } else if let Some(sql) = expected_sql.clone() {
-            query::execute_query_page(
+            services::execute_query_page(
                 connection,
                 sql,
                 current_tab.page_size,
@@ -884,7 +884,7 @@ pub fn mark_table_deleted(
             let matches_sql = tab
                 .last_run_sql
                 .as_deref()
-                .and_then(query::preview_source_for_sql)
+                .and_then(services::preview_source_for_sql)
                 .as_ref()
                 == Some(&source);
 
@@ -932,7 +932,7 @@ pub fn mark_table_truncated(
             let matches_sql = tab
                 .last_run_sql
                 .as_deref()
-                .and_then(query::preview_source_for_sql)
+                .and_then(services::preview_source_for_sql)
                 .as_ref()
                 == Some(&source);
 

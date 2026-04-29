@@ -32,7 +32,7 @@ fn main() {
 #[cfg(feature = "embedding")]
 fn download_model(dest_path: &std::path::Path, model_url: &str) -> Result<(), String> {
     let output = std::process::Command::new("curl")
-        .args(["-L", "-o", dest_path.to_str().unwrap(), model_url])
+        .args(["-L", "-o", &dest_path.to_string_lossy(), model_url])
         .output()
         .map_err(|e| format!("Failed to execute curl: {}", e))?;
 

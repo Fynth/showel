@@ -1,14 +1,161 @@
-use connection_ssh::{open_ssh_tunnel, register_ssh_tunnel};
+//! Database connection orchestration and SSH tunnel lifecycle management for Shovel.
+
+use connection_ssh::{OpenedSshTunnel, open_ssh_tunnel, register_ssh_tunnel};
 use database::DatabaseDriver;
 use driver_clickhouse::ClickHouseDriver;
 use driver_mysql::{MySqlConfig, MySqlDriver};
 use driver_postgres::{PgConfig, PgDriver};
 use driver_sqlite::SqliteDriver;
-use models::{ClickHouseFormData, ConnectionRequest, DatabaseConnection, DatabaseError};
+use models::{
+    ClickHouseFormData, ConnectionRequest, DatabaseConnection, DatabaseError, SshTunnelConfig,
+};
 use reqwest::Url;
 
+/// Releases an SSH tunnel that was previously opened for a connection
+/// session, identified by the session's identity key.
+///
+/// This is a re-export from the `connection-ssh` crate. It should be
+/// called when a connection session is torn down to ensure the tunnel
+/// process is terminated and its local port is freed.
+///
+/// # Parameters
+///
+/// * `identity_key` — the unique session identity key that was used to
+///   register the tunnel via [`connect_to_db`].
 pub use connection_ssh::release_ssh_tunnel;
 
+/// The result of SSH tunnel resolution: either an opened tunnel or none.
+#[allow(dead_code)]
+struct ResolvedTunnel {
+    tunnel: Option<OpenedSshTunnel>,
+    remote_host: String,
+    remote_port: u16,
+}
+
+/// Resolves an optional SSH tunnel for database connections.
+///
+/// When `ssh_tunnel` is `Some` and configured, this function validates
+/// the input (optional DSN check), normalizes host/port, opens the
+/// tunnel, and returns [`ResolvedTunnel`] with the opened tunnel.
+///
+/// When `ssh_tunnel` is `None` or not configured, it returns
+/// `ResolvedTunnel { tunnel: None, ... }` immediately.
+async fn resolve_ssh_tunnel(
+    ssh_tunnel: &Option<SshTunnelConfig>,
+    host: &str,
+    port: u16,
+    default_port: u16,
+    dsn_check: Option<fn(&str) -> bool>,
+) -> Result<ResolvedTunnel, DatabaseError> {
+    let config = match ssh_tunnel.as_ref() {
+        Some(c) => c,
+        None => {
+            return Ok(ResolvedTunnel {
+                tunnel: None,
+                remote_host: host.to_string(),
+                remote_port: if port == 0 { default_port } else { port },
+            });
+        }
+    };
+
+    if !config.is_configured() {
+        return Err(DatabaseError::Tunnel(
+            "SSH tunnel is enabled, but SSH host or username is empty".to_string(),
+        ));
+    }
+
+    if let Some(check) = dsn_check
+        && check(host)
+    {
+        return Err(DatabaseError::Tunnel(
+            "SSH tunnel is not supported with DSN input. Use host and port fields.".to_string(),
+        ));
+    }
+
+    let remote_host = if host.trim().is_empty() {
+        "localhost".to_string()
+    } else {
+        host.trim().to_string()
+    };
+    let remote_port = if port == 0 { default_port } else { port };
+
+    let tunnel = open_ssh_tunnel(config, &remote_host, remote_port)
+        .await
+        .map_err(DatabaseError::Tunnel)?;
+
+    Ok(ResolvedTunnel {
+        tunnel: Some(tunnel),
+        remote_host,
+        remote_port,
+    })
+}
+
+/// Register the tunnel on success, release it on failure.
+fn finalize_tunnel<T>(
+    session_key: &str,
+    resolved: ResolvedTunnel,
+    result: &Result<T, DatabaseError>,
+) {
+    if let Some(tunnel) = resolved.tunnel {
+        if result.is_ok() {
+            register_ssh_tunnel(session_key.to_string(), tunnel);
+        } else {
+            release_ssh_tunnel(session_key);
+        }
+    }
+}
+
+/// Establishes a live database connection for the given
+/// [`ConnectionRequest`], dispatching to the appropriate backend-specific
+/// driver and optionally setting up an SSH tunnel.
+///
+/// This is the single entrypoint for all database connections in the
+/// application. It handles:
+///
+/// - **SQLite**: connects directly to the local file path.
+/// - **PostgreSQL**: connects directly or via SSH tunnel; rejects DSN-style
+///   host strings when tunneling is requested.
+/// - **MySQL**: connects directly or via SSH tunnel; supports IPv6 host
+///   notation with optional embedded port (e.g. `[::1]:3306`); rejects
+///   DSN-style host strings when tunneling.
+/// - **ClickHouse**: connects directly or via SSH tunnel; supports plain
+///   host, `http://` URL, and `https://` URL host formats (HTTPS is
+///   rejected when tunneling because TLS host validation would target
+///   `127.0.0.1`).
+///
+/// # SSH tunnel lifecycle
+///
+/// When an SSH tunnel is configured and the connection succeeds, the tunnel
+/// is registered under the session's identity key via
+/// [`register_ssh_tunnel`]. If the connection fails after the tunnel was
+/// opened, the tunnel is immediately released via
+/// [`release_ssh_tunnel`] to avoid leaking resources.
+///
+/// # Parameters
+///
+/// * `request` — a [`ConnectionRequest`] enum variant carrying the
+///   backend-specific connection form data (host, port, credentials,
+///   optional SSH tunnel config).
+///
+/// # Returns
+///
+/// * `Ok(DatabaseConnection)` — a type-erased handle to the live connection
+///   (one of `DatabaseConnection::Sqlite`, `::Postgres`, `::MySql`, or
+///   `::ClickHouse`).
+///
+/// # Errors
+///
+/// Returns [`DatabaseError`] in the following cases:
+///
+/// * `DatabaseError::Sqlite` — the SQLite driver failed to open the
+///   database file.
+/// * `DatabaseError::Postgres` — the PostgreSQL driver failed to connect
+///   (bad credentials, unreachable host, etc.).
+/// * `DatabaseError::MySql` — the MySQL driver failed to connect.
+/// * `DatabaseError::ClickHouse` — the ClickHouse driver failed to connect.
+/// * `DatabaseError::Tunnel` — SSH tunnel configuration is invalid (e.g.
+///   host or username is empty, DSN input used with tunneling, HTTPS
+///   ClickHouse endpoint requested over SSH, unparseable ClickHouse URL).
 pub async fn connect_to_db(
     request: ConnectionRequest,
 ) -> Result<DatabaseConnection, DatabaseError> {
@@ -22,33 +169,21 @@ pub async fn connect_to_db(
             Ok(DatabaseConnection::Sqlite(pool))
         }
         ConnectionRequest::Postgres(mut data) => {
-            let tunnel = if let Some(config) = data.ssh_tunnel.as_ref() {
-                if !config.is_configured() {
-                    return Err(DatabaseError::Tunnel(
-                        "SSH tunnel is enabled, but SSH host or username is empty".to_string(),
-                    ));
-                }
+            let resolved = resolve_ssh_tunnel(
+                &data.ssh_tunnel,
+                &data.host,
+                data.port,
+                5432,
+                Some(looks_like_postgres_dsn),
+            )
+            .await?;
 
-                if looks_like_postgres_dsn(&data.host) {
-                    return Err(DatabaseError::Tunnel(
-                        "SSH tunnel is not supported with PostgreSQL DSN input. Use host and port fields.".to_string(),
-                    ));
-                }
-
-                let remote_host = normalize_postgres_host(&data.host);
-                let remote_port = if data.port == 0 { 5432 } else { data.port };
-                let tunnel = open_ssh_tunnel(config, &remote_host, remote_port)
-                    .await
-                    .map_err(DatabaseError::Tunnel)?;
+            if let Some(ref tunnel) = resolved.tunnel {
                 data.host = "127.0.0.1".to_string();
                 data.port = tunnel.local_port;
-                Some(tunnel)
-            } else {
-                None
-            };
+            }
 
-            // Use a closure to ensure tunnel cleanup on error
-            let connect_postgres = || async {
+            let result = async {
                 let config = PgConfig {
                     host: data.host.clone(),
                     port: data.port,
@@ -60,50 +195,32 @@ pub async fn connect_to_db(
                     .await
                     .map_err(DatabaseError::Postgres)
                     .map(DatabaseConnection::Postgres)
-            };
-
-            let result = connect_postgres().await;
-
-            if let Some(tunnel) = tunnel {
-                if result.is_ok() {
-                    register_ssh_tunnel(session_key, tunnel);
-                } else {
-                    // Clean up the tunnel if connection failed
-                    release_ssh_tunnel(&session_key);
-                }
             }
+            .await;
 
+            finalize_tunnel(&session_key, resolved, &result);
             result
         }
         ConnectionRequest::MySql(mut data) => {
-            let tunnel = if let Some(config) = data.ssh_tunnel.as_ref() {
-                if !config.is_configured() {
-                    return Err(DatabaseError::Tunnel(
-                        "SSH tunnel is enabled, but SSH host or username is empty".to_string(),
-                    ));
-                }
+            let (host_for_tunnel, embedded_port) = split_mysql_host_and_port(&data.host);
+            let effective_port =
+                embedded_port.unwrap_or(if data.port == 0 { 3306 } else { data.port });
 
-                if looks_like_mysql_dsn(&data.host) {
-                    return Err(DatabaseError::Tunnel(
-                        "SSH tunnel is not supported with MySQL DSN input. Use host and port fields.".to_string(),
-                    ));
-                }
+            let resolved = resolve_ssh_tunnel(
+                &data.ssh_tunnel,
+                &host_for_tunnel,
+                effective_port,
+                3306,
+                Some(looks_like_mysql_dsn),
+            )
+            .await?;
 
-                let (remote_host, embedded_port) = split_mysql_host_and_port(&data.host);
-                let remote_host = normalize_mysql_host(&remote_host);
-                let remote_port =
-                    embedded_port.unwrap_or(if data.port == 0 { 3306 } else { data.port });
-                let tunnel = open_ssh_tunnel(config, &remote_host, remote_port)
-                    .await
-                    .map_err(DatabaseError::Tunnel)?;
+            if let Some(ref tunnel) = resolved.tunnel {
                 data.host = "127.0.0.1".to_string();
                 data.port = tunnel.local_port;
-                Some(tunnel)
-            } else {
-                None
-            };
+            }
 
-            let connect_mysql = || async {
+            let result = async {
                 let config = MySqlConfig {
                     host: data.host.clone(),
                     port: data.port,
@@ -115,22 +232,14 @@ pub async fn connect_to_db(
                     .await
                     .map_err(DatabaseError::MySql)
                     .map(DatabaseConnection::MySql)
-            };
-
-            let result = connect_mysql().await;
-
-            if let Some(tunnel) = tunnel {
-                if result.is_ok() {
-                    register_ssh_tunnel(session_key, tunnel);
-                } else {
-                    release_ssh_tunnel(&session_key);
-                }
             }
+            .await;
 
+            finalize_tunnel(&session_key, resolved, &result);
             result
         }
         ConnectionRequest::ClickHouse(mut data) => {
-            let tunnel = if let Some(config) = data.ssh_tunnel.as_ref() {
+            let resolved = if let Some(config) = data.ssh_tunnel.as_ref() {
                 if !config.is_configured() {
                     return Err(DatabaseError::Tunnel(
                         "SSH tunnel is enabled, but SSH host or username is empty".to_string(),
@@ -143,30 +252,28 @@ pub async fn connect_to_db(
                     .map_err(DatabaseError::Tunnel)?;
                 data.host = target.connect_host(tunnel.local_port);
                 data.port = tunnel.local_port;
-                Some(tunnel)
+                ResolvedTunnel {
+                    tunnel: Some(tunnel),
+                    remote_host: target.remote_host,
+                    remote_port: target.remote_port,
+                }
             } else {
-                None
+                ResolvedTunnel {
+                    tunnel: None,
+                    remote_host: String::new(),
+                    remote_port: 0,
+                }
             };
 
-            // Use a closure to ensure tunnel cleanup on error
-            let connect_clickhouse = || async {
+            let result = async {
                 ClickHouseDriver::connect(data.clone())
                     .await
                     .map_err(DatabaseError::ClickHouse)
                     .map(DatabaseConnection::ClickHouse)
-            };
-
-            let result = connect_clickhouse().await;
-
-            if let Some(tunnel) = tunnel {
-                if result.is_ok() {
-                    register_ssh_tunnel(session_key, tunnel);
-                } else {
-                    // Clean up the tunnel if connection failed
-                    release_ssh_tunnel(&session_key);
-                }
             }
+            .await;
 
+            finalize_tunnel(&session_key, resolved, &result);
             result
         }
     }
@@ -177,27 +284,9 @@ fn looks_like_postgres_dsn(value: &str) -> bool {
     value.starts_with("postgres://") || value.starts_with("postgresql://")
 }
 
-fn normalize_postgres_host(host: &str) -> String {
-    let host = host.trim();
-    if host.is_empty() {
-        "localhost".to_string()
-    } else {
-        host.to_string()
-    }
-}
-
 fn looks_like_mysql_dsn(value: &str) -> bool {
     let value = value.trim().to_ascii_lowercase();
     value.starts_with("mysql://") || value.starts_with("mariadb://")
-}
-
-fn normalize_mysql_host(host: &str) -> String {
-    let host = host.trim();
-    if host.is_empty() {
-        "localhost".to_string()
-    } else {
-        host.to_string()
-    }
 }
 
 fn split_mysql_host_and_port(value: &str) -> (String, Option<u16>) {
@@ -317,27 +406,6 @@ mod tests {
         assert!(looks_like_postgres_dsn("  postgres://host/db"));
     }
 
-    // ── normalize_postgres_host ──────────────────────────────────────
-
-    #[test]
-    fn normalize_postgres_host_defaults_to_localhost() {
-        assert_eq!(normalize_postgres_host(""), "localhost");
-        assert_eq!(normalize_postgres_host("   "), "localhost");
-    }
-
-    #[test]
-    fn normalize_postgres_host_trims_input() {
-        assert_eq!(
-            normalize_postgres_host("  db.example.com  "),
-            "db.example.com"
-        );
-    }
-
-    #[test]
-    fn normalize_postgres_host_preserves_value() {
-        assert_eq!(normalize_postgres_host("192.168.1.1"), "192.168.1.1");
-    }
-
     // ── looks_like_mysql_dsn ─────────────────────────────────────────
 
     #[test]
@@ -357,19 +425,6 @@ mod tests {
         assert!(!looks_like_mysql_dsn("localhost"));
         assert!(!looks_like_mysql_dsn("postgres://host"));
         assert!(!looks_like_mysql_dsn(""));
-    }
-
-    // ── normalize_mysql_host ─────────────────────────────────────────
-
-    #[test]
-    fn normalize_mysql_host_defaults_to_localhost() {
-        assert_eq!(normalize_mysql_host(""), "localhost");
-        assert_eq!(normalize_mysql_host("   "), "localhost");
-    }
-
-    #[test]
-    fn normalize_mysql_host_trims_input() {
-        assert_eq!(normalize_mysql_host("  db.example.com  "), "db.example.com");
     }
 
     // ── split_mysql_host_and_port ────────────────────────────────────
