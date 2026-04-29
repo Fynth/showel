@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "acp",
+    "acp-agent",
     "acp-core",
     "acp-registry",
     "app",

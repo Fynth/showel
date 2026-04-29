@@ -9,5 +9,5 @@ name = "acp-agent"
 path = "src/main.rs"
 
 [dependencies]
-acp.workspace = true
+acp-core.workspace = true
 tokio.workspace = true
