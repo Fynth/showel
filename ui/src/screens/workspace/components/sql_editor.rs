@@ -396,8 +396,14 @@ pub fn SqlEditor(
         }
 
         spawn(async move {
+            eprintln!("[completion] spawn started, revision={revision}");
             tokio::time::sleep(Duration::from_millis(COMPLETION_DEBOUNCE_MS)).await;
             if editor_revision() != revision {
+                eprintln!(
+                    "[completion] bail: revision changed {} != {}",
+                    editor_revision(),
+                    revision
+                );
                 return;
             }
 
@@ -407,9 +413,14 @@ pub fn SqlEditor(
             .join::<(String, usize, usize)>()
             .await
             else {
+                eprintln!("[completion] bail: document::eval failed");
                 return;
             };
             if sql_text.len() < 3 {
+                eprintln!(
+                    "[completion] bail: sql too short ({} chars)",
+                    sql_text.len()
+                );
                 invalidate_completion(completion_runtime);
                 return;
             }
@@ -417,12 +428,14 @@ pub fn SqlEditor(
             let selection = EditorSelection { start, end };
             let Some((cursor, prefix, suffix)) = completion_request_parts(&sql_text, selection)
             else {
+                eprintln!("[completion] bail: no cursor (selection range)");
                 invalidate_completion(completion_runtime);
                 return;
             };
 
             // Re-check settings after debounce (they may have changed).
             if CompletionService::new(&APP_UI_SETTINGS()).is_empty() {
+                eprintln!("[completion] bail: settings changed, no providers");
                 invalidate_completion(completion_runtime);
                 return;
             }
@@ -432,6 +445,7 @@ pub fn SqlEditor(
             if completion_snapshot.last_completed_snapshot == Some(sql_hash)
                 && completion_snapshot.pending_snapshot.is_none()
             {
+                eprintln!("[completion] bail: already completed for this snapshot");
                 return;
             }
 
