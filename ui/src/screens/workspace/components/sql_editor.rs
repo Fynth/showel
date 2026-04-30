@@ -118,6 +118,47 @@ fn is_completion_accept_key(event: &KeyboardEvent) -> bool {
     event.key() == Key::Tab || event.code() == Code::Tab
 }
 
+/// Returns true if the word looks like it starts a new SQL clause.
+fn is_sql_clause_start(word: &str) -> bool {
+    matches!(
+        word.to_ascii_uppercase().as_str(),
+        "SELECT"
+            | "FROM"
+            | "WHERE"
+            | "JOIN"
+            | "LEFT"
+            | "RIGHT"
+            | "INNER"
+            | "OUTER"
+            | "CROSS"
+            | "ON"
+            | "AND"
+            | "OR"
+            | "ORDER"
+            | "GROUP"
+            | "HAVING"
+            | "LIMIT"
+            | "OFFSET"
+            | "UNION"
+            | "INSERT"
+            | "UPDATE"
+            | "DELETE"
+            | "SET"
+            | "VALUES"
+            | "INTO"
+            | "CREATE"
+            | "ALTER"
+            | "DROP"
+            | "WITH"
+            | "AS"
+            | "CASE"
+            | "WHEN"
+            | "THEN"
+            | "ELSE"
+            | "END"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::selection::EditorSelection;
@@ -686,15 +727,22 @@ pub fn SqlEditor(
                             cursor,
                             &completion_state.text,
                         );
-                        // Prepend a space when joining two words together
-                        // (e.g. "users" + "where" → "users where").
+                        // Prepend a space when the completion starts a new SQL
+                        // clause/keyword (e.g. "users" + "WHERE" → "users WHERE").
+                        // Don't add space when continuing the same word
+                        // (e.g. "sel" + "ect" → "select").
                         let prev = actual_sql[..cursor]
                             .chars()
                             .last()
                             .unwrap_or(' ');
                         let next = completion_text.chars().next().unwrap_or(' ');
+                        let next_is_new_clause = completion_text
+                            .split_whitespace()
+                            .next()
+                            .is_some_and(|w| is_sql_clause_start(w));
                         if !prev.is_whitespace()
                             && !next.is_whitespace()
+                            && next_is_new_clause
                             && !completion_text.is_empty()
                         {
                             completion_text = format!(" {completion_text}");
