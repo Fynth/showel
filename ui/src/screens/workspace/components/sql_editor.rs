@@ -398,28 +398,13 @@ pub fn SqlEditor(
         spawn(async move {
             eprintln!("[completion] spawn started, revision={revision}");
             tokio::time::sleep(Duration::from_millis(COMPLETION_DEBOUNCE_MS)).await;
-            if editor_revision() != revision {
-                eprintln!(
-                    "[completion] bail: revision changed {} != {}",
-                    editor_revision(),
-                    revision
-                );
-                return;
-            }
 
-            let eval_result = document::eval(&editor_value_and_selection_query_script(
-                SQL_EDITOR_TEXTAREA_ID,
-            ))
-            .join::<(String, usize, usize)>()
-            .await;
+            // Read SQL text and cursor from already-synced signals instead of
+            // calling document::eval (which can fail when the DOM is mid-update).
+            // The sync effect updates these signals at 90ms intervals.
+            let sql_text = draft_sql.peek().clone();
+            let selection = editor_selection.peek().clone();
 
-            let (sql_text, start, end) = match eval_result {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("[completion] bail: document::eval failed: {e:?}");
-                    return;
-                }
-            };
             if sql_text.len() < 3 {
                 eprintln!(
                     "[completion] bail: sql too short ({} chars)",
@@ -429,7 +414,6 @@ pub fn SqlEditor(
                 return;
             }
 
-            let selection = EditorSelection { start, end };
             let Some((cursor, prefix, suffix)) = completion_request_parts(&sql_text, selection)
             else {
                 eprintln!("[completion] bail: no cursor (selection range)");
