@@ -595,8 +595,9 @@ pub fn SqlEditor(
     } else {
         "sql-editor"
     };
-    let inline_cursor =
-        render_completion.map_or(0, |completion| completion.cursor.min(current_sql.len()));
+    let inline_cursor = render_completion.map_or(editor_selection().start, |_completion| {
+        editor_selection().start.min(current_sql.len())
+    });
     let inline_suffix = render_completion.map(|completion| {
         trim_completion_for_cursor(&current_sql, inline_cursor, &completion.text)
     });
@@ -667,8 +668,14 @@ pub fn SqlEditor(
                         && !completion_state.text.is_empty()
                     {
                         event.prevent_default();
-                        let actual_sql = completion_state.source_sql;
-                        let cursor = completion_state.cursor.min(actual_sql.len());
+                        // Use current SQL and cursor from signals, not the stored
+                        // snapshot which may be stale (e.g. user pressed space after
+                        // completion was generated).
+                        let actual_sql = draft_sql.peek().clone();
+                        let cursor = {
+                            let sel = editor_selection.peek();
+                            sel.start.min(actual_sql.len())
+                        };
                         let cursor = if actual_sql.is_char_boundary(cursor) {
                             cursor
                         } else {
