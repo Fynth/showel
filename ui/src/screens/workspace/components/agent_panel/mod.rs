@@ -29,7 +29,10 @@ use self::{
     registry_card::RegistryAgentCard,
     requests::can_execute_agent_sql,
     setup::{AgentSetupMode, connect_embedded_deepseek, setup_mode_button_class},
-    state::{message_kind_class, message_kind_label, permission_button_class, push_message},
+    state::{
+        message_kind_avatar, message_kind_class, message_kind_label, permission_button_class,
+        push_message,
+    },
 };
 
 pub(crate) use self::{
