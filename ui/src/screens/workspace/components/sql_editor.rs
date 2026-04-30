@@ -709,10 +709,24 @@ pub fn SqlEditor(
                         && !completion_state.text.is_empty()
                     {
                         event.prevent_default();
-                        let actual_sql = draft_sql.peek().clone();
-                        let cursor = {
+                        let completion_text_raw = completion_state.text.clone();
+                        spawn(async move {
+                        // Read cursor directly from the DOM textarea — signals
+                        // may be up to 90ms stale. Fall back to signals if eval fails.
+                        let (actual_sql, cursor) = if let Ok((sql, start, _end)) =
+                            document::eval(
+                                &editor_value_and_selection_query_script(
+                                    SQL_EDITOR_TEXTAREA_ID,
+                                ),
+                            )
+                            .join::<(String, usize, usize)>()
+                            .await
+                        {
+                            (sql, start)
+                        } else {
+                            let sql = draft_sql.peek().clone();
                             let sel = editor_selection.peek();
-                            sel.start.min(actual_sql.len())
+                            (sql, sel.start)
                         };
                         let cursor = if actual_sql.is_char_boundary(cursor) {
                             cursor
@@ -722,7 +736,7 @@ pub fn SqlEditor(
                         let mut completion_text = trim_completion_for_cursor(
                             &actual_sql,
                             cursor,
-                            &completion_state.text,
+                            &completion_text_raw,
                         );
                         // Prepend a space when the completion starts a new SQL
                         // clause/keyword (e.g. "users" + "WHERE" → "users WHERE").
@@ -783,6 +797,7 @@ pub fn SqlEditor(
                             .join::<bool>()
                             .await;
                         });
+                    });
                     }
                 },
 
