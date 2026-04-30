@@ -53,7 +53,10 @@ struct DeepSeekThinking {
 
 #[derive(Clone, Debug, Deserialize)]
 struct DeepSeekChatChunk {
+    #[serde(default)]
     choices: Vec<DeepSeekChoice>,
+    #[serde(default)]
+    error: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -279,7 +282,7 @@ impl acp::Agent for DeepSeekAgent {
         let response = self
             .client
             .post(format!(
-                "{}/chat/completions",
+                "{}/v1/chat/completions",
                 normalize_base_url(&self.config.base_url)
             ))
             .headers(deepseek_headers(api_key)?)
@@ -376,6 +379,13 @@ impl DeepSeekAgent {
             acp::Error::internal_error()
                 .data(format!("Failed to parse DeepSeek stream chunk: {err}"))
         })?;
+
+        // Check for API-level errors embedded in the stream.
+        if let Some(ref error) = chunk.error {
+            return Err(
+                acp::Error::internal_error().data(format!("DeepSeek stream error: {error}"))
+            );
+        }
 
         for choice in chunk.choices {
             if let Some(reasoning) = choice.delta.reasoning_content

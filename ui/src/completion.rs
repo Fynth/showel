@@ -259,7 +259,7 @@ async fn stream_deepseek(
         stream: true,
     };
 
-    let api_url = format!("{}/chat/completions", settings.base_url);
+    let api_url = format!("{}/v1/chat/completions", settings.base_url);
 
     let response = client
         .post(&api_url)
