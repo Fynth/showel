@@ -485,22 +485,18 @@ pub fn SqlEditor(
         }
 
         spawn(async move {
-            eprintln!("[completion] spawn started, revision={revision}");
             tokio::time::sleep(Duration::from_millis(COMPLETION_DEBOUNCE_MS)).await;
 
-            // Read SQL and cursor from DOM first (most accurate), fall back
-            // to signals if the DOM isn't ready.
-            let (sql_text, selection) = if let Ok((sql, start, end)) = document::eval(
+            // Read SQL from DOM (most accurate), fall back to signals.
+            let sql_text = if let Ok((sql, _, _)) = document::eval(
                 &editor_value_and_selection_query_script(SQL_EDITOR_TEXTAREA_ID),
             )
             .join::<(String, usize, usize)>()
             .await
             {
-                (sql, EditorSelection { start, end })
+                sql
             } else {
-                let sql = draft_sql.peek().clone();
-                let sel = editor_selection.peek().clone();
-                (sql, sel)
+                draft_sql.peek().clone()
             };
 
             if sql_text.len() < 3 {
@@ -511,6 +507,10 @@ pub fn SqlEditor(
                 invalidate_completion(completion_runtime);
                 return;
             }
+
+            // Complete at the end of the SQL — most reliable position.
+            let cursor = sql_text.len();
+            let selection = EditorSelection::collapsed(cursor);
 
             let Some((cursor, prefix, suffix)) = completion_request_parts(&sql_text, selection)
             else {
@@ -720,28 +720,20 @@ pub fn SqlEditor(
                         event.prevent_default();
                         let completion_text_raw = completion_state.text.clone();
                         spawn(async move {
-                        // Read cursor directly from the DOM textarea — signals
-                        // may be up to 90ms stale. Fall back to signals if eval fails.
-                        let (actual_sql, cursor) = if let Ok((sql, start, _end)) =
-                            document::eval(
-                                &editor_value_and_selection_query_script(
-                                    SQL_EDITOR_TEXTAREA_ID,
-                                ),
-                            )
-                            .join::<(String, usize, usize)>()
-                            .await
+                        // Read current SQL from DOM, always complete at the end.
+                        let actual_sql = if let Ok((sql, _, _)) = document::eval(
+                            &editor_value_and_selection_query_script(
+                                SQL_EDITOR_TEXTAREA_ID,
+                            ),
+                        )
+                        .join::<(String, usize, usize)>()
+                        .await
                         {
-                            (sql, start)
+                            sql
                         } else {
-                            let sql = draft_sql.peek().clone();
-                            let sel = editor_selection.peek();
-                            (sql, sel.start)
+                            draft_sql.peek().clone()
                         };
-                        let cursor = if actual_sql.is_char_boundary(cursor) {
-                            cursor
-                        } else {
-                            EditorSelection::collapsed(cursor).clamped(&actual_sql).end
-                        };
+                        let cursor = actual_sql.len();
                         let mut completion_text = trim_completion_for_cursor(
                             &actual_sql,
                             cursor,
@@ -770,10 +762,6 @@ pub fn SqlEditor(
                         if completion_text.is_empty() {
                             return;
                         }
-                        eprintln!(
-                            "[completion] accept: sql='{actual_sql}', cursor={cursor}, completion='{completion_text}', stored_cursor={}",
-                            completion_state.cursor
-                        );
                         let new_cursor = cursor + completion_text.len();
                         let new_sql = format!(
                             "{}{}{}",
