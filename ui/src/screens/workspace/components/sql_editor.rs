@@ -709,9 +709,6 @@ pub fn SqlEditor(
                         && !completion_state.text.is_empty()
                     {
                         event.prevent_default();
-                        // Use current SQL and cursor from signals, not the stored
-                        // snapshot which may be stale (e.g. user pressed space after
-                        // completion was generated).
                         let actual_sql = draft_sql.peek().clone();
                         let cursor = {
                             let sel = editor_selection.peek();
@@ -750,6 +747,10 @@ pub fn SqlEditor(
                         if completion_text.is_empty() {
                             return;
                         }
+                        eprintln!(
+                            "[completion] accept: sql='{actual_sql}', cursor={cursor}, completion='{completion_text}', stored_cursor={}",
+                            completion_state.cursor
+                        );
                         let new_cursor = cursor + completion_text.len();
                         let new_sql = format!(
                             "{}{}{}",
