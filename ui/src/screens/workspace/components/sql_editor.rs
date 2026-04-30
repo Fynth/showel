@@ -681,11 +681,24 @@ pub fn SqlEditor(
                         } else {
                             EditorSelection::collapsed(cursor).clamped(&actual_sql).end
                         };
-                        let completion_text = trim_completion_for_cursor(
+                        let mut completion_text = trim_completion_for_cursor(
                             &actual_sql,
                             cursor,
                             &completion_state.text,
                         );
+                        // Prepend a space when joining two words together
+                        // (e.g. "users" + "where" → "users where").
+                        let prev = actual_sql[..cursor]
+                            .chars()
+                            .last()
+                            .unwrap_or(' ');
+                        let next = completion_text.chars().next().unwrap_or(' ');
+                        if !prev.is_whitespace()
+                            && !next.is_whitespace()
+                            && !completion_text.is_empty()
+                        {
+                            completion_text = format!(" {completion_text}");
+                        }
                         if completion_text.is_empty() {
                             return;
                         }
