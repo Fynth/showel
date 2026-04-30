@@ -178,6 +178,18 @@ fn trim_completion_for_cursor(sql: &str, cursor: usize, completion: &str) -> Str
         completion = completion[typed_token.len()..].to_string();
     }
 
+    // Auto-insert a space when the cursor sits right after a non-whitespace
+    // character and the completion starts with a non-whitespace character.
+    // Prevents "userswhere" instead of "users where".
+    let prev_char = sql[..cursor].chars().last().unwrap_or(' ');
+    let next_char = completion.chars().next().unwrap_or(' ');
+    if !prev_char.is_whitespace()
+        && !next_char.is_whitespace()
+        && !matches!(next_char, ',' | ';' | ')' | '(')
+    {
+        completion = format!(" {completion}");
+    }
+
     let suffix = &sql[cursor..];
     let prefix_overlap = common_prefix_byte_len(suffix, &completion);
     if prefix_overlap > 0 {
