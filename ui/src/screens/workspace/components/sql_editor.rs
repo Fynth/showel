@@ -5,6 +5,7 @@ mod selection;
 
 use crate::app_state::APP_UI_SETTINGS;
 use crate::completion::CompletionService;
+use crate::completion::CompletionToken;
 use crate::screens::workspace::actions::{replace_active_tab_sql, sync_active_tab_sql_draft};
 use crate::screens::workspace::components::explorer::ExplorerConnectionSection;
 use dioxus::prelude::*;
@@ -110,9 +111,7 @@ fn hash_completion_snapshot(sql: &str, cursor: usize) -> usize {
     hash_sql(sql).wrapping_mul(31).wrapping_add(cursor)
 }
 
-fn log_completion(msg: &str) {
-    eprintln!("[completion] {msg}");
-}
+fn log_completion(_msg: &str) {}
 
 fn is_completion_accept_key(event: &KeyboardEvent) -> bool {
     event.key() == Key::Tab || event.code() == Code::Tab
@@ -440,59 +439,63 @@ pub fn SqlEditor(
             let expected_id = completion_runtime.with_mut(|state| state.begin_request(sql_hash));
             let schema_ctx = schema_context();
             let sql_for_result = sql_text.clone();
-            let suffix_for_api = suffix.clone();
-            log_completion(&format!(
-                "requesting completion (schema {} chars, sql {})",
-                schema_ctx.len(),
-                sql_for_result
-            ));
 
-            match completion_service
-                .get_completion(&prefix, suffix_for_api.as_deref(), &schema_ctx)
-                .await
-            {
-                Ok(Some(completion)) if !completion.is_empty() => {
-                    if completion_runtime.peek().request_id != expected_id {
-                        return;
+            // Stream completion tokens from the AI provider.
+            // Tokens arrive incrementally and are shown as ghost text immediately.
+            let mut token_rx = completion_service.stream_completion(prefix, suffix, schema_ctx);
+
+            let mut accumulated = String::new();
+            while let Some(token) = token_rx.recv().await {
+                // If a newer request started, abandon this one.
+                if completion_runtime.peek().request_id != expected_id {
+                    return;
+                }
+
+                match token {
+                    CompletionToken::Text(t) => {
+                        accumulated.push_str(&t);
+                        // Show partial completion immediately (Zed-style).
+                        let trimmed =
+                            trim_completion_for_cursor(&sql_for_result, cursor, &accumulated);
+                        if !trimmed.is_empty() {
+                            completion_runtime.with_mut(|state| {
+                                state.active = Some(InlineCompletion {
+                                    cursor,
+                                    source_sql: sql_for_result.clone(),
+                                    text: accumulated.clone(),
+                                });
+                            });
+                        }
                     }
-
-                    let completion =
-                        trim_completion_for_cursor(&sql_for_result, cursor, &completion);
-                    if completion.trim().is_empty() {
+                    CompletionToken::Error(e) => {
+                        log_completion(&format!("completion error: {}", e));
                         completion_runtime.with_mut(|state| {
                             state.finish_request(expected_id, sql_hash);
                         });
                         return;
                     }
-
-                    log_completion(&format!("got completion: {}", completion));
-                    completion_runtime.with_mut(|state| {
-                        state.set_active(
-                            expected_id,
-                            sql_hash,
-                            cursor,
-                            sql_for_result.clone(),
-                            completion,
-                        );
-                    });
-                }
-                Ok(Some(empty)) => {
-                    log_completion(&format!("got empty completion: {:?}", empty));
-                    completion_runtime.with_mut(|state| {
-                        state.finish_request(expected_id, sql_hash);
-                    });
-                }
-                Ok(None) => {
-                    log_completion("no completion available");
-                    completion_runtime.with_mut(|state| {
-                        state.finish_request(expected_id, sql_hash);
-                    });
-                }
-                Err(e) => {
-                    log_completion(&format!("completion error: {}", e));
-                    completion_runtime.with_mut(|state| {
-                        state.finish_request(expected_id, sql_hash);
-                    });
+                    CompletionToken::Done => {
+                        // Finalize: only keep the completion if it's non-empty after trimming.
+                        let trimmed =
+                            trim_completion_for_cursor(&sql_for_result, cursor, &accumulated);
+                        if trimmed.is_empty() {
+                            completion_runtime.with_mut(|state| {
+                                state.finish_request(expected_id, sql_hash);
+                            });
+                        } else {
+                            log_completion(&format!("got completion: {}", accumulated));
+                            completion_runtime.with_mut(|state| {
+                                state.set_active(
+                                    expected_id,
+                                    sql_hash,
+                                    cursor,
+                                    sql_for_result.clone(),
+                                    accumulated,
+                                );
+                            });
+                        }
+                        return;
+                    }
                 }
             }
         });
