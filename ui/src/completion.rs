@@ -222,7 +222,7 @@ async fn stream_deepseek(
                 content: user_prompt,
             },
         ],
-        max_tokens: 500,
+        max_tokens: 100,
         temperature: 0.1,
         stop: vec!["\n\n".to_string(), ";".to_string(), "```".to_string()],
         stream: true,

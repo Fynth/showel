@@ -43,6 +43,7 @@ impl CompletionRuntime {
     fn invalidate(&mut self) {
         self.request_id = self.request_id.wrapping_add(1);
         self.pending_snapshot = None;
+        self.last_completed_snapshot = None;
         self.active = None;
     }
 
