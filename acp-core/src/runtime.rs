@@ -1065,7 +1065,7 @@ fn is_opencode_command(executable: &str) -> bool {
 fn opencode_runtime_environment() -> Option<[(&'static str, PathBuf); 3]> {
     let runtime_root = {
         let base = dirs::data_local_dir()
-            .unwrap_or_else(|| std::env::temp_dir())
+            .unwrap_or_else(std::env::temp_dir)
             .join("shovel")
             .join("acp")
             .join("runtime")

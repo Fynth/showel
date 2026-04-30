@@ -1,6 +1,6 @@
 mod app;
 mod app_state;
-mod codestral;
+mod completion;
 mod components;
 mod layout;
 mod screens;

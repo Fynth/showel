@@ -4,7 +4,7 @@ mod highlight;
 mod selection;
 
 use crate::app_state::APP_UI_SETTINGS;
-use crate::codestral::CodeStralClient;
+use crate::completion::CompletionService;
 use crate::screens::workspace::actions::{replace_active_tab_sql, sync_active_tab_sql_draft};
 use crate::screens::workspace::components::explorer::ExplorerConnectionSection;
 use dioxus::prelude::*;
@@ -386,8 +386,9 @@ pub fn SqlEditor(
     use_effect(move || {
         let revision = editor_revision();
         let settings = APP_UI_SETTINGS();
+        let completion_service = CompletionService::new(&settings);
 
-        if !settings.codestral.enabled || settings.codestral.api_key.is_empty() {
+        if completion_service.is_empty() {
             invalidate_completion(completion_runtime);
             return;
         }
@@ -418,9 +419,8 @@ pub fn SqlEditor(
                 return;
             };
 
-            if !APP_UI_SETTINGS().codestral.enabled
-                || APP_UI_SETTINGS().codestral.api_key.is_empty()
-            {
+            // Re-check settings after debounce (they may have changed).
+            if CompletionService::new(&APP_UI_SETTINGS()).is_empty() {
                 invalidate_completion(completion_runtime);
                 return;
             }
@@ -437,15 +437,14 @@ pub fn SqlEditor(
             let schema_ctx = schema_context();
             let sql_for_result = sql_text.clone();
             let suffix_for_api = suffix.clone();
-            let prompt = format!("{}{}", schema_ctx, prefix);
             log_completion(&format!(
-                "calling API with schema context ({} chars), sql: {}",
+                "requesting completion (schema {} chars, sql {})",
                 schema_ctx.len(),
                 sql_for_result
             ));
-            let client = CodeStralClient::new(APP_UI_SETTINGS().codestral);
-            match client
-                .get_completion(&prompt, suffix_for_api.as_deref())
+
+            match completion_service
+                .get_completion(&prefix, suffix_for_api.as_deref(), &schema_ctx)
                 .await
             {
                 Ok(Some(completion)) if !completion.is_empty() => {
@@ -473,20 +472,20 @@ pub fn SqlEditor(
                         );
                     });
                 }
-                Ok(None) => {
-                    log_completion("API returned None");
+                Ok(Some(empty)) => {
+                    log_completion(&format!("got empty completion: {:?}", empty));
                     completion_runtime.with_mut(|state| {
                         state.finish_request(expected_id, sql_hash);
                     });
                 }
-                Ok(Some(empty)) => {
-                    log_completion(&format!("API returned empty: {:?}", empty));
+                Ok(None) => {
+                    log_completion("no completion available");
                     completion_runtime.with_mut(|state| {
                         state.finish_request(expected_id, sql_hash);
                     });
                 }
                 Err(e) => {
-                    log_completion(&format!("API error: {:?}", e));
+                    log_completion(&format!("completion error: {}", e));
                     completion_runtime.with_mut(|state| {
                         state.finish_request(expected_id, sql_hash);
                     });
