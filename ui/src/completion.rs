@@ -260,18 +260,21 @@ async fn stream_deepseek(
             }
 
             let data = line.strip_prefix("data: ").unwrap_or(&line);
+            eprintln!("[completion] SSE: {data}");
             if data == "[DONE]" {
                 return Ok(());
             }
 
             if let Ok(chunk) = serde_json::from_str::<DeepSeekStreamChunk>(data) {
-                if let Some(token) = chunk
+                if let Some(content) = chunk
                     .choices
                     .first()
                     .and_then(|c| c.delta.as_ref())
                     .and_then(|d| d.content.as_deref())
                 {
-                    let _ = tx.send(CompletionToken::Text(token.to_string()));
+                    if !content.is_empty() {
+                        let _ = tx.send(CompletionToken::Text(content.to_string()));
+                    }
                 }
             }
         }
