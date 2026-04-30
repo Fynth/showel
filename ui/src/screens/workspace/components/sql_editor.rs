@@ -488,11 +488,20 @@ pub fn SqlEditor(
             eprintln!("[completion] spawn started, revision={revision}");
             tokio::time::sleep(Duration::from_millis(COMPLETION_DEBOUNCE_MS)).await;
 
-            // Read SQL text and cursor from already-synced signals instead of
-            // calling document::eval (which can fail when the DOM is mid-update).
-            // The sync effect updates these signals at 90ms intervals.
-            let sql_text = draft_sql.peek().clone();
-            let selection = editor_selection.peek().clone();
+            // Read SQL and cursor from DOM first (most accurate), fall back
+            // to signals if the DOM isn't ready.
+            let (sql_text, selection) = if let Ok((sql, start, end)) = document::eval(
+                &editor_value_and_selection_query_script(SQL_EDITOR_TEXTAREA_ID),
+            )
+            .join::<(String, usize, usize)>()
+            .await
+            {
+                (sql, EditorSelection { start, end })
+            } else {
+                let sql = draft_sql.peek().clone();
+                let sel = editor_selection.peek().clone();
+                (sql, sel)
+            };
 
             if sql_text.len() < 3 {
                 eprintln!(
