@@ -41,16 +41,30 @@ impl CompletionService {
     pub fn new(settings: &AppUiSettings) -> Self {
         let mut providers: Vec<CompletionProvider> = Vec::new();
 
+        eprintln!(
+            "[completion] init: codestral enabled={}, has_key={}, deepseek enabled={}, has_key={}",
+            settings.codestral.enabled,
+            !settings.codestral.api_key.is_empty(),
+            settings.deepseek.enabled,
+            !settings.deepseek.api_key.is_empty(),
+        );
+
         if settings.codestral.enabled && !settings.codestral.api_key.is_empty() {
             providers.push(CompletionProvider::CodeStral(CodeStralProvider::new(
                 settings.codestral.clone(),
             )));
+            eprintln!("[completion] added CodeStral provider");
         }
 
         if settings.deepseek.enabled && !settings.deepseek.api_key.is_empty() {
             providers.push(CompletionProvider::DeepSeek(DeepSeekProvider::new(
                 settings.deepseek.clone(),
             )));
+            eprintln!("[completion] added DeepSeek provider");
+        }
+
+        if providers.is_empty() {
+            eprintln!("[completion] no providers configured");
         }
 
         Self { providers }
@@ -251,6 +265,12 @@ impl DeepSeekProvider {
         suffix: Option<&str>,
         schema_context: &str,
     ) -> CompletionResult {
+        eprintln!(
+            "[completion] DeepSeek request: prefix_len={}, model={}",
+            prefix.len(),
+            self.settings.model,
+        );
+
         let schema_part = if schema_context.is_empty() {
             String::new()
         } else {
@@ -313,6 +333,11 @@ impl DeepSeekProvider {
             .map_err(|e| format!("DeepSeek response error: {e}"))?;
 
         if !status.is_success() {
+            eprintln!(
+                "[completion] DeepSeek API error: status={}, body={}",
+                status.as_u16(),
+                body_text
+            );
             return Err(format!("DeepSeek API {}: {}", status.as_u16(), body_text));
         }
 
@@ -325,6 +350,10 @@ impl DeepSeekProvider {
             .map(|c| normalize_text(&c.message.content))
             .filter(|t| !t.is_empty());
 
+        eprintln!(
+            "[completion] DeepSeek response: text_len={}",
+            text.as_ref().map_or(0, |t| t.len())
+        );
         Ok(text)
     }
 }
