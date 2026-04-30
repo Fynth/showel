@@ -407,14 +407,18 @@ pub fn SqlEditor(
                 return;
             }
 
-            let Ok((sql_text, start, end)) = document::eval(
-                &editor_value_and_selection_query_script(SQL_EDITOR_TEXTAREA_ID),
-            )
+            let eval_result = document::eval(&editor_value_and_selection_query_script(
+                SQL_EDITOR_TEXTAREA_ID,
+            ))
             .join::<(String, usize, usize)>()
-            .await
-            else {
-                eprintln!("[completion] bail: document::eval failed");
-                return;
+            .await;
+
+            let (sql_text, start, end) = match eval_result {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("[completion] bail: document::eval failed: {e:?}");
+                    return;
+                }
             };
             if sql_text.len() < 3 {
                 eprintln!(
