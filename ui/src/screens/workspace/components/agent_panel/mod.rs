@@ -313,6 +313,9 @@ pub fn AcpAgentPanel(
                                         article {
                                             class: format!("agent-panel__message agent-panel__message--{}", message_kind_class(&message.kind)),
                                             div { class: "agent-panel__message-meta",
+                                                span { class: "agent-panel__message-avatar",
+                                                    "{message_kind_avatar(&message.kind)}"
+                                                }
                                                 p { class: "agent-panel__message-role", "{message_kind_label(&message.kind)}" }
                                                 if matches!(message.kind, AcpMessageKind::Thought) {
                                                     div { class: "agent-panel__thinking",
