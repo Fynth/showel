@@ -111,7 +111,9 @@ fn hash_completion_snapshot(sql: &str, cursor: usize) -> usize {
     hash_sql(sql).wrapping_mul(31).wrapping_add(cursor)
 }
 
-fn log_completion(_msg: &str) {}
+fn log_completion(msg: &str) {
+    eprintln!("[completion] {msg}");
+}
 
 fn is_completion_accept_key(event: &KeyboardEvent) -> bool {
     event.key() == Key::Tab || event.code() == Code::Tab
@@ -442,12 +444,20 @@ pub fn SqlEditor(
 
             // Stream completion tokens from the AI provider.
             // Tokens arrive incrementally and are shown as ghost text immediately.
+            log_completion(&format!(
+                "streaming completion: prefix={} cursor={}",
+                prefix.len(),
+                cursor
+            ));
             let mut token_rx = completion_service.stream_completion(prefix, suffix, schema_ctx);
 
             let mut accumulated = String::new();
+            let mut token_count = 0u32;
             while let Some(token) = token_rx.recv().await {
+                token_count += 1;
                 // If a newer request started, abandon this one.
                 if completion_runtime.peek().request_id != expected_id {
+                    log_completion("abandoned (newer request)");
                     return;
                 }
 
@@ -468,13 +478,17 @@ pub fn SqlEditor(
                         }
                     }
                     CompletionToken::Error(e) => {
-                        log_completion(&format!("completion error: {}", e));
+                        log_completion(&format!("error: {}", e));
                         completion_runtime.with_mut(|state| {
                             state.finish_request(expected_id, sql_hash);
                         });
                         return;
                     }
                     CompletionToken::Done => {
+                        log_completion(&format!(
+                            "done: {} tokens, text={}",
+                            token_count, accumulated
+                        ));
                         // Finalize: only keep the completion if it's non-empty after trimming.
                         let trimmed =
                             trim_completion_for_cursor(&sql_for_result, cursor, &accumulated);
@@ -498,6 +512,7 @@ pub fn SqlEditor(
                     }
                 }
             }
+            log_completion(&format!("channel closed: {} tokens", token_count));
         });
     });
 
