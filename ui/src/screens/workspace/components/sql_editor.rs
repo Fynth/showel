@@ -3,7 +3,7 @@ mod highlight;
 #[path = "sql_editor/selection.rs"]
 mod selection;
 
-use crate::app_state::APP_UI_SETTINGS;
+use crate::app_state::{APP_UI_SETTINGS, toast_error};
 use crate::completion::CompletionService;
 use crate::completion::CompletionToken;
 use crate::screens::workspace::actions::{replace_active_tab_sql, sync_active_tab_sql_draft};
@@ -233,42 +233,90 @@ fn build_schema_context(sections: &[ExplorerConnectionSection], session_id: u64)
         None => return String::new(),
     };
 
-    let mut parts: Vec<String> = Vec::new();
+    let mut lines: Vec<String> = Vec::new();
+    let mut first_table = true;
 
     for node in &section.nodes {
         if node.kind == ExplorerNodeKind::Schema {
             let schema_name = &node.name;
             for table in &node.children {
                 if table.kind == ExplorerNodeKind::Table || table.kind == ExplorerNodeKind::View {
-                    let columns: Vec<String> =
-                        table.children.iter().map(|col| col.name.clone()).collect();
-                    if columns.is_empty() {
-                        parts.push(format!("{}.{}", schema_name, table.name));
+                    if !first_table {
+                        lines.push(String::new());
+                    }
+                    first_table = false;
+
+                    let kind_label = if table.kind == ExplorerNodeKind::View {
+                        "View"
                     } else {
-                        parts.push(format!(
-                            "{}.{}({})",
-                            schema_name,
-                            table.name,
-                            columns.join(", ")
-                        ));
+                        "Table"
+                    };
+
+                    let full_name = format!("{schema_name}.{}", table.name);
+                    lines.push(format!("-- {kind_label}: {full_name}"));
+
+                    if !table.children.is_empty() {
+                        let cols: Vec<String> =
+                            table.children.iter().map(|col| col.name.clone()).collect();
+                        lines.push(format!("--   Columns: {}", cols.join(", ")));
                     }
                 }
             }
         } else if node.kind == ExplorerNodeKind::Table || node.kind == ExplorerNodeKind::View {
-            let columns: Vec<String> = node.children.iter().map(|col| col.name.clone()).collect();
-            if columns.is_empty() {
-                parts.push(node.name.clone());
+            if !first_table {
+                lines.push(String::new());
+            }
+            first_table = false;
+
+            let kind_label = if node.kind == ExplorerNodeKind::View {
+                "View"
             } else {
-                parts.push(format!("{}({})", node.name, columns.join(", ")));
+                "Table"
+            };
+
+            lines.push(format!("-- {kind_label}: {}", node.name));
+
+            if !node.children.is_empty() {
+                let cols: Vec<String> = node.children.iter().map(|col| col.name.clone()).collect();
+                lines.push(format!("--   Columns: {}", cols.join(", ")));
             }
         }
     }
 
-    if parts.is_empty() {
+    if lines.is_empty() {
         return String::new();
     }
 
-    format!("-- Database schema: {}\n", parts.join(", "))
+    // Add a trailing blank line so the schema block is visually separated
+    // from the SQL prefix that follows.
+    format!("{}\n", lines.join("\n"))
+}
+
+/// Extract a few lines of SQL that precede the cursor position — the
+/// "surrounding context" — so the LLM sees what kind of queries the user
+/// is writing, not just the single statement being completed.
+///
+/// Returns text from the last `;` (or the beginning) up to `cursor`,
+/// capped at 500 characters.
+fn surrounding_sql_context(sql: &str, cursor: usize) -> String {
+    let cursor = cursor.min(sql.len());
+    let before_cursor = &sql[..cursor];
+
+    let start = before_cursor.rfind(';').map_or(0, |pos| pos + 1);
+    let ctx = before_cursor[start..].trim();
+
+    if ctx.len() <= 500 {
+        return ctx.to_string();
+    }
+
+    // Truncate from the start, keeping the last ~500 chars.
+    let excess = ctx.len() - 500;
+    // Walk forward to the next char boundary so we don't slice mid-char.
+    let mut keep_from = excess;
+    while keep_from < ctx.len() && !ctx.is_char_boundary(keep_from) {
+        keep_from += 1;
+    }
+    format!("…{}", &ctx[keep_from..])
 }
 
 #[component]
@@ -450,7 +498,16 @@ pub fn SqlEditor(
             }
 
             let expected_id = completion_runtime.with_mut(|state| state.begin_request(sql_hash));
-            let schema_ctx = schema_context();
+            let mut schema_ctx = schema_context();
+            let surrounding = surrounding_sql_context(&sql_text, cursor);
+            if !surrounding.is_empty() {
+                use std::fmt::Write;
+                let _ = write!(
+                    schema_ctx,
+                    "-- Surrounding SQL context (before cursor):\n-- {}",
+                    surrounding.replace('\n', "\n-- ")
+                );
+            }
             let sql_for_result = sql_text.clone();
 
             // Stream completion tokens from the AI provider.
@@ -490,6 +547,7 @@ pub fn SqlEditor(
                     }
                     CompletionToken::Error(e) => {
                         log_completion(&format!("error: {}", e));
+                        toast_error(format!("Completion failed: {e}"));
                         completion_runtime.with_mut(|state| {
                             state.finish_request(expected_id, sql_hash);
                         });

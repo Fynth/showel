@@ -96,8 +96,13 @@ impl CompletionService {
         });
 
         tokio::task::spawn(async move {
+            let mut attempts = 0u32;
+            let mut successes = 0u32;
+            let mut errors: Vec<String> = Vec::new();
+
             // Try DeepSeek first (streaming, better UX).
             if let Some((client, settings)) = deepseek {
+                attempts += 1;
                 match stream_deepseek(
                     &client,
                     &settings,
@@ -112,12 +117,16 @@ impl CompletionService {
                         let _ = tx.send(CompletionToken::Done);
                         return;
                     }
-                    Err(e) => eprintln!("[completion] DeepSeek error: {e}"),
+                    Err(e) => {
+                        eprintln!("[completion] DeepSeek error: {e}");
+                        errors.push(format!("DeepSeek: {e}"));
+                    }
                 }
             }
 
             // Fall back to CodeStral (single-shot).
             if let Some((client, settings)) = codestral {
+                attempts += 1;
                 match codestral_complete(
                     &client,
                     &settings,
@@ -128,11 +137,31 @@ impl CompletionService {
                 .await
                 {
                     Ok(Some(text)) => {
+                        successes += 1;
                         let _ = tx.send(CompletionToken::Text(text));
                     }
-                    Ok(None) => {}
-                    Err(e) => eprintln!("[completion] CodeStral error: {e}"),
+                    Ok(None) => {
+                        successes += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("[completion] CodeStral error: {e}");
+                        errors.push(format!("CodeStral: {e}"));
+                    }
                 }
+            }
+
+            // If every attempted provider failed, surface the error.
+            if attempts > 0 && successes == 0 {
+                let msg = if errors.len() == 1 {
+                    format!("AI completion failed: {}", errors[0])
+                } else {
+                    format!(
+                        "AI completion failed ({} providers): {}",
+                        errors.len(),
+                        errors.join("; ")
+                    )
+                };
+                let _ = tx.send(CompletionToken::Error(msg));
             }
 
             let _ = tx.send(CompletionToken::Done);
@@ -191,24 +220,26 @@ async fn stream_deepseek(
         format!("Database schema:\n{schema_context}\n\n")
     };
 
-    let suffix_part = suffix
-        .map(|s| format!("\n\nThe SQL after the cursor is:\n```sql\n{s}\n```"))
-        .unwrap_or_default();
-
     let system_prompt = format!(
-        "You are a SQL autocomplete engine. Output ONLY the SQL text to insert at the cursor.\n\
-         NO explanations. NO reasoning. NO markdown. NO backticks. JUST the SQL.\n\
-         Match the existing SQL style (keywords, indentation, casing).\n\
-         Do NOT repeat text before/after the cursor.\n\
-         If nothing to add, output nothing.\n\
-         {schema_part}",
+        "You are a SQL autocomplete engine inside a database client.\n\
+         Your task: given the SQL before the cursor and the database schema,\n\
+         output ONLY the SQL text that should come next.\n\n\
+         RULES:\n\
+         1. Output ONLY raw SQL — no markdown, no backticks, no explanations.\n\
+         2. Match the existing SQL style (keywords case, indentation).\n\
+         3. Use the schema to suggest correct table/column names.\n\
+         4. If the statement is already complete, output nothing.\n\
+         5. Do NOT repeat what's already typed before or after the cursor.\n\n\
+         {schema_part}\
+         Surrounding SQL context (before cursor):\n\
+         ```sql\n{prefix}\n```",
     );
 
-    let user_prompt = format!(
-        "Complete the SQL at the [CURSOR]:\n\
-         ```sql\n{prefix}[CURSOR]{}\n```{suffix_part}",
-        suffix.unwrap_or("")
-    );
+    let user_prompt = if let Some(suffix) = suffix {
+        format!("Complete between [CURSOR]:\n```sql\n{prefix}[CURSOR]{suffix}\n```")
+    } else {
+        format!("Complete after [CURSOR]:\n```sql\n{prefix}[CURSOR]\n```")
+    };
 
     let request = DeepSeekStreamRequest {
         model: settings.model.clone(),
