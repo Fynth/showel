@@ -141,13 +141,15 @@ pub fn SettingsModal() -> Element {
                             div {
                                 class: "field",
                                 span { class: "field__label", "Model" }
-                                input {
+                                select {
                                     class: "input",
-                                    placeholder: "deepseek-v4-pro",
                                     value: "{settings.deepseek.model}",
                                     oninput: move |event| {
                                         set_deepseek_model(event.value());
                                     },
+                                    option { value: "deepseek-chat", "deepseek-chat (fast, recommended)" }
+                                    option { value: "deepseek-v4-pro", "deepseek-v4-pro (reasoning)" }
+                                    option { value: "deepseek-v4-flash", "deepseek-v4-flash (reasoning, fast)" }
                                 }
                             }
                             div {

@@ -151,8 +151,8 @@ impl Default for DeepSeekSettings {
             enabled: false,
             api_key: String::new(),
             base_url: "https://api.deepseek.com".to_string(),
-            model: "deepseek-v4-pro".to_string(),
-            thinking_enabled: true,
+            model: "deepseek-chat".to_string(),
+            thinking_enabled: false,
             reasoning_effort: "medium".to_string(),
         }
     }
