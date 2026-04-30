@@ -86,6 +86,12 @@ impl CompletionService {
         }
 
         for provider in &self.providers {
+            let provider_name = match provider {
+                CompletionProvider::CodeStral(_) => "CodeStral",
+                CompletionProvider::DeepSeek(_) => "DeepSeek",
+            };
+            eprintln!("[completion] trying provider: {provider_name}");
+
             let result = match provider {
                 CompletionProvider::CodeStral(p) => {
                     p.complete(prefix, suffix, schema_context).await
@@ -95,7 +101,10 @@ impl CompletionService {
 
             match result {
                 Ok(Some(completion)) => return Ok(Some(completion)),
-                Ok(None) => continue,
+                Ok(None) => {
+                    eprintln!("[completion] provider returned empty");
+                    continue;
+                }
                 Err(e) => {
                     eprintln!("[completion] provider error: {e}");
                     continue;
