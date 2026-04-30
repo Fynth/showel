@@ -173,6 +173,8 @@ struct DeepSeekStreamChoice {
 #[derive(Debug, Deserialize)]
 struct DeepSeekStreamDelta {
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 async fn stream_deepseek(
@@ -220,7 +222,7 @@ async fn stream_deepseek(
                 content: user_prompt,
             },
         ],
-        max_tokens: 80,
+        max_tokens: 150,
         temperature: 0.1,
         stop: vec!["\n\n".to_string(), ";".to_string(), "```".to_string()],
         stream: true,
@@ -260,20 +262,23 @@ async fn stream_deepseek(
             }
 
             let data = line.strip_prefix("data: ").unwrap_or(&line);
-            eprintln!("[completion] SSE: {data}");
             if data == "[DONE]" {
                 return Ok(());
             }
 
             if let Ok(chunk) = serde_json::from_str::<DeepSeekStreamChunk>(data) {
-                if let Some(content) = chunk
-                    .choices
-                    .first()
-                    .and_then(|c| c.delta.as_ref())
-                    .and_then(|d| d.content.as_deref())
-                {
-                    if !content.is_empty() {
-                        let _ = tx.send(CompletionToken::Text(content.to_string()));
+                if let Some(choice) = chunk.choices.first() {
+                    if let Some(delta) = &choice.delta {
+                        // DeepSeek reasoning models put completion in `reasoning_content`,
+                        // non-reasoning models use `content`. Collect whichever is present.
+                        let token = delta
+                            .content
+                            .as_deref()
+                            .or(delta.reasoning_content.as_deref())
+                            .unwrap_or("");
+                        if !token.is_empty() {
+                            let _ = tx.send(CompletionToken::Text(token.to_string()));
+                        }
                     }
                 }
             }

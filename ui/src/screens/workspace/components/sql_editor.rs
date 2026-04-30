@@ -111,9 +111,7 @@ fn hash_completion_snapshot(sql: &str, cursor: usize) -> usize {
     hash_sql(sql).wrapping_mul(31).wrapping_add(cursor)
 }
 
-fn log_completion(msg: &str) {
-    eprintln!("[completion] {msg}");
-}
+fn log_completion(_msg: &str) {}
 
 fn is_completion_accept_key(event: &KeyboardEvent) -> bool {
     event.key() == Key::Tab || event.code() == Code::Tab
