@@ -196,11 +196,11 @@ async fn stream_deepseek(
         .unwrap_or_default();
 
     let system_prompt = format!(
-        "You are a SQL completion engine. Complete the SQL statement at the cursor position.\n\
-         Return ONLY the completion text — no explanations, no markdown, no backticks.\n\
-         Match the existing style (uppercase keywords, indentation).\n\
-         Do NOT repeat text that already appears before or after the cursor.\n\
-         If the statement is already complete, return an empty response.\n\
+        "You are a SQL autocomplete engine. Output ONLY the SQL text to insert at the cursor.\n\
+         NO explanations. NO reasoning. NO markdown. NO backticks. JUST the SQL.\n\
+         Match the existing SQL style (keywords, indentation, casing).\n\
+         Do NOT repeat text before/after the cursor.\n\
+         If nothing to add, output nothing.\n\
          {schema_part}",
     );
 
@@ -222,7 +222,7 @@ async fn stream_deepseek(
                 content: user_prompt,
             },
         ],
-        max_tokens: 150,
+        max_tokens: 500,
         temperature: 0.1,
         stop: vec!["\n\n".to_string(), ";".to_string(), "```".to_string()],
         stream: true,
@@ -269,15 +269,13 @@ async fn stream_deepseek(
             if let Ok(chunk) = serde_json::from_str::<DeepSeekStreamChunk>(data) {
                 if let Some(choice) = chunk.choices.first() {
                     if let Some(delta) = &choice.delta {
-                        // DeepSeek reasoning models put completion in `reasoning_content`,
-                        // non-reasoning models use `content`. Collect whichever is present.
-                        let token = delta
-                            .content
-                            .as_deref()
-                            .or(delta.reasoning_content.as_deref())
-                            .unwrap_or("");
-                        if !token.is_empty() {
-                            let _ = tx.send(CompletionToken::Text(token.to_string()));
+                        // Only collect actual `content`, not the model's reasoning/thinking.
+                        // Reasoning models (v4-flash) spend tokens on chain-of-thought first,
+                        // then produce the real answer in `content`.
+                        if let Some(content) = &delta.content {
+                            if !content.is_empty() {
+                                let _ = tx.send(CompletionToken::Text(content.clone()));
+                            }
                         }
                     }
                 }
