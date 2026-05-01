@@ -32,14 +32,24 @@ struct ChartSeries {
 
 fn is_numeric(s: &str) -> bool {
     let trimmed = s.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
         return false;
     }
-    trimmed.parse::<f64>().is_ok()
+    // Strip common formatting: commas, currency symbols, percentage, spaces
+    let cleaned: String = trimmed
+        .chars()
+        .filter(|c| !matches!(c, ',' | '$' | '€' | '£' | '%' | ' '))
+        .collect();
+    cleaned.parse::<f64>().is_ok()
 }
 
 fn parse_numeric(s: &str) -> f64 {
-    s.trim().parse::<f64>().unwrap_or(0.0)
+    let cleaned: String = s
+        .trim()
+        .chars()
+        .filter(|c| !matches!(c, ',' | '$' | '€' | '£' | '%' | ' '))
+        .collect();
+    cleaned.parse::<f64>().unwrap_or(0.0)
 }
 
 fn extract_chart_data(columns: &[String], rows: &[Vec<String>]) -> (Vec<String>, Vec<usize>) {
@@ -67,7 +77,7 @@ fn extract_chart_data(columns: &[String], rows: &[Vec<String>]) -> (Vec<String>,
                     .unwrap_or(false)
             })
             .count();
-        if non_empty > 0 && numeric_count as f64 / non_empty as f64 > 0.5 {
+        if non_empty > 0 && numeric_count as f64 / non_empty as f64 > 0.3 {
             numeric_col_indices.push(col_idx);
         }
     }
