@@ -645,9 +645,8 @@ pub fn SqlEditor(
     } else {
         "sql-editor"
     };
-    let inline_cursor = render_completion.map_or(editor_selection().start, |_completion| {
-        editor_selection().start.min(current_sql.len())
-    });
+    let inline_cursor =
+        render_completion.map_or(0, |completion| completion.cursor.min(current_sql.len()));
     let inline_suffix = render_completion.map(|completion| {
         trim_completion_for_cursor(&current_sql, inline_cursor, &completion.text)
     });
