@@ -41,14 +41,15 @@ It is built for people who want a responsive database tool that feels closer to 
 
 | Area | What you get |
 | --- | --- |
-| Chat | Persistent database chat threads, context-aware prompts, SQL generation, agent-guided execution |
+| Chat | Persistent database chat threads, context-aware prompts, SQL generation, streaming responses, agent-guided execution |
 | Querying | Multi-tab SQL editor, query history, structure tabs, formatting, pagination |
+| AI Autocomplete | Inline SQL completions (Zed-style), multi-provider (DeepSeek + CodeStral), streaming token display |
 | Data exploration | Connection explorer, schemas/databases, tables, views, column loading |
 | Result workflows | Sort, filter, inspect rows, JSON view, row details |
 | Editing | Draft inserts, cell edits, deletes, apply/discard changes for editable table views |
 | Import / export | CSV import, CSV/JSON/XLSX export |
-| AI workflows | ACP agent panel, OpenCode via ACP registry, embedded Ollama ACP bridge |
-| UX | Compact desktop layout, dark/light theme, saved queries/snippets |
+| AI workflows | ACP agent panel, OpenCode via ACP registry, embedded Ollama/DeepSeek ACP bridges |
+| UX | Compact desktop layout, dark/light theme, saved queries/snippets, tooltips |
 
 ## Database Support
 
@@ -61,15 +62,20 @@ It is built for people who want a responsive database tool that feels closer to 
 
 ## AI / ACP Support
 
-Shovel includes an ACP client layer and an embedded Ollama ACP bridge.
+Shovel includes an ACP client layer, embedded ACP bridges for DeepSeek and Ollama, and inline AI SQL autocompletion.
 
 That means you can:
 
 - connect an external ACP-compatible coding/database agent over `stdio`
 - install and connect supported ACP registry agents such as OpenCode
-- spawn an embedded Ollama-backed ACP agent directly from the UI
+- spawn an embedded DeepSeek or Ollama-backed ACP agent directly from the UI
 - generate SQL against the active connection context
 - send general database prompts and insert generated SQL into the editor
+- get **inline SQL completions** as you type — just like Zed's inline assistant
+  - Tab to accept, keep typing to ignore
+  - Streaming tokens appear in real-time
+  - Multi-provider fallback (DeepSeek → CodeStral)
+  - Schema-aware: completions know your tables and columns
 
 This is opt-in. If you do not care about AI features, Shovel still works as a regular database client.
 
@@ -362,23 +368,24 @@ Shovel is organized as a Rust workspace with focused crates instead of one large
 | Crate | Responsibility |
 | --- | --- |
 | `app` | desktop launcher, build pipeline, embedded ACP agent entrypoint |
-| `ui` | Dioxus desktop frontend |
-| `models` | shared domain models and contracts |
+| `ui` | Dioxus desktop frontend, AI autocomplete, chat |
+| `models` | shared domain models and settings |
+| `services` | unified facade — single entry point for `ui` into all lower crates |
 | `connection` / `connection-ssh` | connection orchestration and SSH support |
 | `explorer` | schema and object discovery |
-| `query-core` | query execution, pagination, editable rows |
-| `query-format` | SQL formatting |
-| `query-io` | CSV/JSON/XLSX import-export |
-| `acp` / `acp-registry` | ACP runtime, registry integration, Ollama bridge |
-| `driver-*` | database-specific implementations |
-| `storage` | local persistence for settings, sessions, history, saved queries |
+| `query` | query execution, pagination, editable rows, formatting, import/export |
+| `acp-core` / `acp` / `acp-registry` | ACP runtime, DeepSeek/Ollama agents, registry integration |
+| `driver-*` | database-specific implementations (SQLite, PostgreSQL, MySQL, ClickHouse) |
+| `storage` | local persistence for settings, sessions, history, saved queries, chat |
 
 ## What Makes It Different
 
 - Native UI with Rust and Dioxus instead of Electron
 - AI integration built around ACP instead of a one-off prompt box
+- Inline SQL autocomplete like Zed — multi-provider, streaming, schema-aware
 - Editable result grid for real table workflows, not just read-only browsing
 - Workspace split into independent crates, which makes the codebase easier to evolve
+- Feature-gated database drivers — build only what you need
 
 ## Current Status
 
@@ -388,9 +395,10 @@ Today it is already useful for:
 
 - running queries quickly
 - exploring local and remote databases
-- editing SQLite/PostgreSQL table data
+- editing SQLite/PostgreSQL/MySQL table data
 - exporting/importing common formats
-- using ACP-powered assistants for SQL generation
+- using ACP-powered assistants for SQL generation (DeepSeek, Ollama, OpenCode)
+- AI inline SQL autocompletion with streaming responses
 
 Areas that still need expansion:
 
