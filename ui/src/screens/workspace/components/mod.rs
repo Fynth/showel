@@ -1,5 +1,6 @@
 mod agent_panel;
 mod blob_viewer;
+mod chart;
 mod data_diff;
 mod er_diagram;
 mod execution_plan;
@@ -19,6 +20,7 @@ pub(crate) use agent_panel::{
     ensure_default_sql_agent_connected, execute_agent_sql_request, extract_sql_candidate,
     preferred_sql_target_tab_id, replace_messages, send_sql_generation_request,
 };
+pub use chart::ResultChart;
 pub use execution_plan::ExecutionPlanView;
 pub use explorer::{ExplorerConnectionSection, SidebarConnectionTree};
 pub use history::QueryHistoryPanel;

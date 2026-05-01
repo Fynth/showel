@@ -5,7 +5,7 @@ use crate::screens::workspace::actions::{
     read_only_mode_block_status, read_only_mode_enabled, refresh_tab_result, rows_toolbar_summary,
     set_active_tab_status, tab_connection_or_error, toggle_active_tab_sort,
 };
-use crate::screens::workspace::components::{ActionIcon, IconButton};
+use crate::screens::workspace::components::{ActionIcon, IconButton, ResultChart};
 use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 use models::{
@@ -66,6 +66,7 @@ pub fn ResultTable(
     let mut resize_start_width = use_signal(|| 0.0_f64);
     let mut scroll_offset = use_signal(|| 0.0_f64);
     let mut viewport_height = use_signal(|| 600.0_f64);
+    let mut show_chart = use_signal(|| false);
 
     let current_editing = editing_cell();
     let active_tab = tabs
@@ -362,6 +363,15 @@ pub fn ResultTable(
                                             small: true,
                                             disabled: !has_selected_row,
                                             onclick: move |_| show_row_details.toggle(),
+                                        }
+                                        button {
+                                            class: if show_chart() {
+                                                "button button--ghost button--small button--active"
+                                            } else {
+                                                "button button--ghost button--small"
+                                            },
+                                            onclick: move |_| show_chart.toggle(),
+                                            "Chart"
                                         }
                                     }
                                     }
@@ -813,6 +823,11 @@ pub fn ResultTable(
                                         }
                                     }
                                 }
+                            }
+                            ResultChart {
+                                columns: page.columns.clone(),
+                                rows: page.rows.clone(),
+                                visible: show_chart,
                             }
                         }
                     }
